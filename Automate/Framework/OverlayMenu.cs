@@ -28,6 +28,9 @@ internal class OverlayMenu : BaseOverlay
     /// <summary>The machine group for machines connected to Junimo chests.</summary>
     private readonly JunimoMachineGroup JunimoGroup;
 
+    /// <summary>MOD: added. The color used to highlight a tile that belongs to more than one active machine group at once (e.g. a chest or machine shared between two separate path networks).</summary>
+    private static readonly Color MultiGroupColor = Color.Blue;
+
 
     /*********
     ** Public methods
@@ -70,6 +73,7 @@ internal class OverlayMenu : BaseOverlay
             // get machine group
             IMachineGroup? group = null;
             Color? color = null;
+            bool isMultiGroup = false; // MOD: added
             if (junimoChestTiles.Contains(tile))
             {
                 color = this.JunimoGroup.HasInternalAutomation
@@ -80,7 +84,16 @@ internal class OverlayMenu : BaseOverlay
             else if (this.MachineData is not null)
             {
                 if (this.MachineData.ActiveTiles.TryGetValue(tile, out group))
+                {
                     color = Color.Green * 0.2f;
+
+                    // MOD: added — check whether this tile is a member of more than one active
+                    // machine group (e.g. a chest or machine shared between two separate path
+                    // networks). If so, flag it for the solid full-tile highlight drawn below,
+                    // instead of the normal grid-gapped green background.
+                    if (this.MachineData.ActiveGroupsByTile.TryGetValue(tile, out IMachineGroup[]? allGroups) && allGroups.Length > 1)
+                        isMultiGroup = true;
+                }
                 else if (this.MachineData.DisabledTiles.TryGetValue(tile, out group) || this.MachineData.OutdatedTiles.ContainsKey(tile))
                     color = Color.Red * 0.2f;
             }
@@ -89,9 +102,21 @@ internal class OverlayMenu : BaseOverlay
             // draw background
             spriteBatch.DrawLine(screenX + this.TileGap, screenY + this.TileGap, new Vector2(tileSize - this.TileGap * 2, tileSize - this.TileGap * 2), color);
 
+            // MOD: added — draw a solid, full (no grid gap) blue square directly over a tile that
+            // belongs to more than one active group, so it's unmistakable regardless of whatever
+            // object is drawn on top of it.
+            if (isMultiGroup)
+                spriteBatch.DrawLine(screenX, screenY, new Vector2(tileSize, tileSize), OverlayMenu.MultiGroupColor * 0.45f);
+
             // draw group edge borders
             if (group != null)
-                this.DrawEdgeBorders(spriteBatch, group, tile, group.HasInternalAutomation ? Color.Green : Color.Red);
+            {
+                Color borderColor = isMultiGroup
+                    ? OverlayMenu.MultiGroupColor
+                    : (group.HasInternalAutomation ? Color.Green : Color.Red);
+
+                this.DrawEdgeBorders(spriteBatch, group, tile, borderColor);
+            }
         }
 
         // draw cursor

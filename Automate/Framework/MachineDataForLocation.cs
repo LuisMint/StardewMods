@@ -24,6 +24,9 @@ internal record MachineDataForLocation(string LocationKey, IReadOnlyCollection<I
     /// <summary>The backing field for <see cref="DisabledTiles"/>.</summary>
     private readonly Lazy<Dictionary<Vector2, IMachineGroup>> DisabledTilesImpl = new(() => GetTileLookup(LocationKey, DisabledMachineGroups));
 
+    /// <summary>MOD: added. The backing field for <see cref="ActiveGroupsByTile"/>.</summary>
+    private readonly Lazy<Dictionary<Vector2, IMachineGroup[]>> ActiveGroupsByTileImpl = new(() => GetAllGroupsByTile(LocationKey, ActiveMachineGroups));
+
 
     /*********
     ** Accessors
@@ -36,6 +39,14 @@ internal record MachineDataForLocation(string LocationKey, IReadOnlyCollection<I
 
     /// <summary>The tiles containing an automatable which isn't part of a machine group because it was added after the last scan.</summary>
     public IReadOnlyDictionary<Vector2, IAutomatable> OutdatedTiles => this.OutdatedTilesImpl;
+
+    /// <summary>
+    /// MOD: added. Every active machine group that includes each tile. Unlike <see cref="ActiveTiles"/>
+    /// (which only keeps one arbitrary group per tile), this keeps ALL of them — a tile can now be a
+    /// member of more than one group, since a shared chest can bridge two separate connector networks
+    /// without merging them into one.
+    /// </summary>
+    public IReadOnlyDictionary<Vector2, IMachineGroup[]> ActiveGroupsByTile => this.ActiveGroupsByTileImpl.Value;
 
 
     /*********
@@ -126,5 +137,24 @@ internal record MachineDataForLocation(string LocationKey, IReadOnlyCollection<I
                 select tileGroup
             )
             .ToDictionary(p => p.Key, p => p.First());
+    }
+
+    /// <summary>
+    /// MOD: added. Get a lookup of ALL machine groups by the tile positions they contain — unlike
+    /// <see cref="GetTileLookup"/>, a tile that belongs to multiple groups keeps every one of them
+    /// instead of picking just the first.
+    /// </summary>
+    /// <param name="locationKey">The location key for which to get tiles.</param>
+    /// <param name="machineGroups">The machine groups to index.</param>
+    private static Dictionary<Vector2, IMachineGroup[]> GetAllGroupsByTile(string locationKey, IEnumerable<IMachineGroup> machineGroups)
+    {
+        return
+            (
+                from machineGroup in machineGroups
+                from tile in machineGroup.GetTiles(locationKey)
+                group machineGroup by tile into tileGroup
+                select tileGroup
+            )
+            .ToDictionary(p => p.Key, p => p.Distinct().ToArray());
     }
 };

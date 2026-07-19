@@ -80,32 +80,256 @@ internal class MachineGroupFactory
     public IEnumerable<IMachine> SortMachines(IEnumerable<IMachine> machines)
     {
         return
-            (
-                from machine in machines
-                let config = this.GetMachineOverride(machine.MachineTypeID)
-                orderby config?.Priority ?? 0 descending
-                select machine
-            );
+        (
+            from machine in machines
+            let config = this.GetMachineOverride(machine.MachineTypeID)
+            orderby config?.Priority ?? 0 descending
+            select machine
+        );
     }
 
     /// <summary>Get all machine groups in a location.</summary>
     /// <param name="location">The location to search.</param>
     /// <param name="monitor">The monitor with which to log errors.</param>
+    ///
+    /// MOD: Uses a union-find (disjoint set) approach instead of a plain flood-fill with a "visited"
+    /// set, so results don't depend on tile scan order.
+    ///
+    /// Only connectors ever merge networks together, and only when they're the SAME connector type
+    /// (e.g. two Wood Floor tiles) — a Wood Floor tile touching a Stone Floor tile does NOT link
+    /// them, so different path materials form separate networks even when physically adjacent.
+    ///
+    /// Machines and containers (chests) are both excluded from the union step entirely: either one
+    /// touching two unrelated connector networks does NOT merge those networks. Instead, it's added
+    /// as a member of every network it touches — so a single machine or chest can serve as a shared
+    /// point for two independent path-based setups without pooling them into one combined group.
+    /// (If two of its groups both try to use it in the same tick, only one actually gets to; the
+    /// other just tries again next tick — the same trade-off either way, for a shared chest or a
+    /// shared machine.)
+    ///
+    /// "Touching" includes two cases: being on orthogonally-adjacent tiles, AND sharing the exact
+    /// same tile — e.g. a machine or chest placed directly on top of a path tile. Since a path/floor
+    /// and a machine/chest are two separate entities that can occupy the identical tile in Stardew
+    /// Valley (flooring is a background layer under the object), nodes are deduped by (area,
+    /// category) rather than area alone, so a connector and a machine sharing one tile are both kept
+    /// instead of one silently overwriting the other.
     public IEnumerable<IMachineGroup> GetMachineGroups(GameLocation location, IMonitor monitor)
     {
-        MachineGroupBuilder builder = new(this.GetLocationKey(location), this.SortMachines, this.BuildStorage, this.Monitor);
         LocationFloodFillIndex locationIndex = new(location, monitor);
-        HashSet<Vector2> visited = [];
+
+        static string Categorize(IAutomatable entity) => entity switch
+        {
+            IMachine => "machine",
+            IContainer => "container",
+            _ => "connector"
+        };
+
+        // step 1: collect every distinct machine/container/connector on the map. Deduped by (tile
+        // area, category) instead of just tile area, since a connector (e.g. a path) and a
+        // machine/container can legitimately share the exact same tile. For connector nodes, also
+        // record an identifying "type key" (e.g. the specific floor type) so different connector
+        // materials can be told apart later.
+        HashSet<(Rectangle Area, string Category)> seenKeys = new();
+        List<IAutomatable> nodes = new();
+        List<string?> connectorTypeKeys = new(); // parallel to `nodes`; only meaningful for connector nodes
+
         foreach (Vector2 tile in location.GetTiles())
         {
-            this.FloodFillGroup(builder, location, tile, locationIndex, visited);
-            if (builder.HasTiles())
+            foreach (IAutomatable entity in this.GetEntities(location, locationIndex, tile))
             {
-                yield return builder.Build();
-                builder.Reset();
+                string category = Categorize(entity);
+                if (!seenKeys.Add((entity.TileArea, category)))
+                    continue;
+
+                nodes.Add(entity);
+                connectorTypeKeys.Add(category == "connector" ? this.GetConnectorTypeKey(locationIndex, tile) : null);
             }
         }
+
+        if (nodes.Count == 0)
+            yield break;
+
+        // step 2: map every tile to the node(s) that cover it. A tile can map to more than one node
+        // now (e.g. a connector and a machine sharing the same tile).
+        Dictionary<Vector2, List<int>> tileToNodeIndices = new();
+        for (int i = 0; i < nodes.Count; i++)
+        {
+            foreach (Vector2 tile in nodes[i].TileArea.GetTiles())
+            {
+                if (!tileToNodeIndices.TryGetValue(tile, out List<int>? indices))
+                    tileToNodeIndices[tile] = indices = new List<int>();
+                indices.Add(i);
+            }
+        }
+
+        bool IsConnector(IAutomatable entity) => entity is not IMachine && entity is not IContainer;
+
+        // MOD: added. Get every other node that "touches" node i — either by being on an
+        // orthogonally-adjacent tile, or by sharing the exact same tile (e.g. a machine sitting
+        // directly on top of a path).
+        IEnumerable<int> GetTouchingNodeIndices(int i)
+        {
+            foreach (Vector2 tile in nodes[i].TileArea.GetTiles())
+            {
+                if (tileToNodeIndices.TryGetValue(tile, out List<int>? sameTile))
+                {
+                    foreach (int j in sameTile)
+                    {
+                        if (j != i)
+                            yield return j;
+                    }
+                }
+            }
+
+            foreach (Vector2 tile in this.GetOrthogonalSurroundingTiles(nodes[i].TileArea))
+            {
+                if (tileToNodeIndices.TryGetValue(tile, out List<int>? neighbors))
+                {
+                    foreach (int j in neighbors)
+                        yield return j;
+                }
+            }
+        }
+
+        // step 3: union-find setup.
+        int[] parent = new int[nodes.Count];
+        for (int i = 0; i < parent.Length; i++)
+            parent[i] = i;
+
+        int Find(int i)
+        {
+            while (parent[i] != i)
+            {
+                parent[i] = parent[parent[i]];
+                i = parent[i];
+            }
+            return i;
+        }
+
+        void Union(int a, int b)
+        {
+            int rootA = Find(a);
+            int rootB = Find(b);
+            if (rootA != rootB)
+                parent[rootA] = rootB;
+        }
+
+        // step 4: union connectors with each other — ONLY connectors participate here. Machines and
+        // containers never merge networks together (see method summary); they're attached to
+        // whichever network(s) touch them in steps 5-6 instead. Two connectors only union if they're
+        // the same connector type (e.g. two Wood Floor tiles) — different path materials stay
+        // separate networks even when the tiles are physically touching.
+        for (int i = 0; i < nodes.Count; i++)
+        {
+            if (!IsConnector(nodes[i]))
+                continue;
+
+            foreach (int j in GetTouchingNodeIndices(i))
+            {
+                if (!IsConnector(nodes[j]))
+                    continue;
+
+                if (connectorTypeKeys[i] != connectorTypeKeys[j])
+                    continue;
+
+                Union(i, j);
+            }
+        }
+
+        // step 5: build one MachineGroupBuilder per resulting connector network root.
+        Dictionary<int, MachineGroupBuilder> buildersByRoot = new();
+        MachineGroupBuilder GetOrCreateBuilder(int root)
+        {
+            if (!buildersByRoot.TryGetValue(root, out MachineGroupBuilder? builder))
+                buildersByRoot[root] = builder = new MachineGroupBuilder(this.GetLocationKey(location), this.SortMachines, this.BuildStorage, this.Monitor);
+            return builder;
+        }
+
+        for (int i = 0; i < nodes.Count; i++)
+        {
+            if (IsConnector(nodes[i]))
+                GetOrCreateBuilder(Find(i)).Add(nodes[i].TileArea);
+        }
+
+        // step 6: attach each machine or container to every distinct connector network it touches,
+        // without merging those networks together. A machine/container touching no connector at all
+        // becomes its own solo (non-automated) group, same as before.
+        //
+        // MOD: note this means a single machine (or chest) CAN now belong to more than one group at
+        // once. In practice, if two of its groups both try to use it in the same game tick, only one
+        // will actually get to (the other just finds it already busy/empty that tick, and tries
+        // again next tick) — same trade-off as a shared chest, just applied to machines too.
+        List<MachineGroupBuilder> soloBuilders = new();
+        for (int i = 0; i < nodes.Count; i++)
+        {
+            if (IsConnector(nodes[i]))
+                continue;
+
+            bool isEnabledMachine = nodes[i] is IMachine machine1 && this.GetMachineOverride(machine1.MachineTypeID)?.Enabled != false;
+            bool isEnabledContainer =
+                nodes[i] is IContainer container1
+                && (container1.StorageAllowed() || container1.TakingItemsAllowed())
+                && (this.GetChestOverride(container1.TypeId)?.Enabled ?? this.GetChestsEnabledByDefault());
+
+            if (!isEnabledMachine && !isEnabledContainer)
+                continue;
+
+            HashSet<int> touchedRoots = new();
+            foreach (int j in GetTouchingNodeIndices(i))
+            {
+                if (IsConnector(nodes[j]))
+                    touchedRoots.Add(Find(j));
+            }
+
+            if (touchedRoots.Count == 0)
+            {
+                MachineGroupBuilder solo = new(this.GetLocationKey(location), this.SortMachines, this.BuildStorage, this.Monitor);
+                this.AddToBuilder(solo, nodes[i]);
+                soloBuilders.Add(solo);
+            }
+            else
+            {
+                foreach (int root in touchedRoots)
+                    this.AddToBuilder(GetOrCreateBuilder(root), nodes[i]);
+            }
+        }
+
+        foreach (MachineGroupBuilder builder in buildersByRoot.Values)
+        {
+            if (builder.HasTiles())
+                yield return builder.Build();
+        }
+
+        foreach (MachineGroupBuilder solo in soloBuilders)
+        {
+            if (solo.HasTiles())
+                yield return solo.Build();
+        }
     }
+
+    /// <summary>MOD: added. Add a machine or container to a group builder, applying the same enabled/override checks used elsewhere.</summary>
+    /// <param name="builder">The builder to add to.</param>
+    /// <param name="entity">The machine or container to add.</param>
+    private void AddToBuilder(MachineGroupBuilder builder, IAutomatable entity)
+    {
+        switch (entity)
+        {
+            case IMachine machine:
+                if (this.GetMachineOverride(machine.MachineTypeID)?.Enabled != false)
+                    builder.Add(machine);
+                break;
+
+            case IContainer container:
+                if (container.StorageAllowed() || container.TakingItemsAllowed())
+                {
+                    bool enabled = this.GetChestOverride(container.TypeId)?.Enabled ?? this.GetChestsEnabledByDefault();
+                    if (enabled)
+                        builder.Add(container);
+                }
+                break;
+        }
+    }
+
 
     /// <summary>Get a machine, container, or connector from the given entity, if any.</summary>
     /// <param name="location">The location to check.</param>
@@ -132,88 +356,68 @@ internal class MachineGroupFactory
     /*********
     ** Private methods
     *********/
-    /// <summary>Extend the given machine group to include all machines and containers connected to the given tile, if any.</summary>
-    /// <param name="machineGroup">The machine group to extend.</param>
-    /// <param name="location">The location to search.</param>
-    /// <param name="origin">The first tile to check.</param>
-    /// <param name="locationIndex">An indexed view of the location.</param>
-    /// <param name="visited">A lookup of visited tiles.</param>
-    private void FloodFillGroup(MachineGroupBuilder machineGroup, GameLocation location, in Vector2 origin, LocationFloodFillIndex locationIndex, ISet<Vector2> visited)
+    /// <summary>
+    /// MOD: added. Get the tiles directly orthogonally adjacent to a tile area (up/down/left/right
+    /// edges only) — unlike the shared <c>Rectangle.GetSurroundingTiles()</c> helper, this
+    /// deliberately excludes the four diagonal corner tiles, so a connector (or anything else)
+    /// touching only a corner doesn't count as "connected."
+    /// </summary>
+    /// <param name="area">The tile area to check.</param>
+    private IEnumerable<Vector2> GetOrthogonalSurroundingTiles(Rectangle area)
     {
-        // skip if already visited
-        if (visited.Contains(origin))
-            return;
-
-        // flood-fill connected machines & containers
-        Queue<Vector2> queue = new Queue<Vector2>();
-        queue.Enqueue(origin);
-        while (queue.Any())
+        // top and bottom edges (excludes corners)
+        for (int x = area.X; x < area.X + area.Width; x++)
         {
-            // get tile
-            Vector2 tile = queue.Dequeue();
-            if (!visited.Add(tile))
-                continue;
+            yield return new Vector2(x, area.Y - 1);
+            yield return new Vector2(x, area.Y + area.Height);
+        }
 
-            // add machines, containers, or connectors which covers this tile
-            if (this.TryAddEntities(machineGroup, location, locationIndex, tile))
-            {
-                foreach (Rectangle tileArea in machineGroup.NewTileAreas)
-                {
-                    // mark visited
-                    foreach (Vector2 cur in tileArea.GetTiles())
-                        visited.Add(cur);
-
-                    // connect entities on surrounding tiles
-                    foreach (Vector2 next in tileArea.GetSurroundingTiles())
-                    {
-                        if (!visited.Contains(next))
-                            queue.Enqueue(next);
-                    }
-                }
-                machineGroup.NewTileAreas.Clear();
-            }
+        // left and right edges (excludes corners)
+        for (int y = area.Y; y < area.Y + area.Height; y++)
+        {
+            yield return new Vector2(area.X - 1, y);
+            yield return new Vector2(area.X + area.Width, y);
         }
     }
 
-    /// <summary>Add any machines, containers, or connectors on the given tile to the machine group.</summary>
-    /// <param name="group">The machine group to extend.</param>
-    /// <param name="location">The location to search.</param>
+    /// <summary>
+    /// MOD: added. Get an identifying key for the specific type of connector on a tile — e.g.
+    /// distinguishing a Wood Floor path from a Stone Floor path — so different connector materials
+    /// can be treated as separate networks even when they're physically touching. Returns
+    /// <c>null</c> if nothing recognizable is found on the tile.
+    /// </summary>
     /// <param name="locationIndex">An indexed view of the location.</param>
-    /// <param name="tile">The tile to search.</param>
-    private bool TryAddEntities(MachineGroupBuilder group, GameLocation location, LocationFloodFillIndex locationIndex, in Vector2 tile)
+    /// <param name="tile">The tile to check.</param>
+    private string? GetConnectorTypeKey(LocationFloodFillIndex locationIndex, Vector2 tile)
     {
-        bool anyAdded = false;
+        object[] targets = locationIndex.GetEntities(tile).ToArray();
 
-        foreach (IAutomatable? entity in this.GetEntities(location, locationIndex, tile))
+        // MOD: fixed — check for Flooring FIRST across all targets on the tile, regardless of
+        // enumeration order. A connector's type should always be based on the FLOOR/path type,
+        // even when a machine or chest also occupies the same tile. Previously this returned on
+        // whichever target it matched first, which could grab the machine's item ID instead of
+        // the floor type if the machine happened to be listed before the flooring for that tile —
+        // silently making that one tile register as a "different" connector type than its
+        // neighbors, and breaking the same-type-matching union check for it.
+        foreach (object target in targets)
         {
-            switch (entity)
+            if (target is Flooring floor)
+                return $"floor:{floor.whichFloor.Value}";
+        }
+
+        foreach (object target in targets)
+        {
+            switch (target)
             {
-                case IMachine machine:
-                    if (this.GetMachineOverride(machine.MachineTypeID)?.Enabled != false)
-                        group.Add(machine);
-                    anyAdded = true;
-                    break;
+                case SObject obj:
+                    return $"object:{obj.QualifiedItemId}";
 
-                case IContainer container:
-                    if (container.StorageAllowed() || container.TakingItemsAllowed())
-                    {
-                        bool enabled = this.GetChestOverride(container.TypeId)?.Enabled ?? this.GetChestsEnabledByDefault();
-                        if (enabled)
-                        {
-                            group.Add(container);
-                            anyAdded = true;
-                        }
-                    }
-                    break;
-
-                default:
-                    group.Add(entity.TileArea); // connector
-                    anyAdded = true;
-                    break;
+                case Building building:
+                    return $"building:{building.buildingType.Value}";
             }
         }
 
-        return anyAdded;
+        return null;
     }
 
     /// <summary>Get the machines, containers, or connectors on the given tile, if any.</summary>
