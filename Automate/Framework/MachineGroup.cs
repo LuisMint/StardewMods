@@ -39,6 +39,9 @@ internal class MachineGroup : IMachineGroup
     /// <summary>The tiles covered by this machine group.</summary>
     private readonly HashSet<Vector2> Tiles;
 
+    /// <summary>MOD: added. The connector role for each connector tile covered by this group.</summary>
+    private readonly Dictionary<Vector2, ConnectorRole> ConnectorRoles;
+
     /****
     ** Pooled instances
     ** (These just minimize object allocations, and aren't used to store state between ticks.)
@@ -83,13 +86,15 @@ internal class MachineGroup : IMachineGroup
     /// <param name="tiles">The tiles comprising the group.</param>
     /// <param name="buildStorage">Build a storage manager for the given containers.</param>
     /// <param name="monitor">Encapsulates monitoring and logging.</param>
-    public MachineGroup(string? locationKey, IEnumerable<IMachine> machines, IEnumerable<IContainer> containers, IEnumerable<Vector2> tiles, Func<IContainer[], StorageManager> buildStorage, IMonitor monitor)
+    /// <param name="connectorRoles">MOD: added. The connector role for each connector tile covered by this group, if any.</param>
+    public MachineGroup(string? locationKey, IEnumerable<IMachine> machines, IEnumerable<IContainer> containers, IEnumerable<Vector2> tiles, Func<IContainer[], StorageManager> buildStorage, IMonitor monitor, IReadOnlyDictionary<Vector2, ConnectorRole>? connectorRoles = null)
     {
         this.LocationKey = locationKey;
         this.Machines = machines.ToArray();
         this.Containers = containers.ToArray();
         this.Tiles = [.. tiles];
         this.Monitor = monitor;
+        this.ConnectorRoles = connectorRoles != null ? new Dictionary<Vector2, ConnectorRole>(connectorRoles) : []; // MOD: added
 
         this.IsJunimoGroup = this.Containers.Any(p => p.IsJunimoChest);
         this.StorageManager = buildStorage(this.GetUniqueContainers(this.Containers));
@@ -101,6 +106,15 @@ internal class MachineGroup : IMachineGroup
         return this.LocationKey == locationKey
             ? this.Tiles
             : ImmutableHashSet<Vector2>.Empty;
+    }
+
+    /// <inheritdoc />
+    /// MOD: added.
+    public virtual IReadOnlyDictionary<Vector2, ConnectorRole> GetConnectorRoles(string locationKey)
+    {
+        return this.LocationKey == locationKey
+            ? this.ConnectorRoles
+            : ImmutableDictionary<Vector2, ConnectorRole>.Empty;
     }
 
     /// <inheritdoc />

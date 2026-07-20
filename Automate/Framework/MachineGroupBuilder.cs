@@ -28,19 +28,20 @@ internal class MachineGroupBuilder
     /// <summary>The tiles comprising the group.</summary>
     private readonly HashSet<Vector2> Tiles = [];
 
+    /// <summary>MOD: added. The connector role for each connector tile added to the group.</summary>
+    private readonly Dictionary<Vector2, ConnectorRole> ConnectorRoles = [];
+
     /// <summary>Sort machines by priority.</summary>
     private readonly Func<IEnumerable<IMachine>, IEnumerable<IMachine>> SortMachines;
 
     /// <summary>Build a storage manager for the given containers.</summary>
     private readonly Func<IContainer[], StorageManager> BuildStorage;
 
-
     /*********
     ** Accessors
     *********/
     /// <summary>The tile areas added to the machine group since the queue was last cleared.</summary>
     internal IList<Rectangle> NewTileAreas { get; } = new List<Rectangle>();
-
 
     /*********
     ** Public methods
@@ -78,8 +79,20 @@ internal class MachineGroupBuilder
     /// <param name="tileArea">The tile area to add.</param>
     public void Add(Rectangle tileArea)
     {
+        this.Add(tileArea, role: null);
+    }
+
+    /// <summary>MOD: added. Add connector tiles to the group with an associated connector role.</summary>
+    /// <param name="tileArea">The tile area to add.</param>
+    /// <param name="role">The connector role for this tile area, or <c>null</c> if not applicable (e.g. when called internally for a machine or container's own tile area, which has no role of its own).</param>
+    public void Add(Rectangle tileArea, ConnectorRole? role)
+    {
         foreach (Vector2 tile in tileArea.GetTiles())
+        {
             this.Tiles.Add(tile);
+            if (role.HasValue)
+                this.ConnectorRoles[tile] = role.Value;
+        }
         this.NewTileAreas.Add(tileArea);
     }
 
@@ -93,7 +106,7 @@ internal class MachineGroupBuilder
     public IMachineGroup Build()
     {
         var machines = this.SortMachines(this.Machines.Select(p => new MachineWrapper(p)));
-        return new MachineGroup(this.LocationKey, machines, this.Containers, this.Tiles, this.BuildStorage, this.Monitor);
+        return new MachineGroup(this.LocationKey, machines, this.Containers, this.Tiles, this.BuildStorage, this.Monitor, this.ConnectorRoles); // MOD: added connectorRoles arg
     }
 
     /// <summary>Clear the saved data.</summary>
@@ -102,5 +115,6 @@ internal class MachineGroupBuilder
         this.Machines.Clear();
         this.Containers.Clear();
         this.Tiles.Clear();
+        this.ConnectorRoles.Clear(); // MOD: added
     }
 }

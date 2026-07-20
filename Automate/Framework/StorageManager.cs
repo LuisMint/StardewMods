@@ -43,14 +43,24 @@ internal class StorageManager : IStorage
     {
         ICollection<IContainer> containerCollection = containers as ICollection<IContainer> ?? containers.ToArray();
 
+        // MOD: added local helpers — a container's own settings (StorageAllowed/TakingItemsAllowed)
+        // are always checked first; a per-connection role restriction (if the container was wrapped
+        // via RoleRestrictedContainer) can only ADD a further restriction on top, never override a
+        // restriction the player explicitly set on the chest itself.
+        static bool CanStoreThroughThisConnection(IContainer container) =>
+            container is not IConnectionRoleRestriction restriction || restriction.AllowStorageThroughThisConnection;
+
+        static bool CanTakeThroughThisConnection(IContainer container) =>
+            container is not IConnectionRoleRestriction restriction || restriction.AllowTakingThroughThisConnection;
+
         this.InputContainers = containerCollection
-            .Where(p => p.StorageAllowed())
+            .Where(p => p.StorageAllowed() && CanStoreThroughThisConnection(p))
             .OrderByDescending(p => p.StoragePreferred())
             .ThenBy(p => p.IsJunimoChest) // push items into Junimo chests last
             .ToArray();
 
         this.OutputContainers = containerCollection
-            .Where(p => p.TakingItemsAllowed())
+            .Where(p => p.TakingItemsAllowed() && CanTakeThroughThisConnection(p))
             .OrderByDescending(p => p.TakingItemsPreferred())
             .ThenByDescending(p => p.IsJunimoChest) // take items from Junimo chests first
             .ToArray();

@@ -132,6 +132,7 @@ internal class MachineGroupFactory
         HashSet<(Rectangle Area, string Category)> seenKeys = new();
         List<IAutomatable> nodes = new();
         List<string?> connectorTypeKeys = new(); // parallel to `nodes`; only meaningful for connector nodes
+        List<ConnectorRole> connectorRoles = new(); // MOD: added. parallel to `nodes`; only meaningful for connector nodes
 
         foreach (Vector2 tile in location.GetTiles())
         {
@@ -143,6 +144,7 @@ internal class MachineGroupFactory
 
                 nodes.Add(entity);
                 connectorTypeKeys.Add(category == "connector" ? this.GetConnectorTypeKey(locationIndex, tile) : null);
+                connectorRoles.Add(category == "connector" && entity is Connector connector ? connector.Role : ConnectorRole.Both); // MOD: added
             }
         }
 
@@ -248,7 +250,7 @@ internal class MachineGroupFactory
         for (int i = 0; i < nodes.Count; i++)
         {
             if (IsConnector(nodes[i]))
-                GetOrCreateBuilder(Find(i)).Add(nodes[i].TileArea);
+                GetOrCreateBuilder(Find(i)).Add(nodes[i].TileArea, connectorRoles[i]); // MOD: pass role
         }
 
         // step 6: attach each machine or container to every distinct connector network it touches,
@@ -275,22 +277,27 @@ internal class MachineGroupFactory
                 continue;
 
             HashSet<int> touchedRoots = new();
+            Dictionary<int, ConnectorRole> roleByRoot = new(); // MOD: added
             foreach (int j in GetTouchingNodeIndices(i))
             {
                 if (IsConnector(nodes[j]))
-                    touchedRoots.Add(Find(j));
+                {
+                    int root = Find(j);
+                    touchedRoots.Add(root);
+                    roleByRoot.TryAdd(root, connectorRoles[j]); // MOD: added — all connectors merged into one root always share the same role, since role (like type) is a pure function of connector material
+                }
             }
 
             if (touchedRoots.Count == 0)
             {
                 MachineGroupBuilder solo = new(this.GetLocationKey(location), this.SortMachines, this.BuildStorage, this.Monitor);
-                this.AddToBuilder(solo, nodes[i]);
+                this.AddToBuilder(solo, nodes[i], ConnectorRole.Both);
                 soloBuilders.Add(solo);
             }
             else
             {
                 foreach (int root in touchedRoots)
-                    this.AddToBuilder(GetOrCreateBuilder(root), nodes[i]);
+                    this.AddToBuilder(GetOrCreateBuilder(root), nodes[i], roleByRoot.GetValueOrDefault(root, ConnectorRole.Both)); // MOD: added role argument
             }
         }
 
@@ -307,10 +314,11 @@ internal class MachineGroupFactory
         }
     }
 
-    /// <summary>MOD: added. Add a machine or container to a group builder, applying the same enabled/override checks used elsewhere.</summary>
+    /// <summary>MOD: added. Add a machine or container to a group builder, applying the same enabled/override checks used elsewhere. If the connector role isn't <see cref="ConnectorRole.Both"/> and the entity is a container, it's wrapped with <see cref="RoleRestrictedContainer"/> so the restriction only applies to this specific group, not the chest's real settings.</summary>
     /// <param name="builder">The builder to add to.</param>
     /// <param name="entity">The machine or container to add.</param>
-    private void AddToBuilder(MachineGroupBuilder builder, IAutomatable entity)
+    /// <param name="role">The connector role this entity was reached through (only meaningful for containers).</param>
+    private void AddToBuilder(MachineGroupBuilder builder, IAutomatable entity, ConnectorRole role)
     {
         switch (entity)
         {
@@ -324,7 +332,12 @@ internal class MachineGroupFactory
                 {
                     bool enabled = this.GetChestOverride(container.TypeId)?.Enabled ?? this.GetChestsEnabledByDefault();
                     if (enabled)
-                        builder.Add(container);
+                    {
+                        IContainer toAdd = role == ConnectorRole.Both
+                            ? container
+                            : new RoleRestrictedContainer(container, role);
+                        builder.Add(toAdd);
+                    }
                 }
                 break;
         }

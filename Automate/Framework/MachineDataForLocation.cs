@@ -27,6 +27,9 @@ internal record MachineDataForLocation(string LocationKey, IReadOnlyCollection<I
     /// <summary>MOD: added. The backing field for <see cref="ActiveGroupsByTile"/>.</summary>
     private readonly Lazy<Dictionary<Vector2, IMachineGroup[]>> ActiveGroupsByTileImpl = new(() => GetAllGroupsByTile(LocationKey, ActiveMachineGroups));
 
+    /// <summary>MOD: added. The backing field for <see cref="ConnectorRolesByTile"/>.</summary>
+    private readonly Lazy<Dictionary<Vector2, ConnectorRole>> ConnectorRolesByTileImpl = new(() => GetConnectorRoleLookup(LocationKey, ActiveMachineGroups));
+
 
     /*********
     ** Accessors
@@ -47,6 +50,14 @@ internal record MachineDataForLocation(string LocationKey, IReadOnlyCollection<I
     /// without merging them into one.
     /// </summary>
     public IReadOnlyDictionary<Vector2, IMachineGroup[]> ActiveGroupsByTile => this.ActiveGroupsByTileImpl.Value;
+
+    /// <summary>
+    /// MOD: added. The connector role (Both/ChestInputOnly/ChestOutputOnly) for each active connector
+    /// tile, keyed by tile position. Only connector tiles appear here — machine and chest tiles don't
+    /// have a role of their own. Connector tiles only ever belong to one group, so there's no
+    /// multi-group ambiguity here the way there is for <see cref="ActiveGroupsByTile"/>.
+    /// </summary>
+    public IReadOnlyDictionary<Vector2, ConnectorRole> ConnectorRolesByTile => this.ConnectorRolesByTileImpl.Value;
 
 
     /*********
@@ -156,5 +167,21 @@ internal record MachineDataForLocation(string LocationKey, IReadOnlyCollection<I
                 select tileGroup
             )
             .ToDictionary(p => p.Key, p => p.Distinct().ToArray());
+    }
+
+    /// <summary>MOD: added. Get a lookup of connector roles by the tile positions they cover, across all the given machine groups.</summary>
+    /// <param name="locationKey">The location key for which to get tiles.</param>
+    /// <param name="machineGroups">The machine groups to index.</param>
+    private static Dictionary<Vector2, ConnectorRole> GetConnectorRoleLookup(string locationKey, IEnumerable<IMachineGroup> machineGroups)
+    {
+        Dictionary<Vector2, ConnectorRole> result = [];
+
+        foreach (IMachineGroup machineGroup in machineGroups)
+        {
+            foreach ((Vector2 tile, ConnectorRole role) in machineGroup.GetConnectorRoles(locationKey))
+                result[tile] = role;
+        }
+
+        return result;
     }
 };

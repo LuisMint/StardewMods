@@ -99,8 +99,10 @@ internal class AutomationFactory : IAutomationFactory
             return new DataBasedObjectMachine(obj, location, tile, () => this.Config().MinMinutesForFairyDust);
 
         // connector
-        if (this.IsConnector(obj))
-            return new Connector(location, tile);
+        // MOD: changed from a bool IsConnector(...) check to a role-aware GetConnectorRole(...) lookup.
+        ConnectorRole? role = this.GetConnectorRole(obj);
+        if (role != null)
+            return new Connector(location, tile, role.Value);
 
         return null;
     }
@@ -126,8 +128,10 @@ internal class AutomationFactory : IAutomationFactory
         }
 
         // connector
-        if (this.IsConnector(feature))
-            return new Connector(location, tile);
+        // MOD: changed from a bool IsConnector(...) check to a role-aware GetConnectorRole(...) lookup.
+        ConnectorRole? role = this.GetConnectorRole(feature);
+        if (role != null)
+            return new Connector(location, tile, role.Value);
 
         return null;
     }
@@ -217,32 +221,57 @@ internal class AutomationFactory : IAutomationFactory
     /*********
     ** Private methods
     *********/
-    /// <summary>Get whether a given in-game entity should be treated as a connector.</summary>
+    /// <summary>
+    /// MOD: added, replaces the old bool <c>IsConnector(object)</c> method. Get the connector role
+    /// for a given in-game entity, or <c>null</c> if it's not a connector at all. Checks
+    /// <see cref="ModConfig.ChestInputConnectors"/> and <see cref="ModConfig.ChestOutputConnectors"/>
+    /// first (more specific), falling back to the original <see cref="ModConfig.Connectors"/> list
+    /// (role <see cref="ConnectorRole.Both"/>) for backward compatibility with existing configs.
+    /// </summary>
     /// <param name="entity">The in-game entity.</param>
-    private bool IsConnector(object entity)
+    private ConnectorRole? GetConnectorRole(object entity)
     {
         ModConfig config = this.Config();
+
+        string? qualifiedItemId;
+        string? internalName;
 
         switch (entity)
         {
             case Item item:
-                return
-                    config.Connectors.Contains(item.QualifiedItemId)
-                    || config.Connectors.Contains(item.Name);
+                qualifiedItemId = item.QualifiedItemId;
+                internalName = item.Name;
+                break;
 
             case Flooring floor:
-                string? itemId = floor.GetData()?.ItemId;
-                ParsedItemData? itemData = ItemRegistry.GetData(itemId);
+                {
+                    string? itemId = floor.GetData()?.ItemId;
+                    ParsedItemData? itemData = ItemRegistry.GetData(itemId);
+                    if (itemData == null)
+                        return null;
 
-                return
-                    itemData != null
-                    && (
-                        config.Connectors.Contains(itemData.QualifiedItemId)
-                        || config.Connectors.Contains(itemData.InternalName)
-                    );
+                    qualifiedItemId = itemData.QualifiedItemId;
+                    internalName = itemData.InternalName;
+                }
+                break;
 
             default:
-                return false;
+                return null;
         }
+
+        bool Matches(System.Collections.Generic.HashSet<string> set) =>
+            (qualifiedItemId != null && set.Contains(qualifiedItemId))
+            || (internalName != null && set.Contains(internalName));
+
+        if (Matches(config.ChestInputConnectors))
+            return ConnectorRole.ChestInputOnly;
+
+        if (Matches(config.ChestOutputConnectors))
+            return ConnectorRole.ChestOutputOnly;
+
+        if (Matches(config.Connectors))
+            return ConnectorRole.Both;
+
+        return null;
     }
 }

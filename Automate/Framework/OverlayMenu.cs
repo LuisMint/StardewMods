@@ -16,8 +16,8 @@ internal class OverlayMenu : BaseOverlay
     /*********
     ** Fields
     *********/
-    /// <summary>The padding to apply to tile backgrounds to make the grid visible.</summary>
-    private readonly int TileGap = 1;
+    /// <summary>MOD: changed from TileGap (which shrank tiles to leave a gap) to TileOverlap (which grows tiles slightly beyond their bounds). Adjacent tiles' fills now overlap a little at the shared edge; the overlap darkens due to stacked opacity, producing a subtle grid-line effect instead of a plain empty gap.</summary>
+    private const int TileOverlap = 1;
 
     /// <summary>The unique key for the current location.</summary>
     private readonly string LocationKey;
@@ -28,8 +28,29 @@ internal class OverlayMenu : BaseOverlay
     /// <summary>The machine group for machines connected to Junimo chests.</summary>
     private readonly JunimoMachineGroup JunimoGroup;
 
-    /// <summary>MOD: added. The color used to highlight a tile that belongs to more than one active machine group at once (e.g. a chest or machine shared between two separate path networks).</summary>
-    private static readonly Color MultiGroupColor = Color.Blue;
+    /// <summary>MOD: added. The color used to highlight a tile (machine or chest) that belongs to more than one active machine group at once (e.g. a chest or machine shared between two separate path networks).</summary>
+    private static readonly Color MultiGroupColor = Color.Purple;
+
+    /// <summary>MOD: added. The color used for connector tiles whose network is input-only (chests can only be pulled from, never stored into) — a warm orange leaning toward red.</summary>
+    private static readonly Color InputOnlyConnectorColor = new(235, 80, 20);
+
+    /// <summary>MOD: added. The color used for connector tiles whose network is output-only (chests can only be stored into, never pulled from).</summary>
+    private static readonly Color OutputOnlyConnectorColor = Color.Blue;
+
+    /// <summary>MOD: added. The color used for disabled tiles — a darker, less vibrant red than the plain <see cref="Color.Red"/> used elsewhere.</summary>
+    private static readonly Color DisabledColor = new(120, 30, 30);
+
+    /// <summary>MOD: added. The background fill opacity for normal (single-role) tile highlights.</summary>
+    private const float NormalFillOpacity = 0.3f;
+
+    /// <summary>MOD: added. The background fill opacity for connector-role tile highlights.</summary>
+    private const float ConnectorRoleFillOpacity = 0.35f;
+
+    /// <summary>MOD: added. The fill opacity for the solid full-tile multi-group highlight.</summary>
+    private const float MultiGroupFillOpacity = 0.55f;
+
+    /// <summary>MOD: added. The thickness in pixels of the group edge border lines.</summary>
+    private const int BorderSize = 5;
 
 
     /*********
@@ -61,8 +82,17 @@ internal class OverlayMenu : BaseOverlay
         if (!Context.IsPlayerFree)
             return;
 
-        // draw each tile
         IReadOnlySet<Vector2> junimoChestTiles = this.JunimoGroup.GetTiles(this.LocationKey);
+
+        // MOD: added — collect border info per tile during the background pass, so ALL borders can
+        // be drawn in a separate pass afterward. Previously each tile's border was drawn immediately
+        // after its own background, in the same scan; a neighboring tile's plain background (drawn
+        // later in the same left-to-right, top-to-bottom scan) could then visually paint over part
+        // of an already-drawn border at their shared edge. Drawing every background first, then
+        // every border on top, guarantees borders are never covered.
+        List<(Vector2 Tile, IMachineGroup Group, Color BorderColor)> borderQueue = new();
+
+        // pass 1: backgrounds
         foreach (Vector2 tile in TileHelper.GetVisibleTiles(expand: 1))
         {
             // get tile's screen coordinates
@@ -74,50 +104,78 @@ internal class OverlayMenu : BaseOverlay
             IMachineGroup? group = null;
             Color? color = null;
             bool isMultiGroup = false; // MOD: added
+            Color? connectorRoleColor = null; // MOD: added
             if (junimoChestTiles.Contains(tile))
             {
                 color = this.JunimoGroup.HasInternalAutomation
-                    ? Color.Green * 0.2f
-                    : Color.Red * 0.2f;
+                    ? Color.Green * OverlayMenu.NormalFillOpacity
+                    : OverlayMenu.DisabledColor * OverlayMenu.NormalFillOpacity;
                 group = this.JunimoGroup;
             }
             else if (this.MachineData is not null)
             {
                 if (this.MachineData.ActiveTiles.TryGetValue(tile, out group))
                 {
-                    color = Color.Green * 0.2f;
+                    color = Color.Green * OverlayMenu.NormalFillOpacity;
 
                     // MOD: added — check whether this tile is a member of more than one active
                     // machine group (e.g. a chest or machine shared between two separate path
-                    // networks). If so, flag it for the solid full-tile highlight drawn below,
-                    // instead of the normal grid-gapped green background.
+                    // networks). If so, flag it for the solid full-tile purple highlight drawn below.
                     if (this.MachineData.ActiveGroupsByTile.TryGetValue(tile, out IMachineGroup[]? allGroups) && allGroups.Length > 1)
                         isMultiGroup = true;
+
+                    // MOD: added — check whether this tile is a connector with a specific role
+                    // (input-only or output-only). "Both" role connectors just stay the default green.
+                    if (this.MachineData.ConnectorRolesByTile.TryGetValue(tile, out ConnectorRole role))
+                    {
+                        connectorRoleColor = role switch
+                        {
+                            ConnectorRole.ChestInputOnly => OverlayMenu.InputOnlyConnectorColor,
+                            ConnectorRole.ChestOutputOnly => OverlayMenu.OutputOnlyConnectorColor,
+                            _ => null // Both — stays default green
+                        };
+
+                        if (connectorRoleColor.HasValue)
+                            color = connectorRoleColor.Value * OverlayMenu.ConnectorRoleFillOpacity;
+                    }
                 }
                 else if (this.MachineData.DisabledTiles.TryGetValue(tile, out group) || this.MachineData.OutdatedTiles.ContainsKey(tile))
-                    color = Color.Red * 0.2f;
+                    color = OverlayMenu.DisabledColor * OverlayMenu.NormalFillOpacity;
             }
             color ??= Color.Black * 0.5f;
 
             // draw background
-            spriteBatch.DrawLine(screenX + this.TileGap, screenY + this.TileGap, new Vector2(tileSize - this.TileGap * 2, tileSize - this.TileGap * 2), color);
+            // MOD: drawn slightly LARGER than the tile itself (instead of shrunk with a gap), so
+            // adjacent tiles' fills overlap a little at the edges — see TileOverlap field comment.
+            spriteBatch.DrawLine(
+                screenX - OverlayMenu.TileOverlap,
+                screenY - OverlayMenu.TileOverlap,
+                new Vector2(tileSize + OverlayMenu.TileOverlap * 2, tileSize + OverlayMenu.TileOverlap * 2),
+                color
+            );
 
-            // MOD: added — draw a solid, full (no grid gap) blue square directly over a tile that
-            // belongs to more than one active group, so it's unmistakable regardless of whatever
-            // object is drawn on top of it.
+            // draw the solid full-tile multi-group highlight now (still part of the background pass)
             if (isMultiGroup)
-                spriteBatch.DrawLine(screenX, screenY, new Vector2(tileSize, tileSize), OverlayMenu.MultiGroupColor * 0.45f);
+                spriteBatch.DrawLine(screenX, screenY, new Vector2(tileSize, tileSize), OverlayMenu.MultiGroupColor * OverlayMenu.MultiGroupFillOpacity);
 
-            // draw group edge borders
+            // MOD: queue the border instead of drawing it immediately — see comment above borderQueue
             if (group != null)
             {
-                Color borderColor = isMultiGroup
-                    ? OverlayMenu.MultiGroupColor
-                    : (group.HasInternalAutomation ? Color.Green : Color.Red);
+                Color borderColor;
+                if (isMultiGroup)
+                    borderColor = OverlayMenu.MultiGroupColor;
+                else if (connectorRoleColor.HasValue)
+                    borderColor = connectorRoleColor.Value;
+                else
+                    borderColor = group.HasInternalAutomation ? Color.Green : OverlayMenu.DisabledColor;
 
-                this.DrawEdgeBorders(spriteBatch, group, tile, borderColor);
+                borderQueue.Add((tile, group, borderColor));
             }
         }
+
+        // pass 2: borders — drawn after every background (including all neighbors), so they always render on top
+        foreach ((Vector2 tile, IMachineGroup group, Color borderColor) in borderQueue)
+            this.DrawEdgeBorders(spriteBatch, group, tile, borderColor);
 
         // draw cursor
         this.DrawCursor();
@@ -134,7 +192,7 @@ internal class OverlayMenu : BaseOverlay
     /// <param name="color">The border color.</param>
     private void DrawEdgeBorders(SpriteBatch spriteBatch, IMachineGroup group, Vector2 tile, Color color)
     {
-        int borderSize = 3;
+        int borderSize = OverlayMenu.BorderSize;
         float screenX = tile.X * Game1.tileSize - Game1.viewport.X;
         float screenY = tile.Y * Game1.tileSize - Game1.viewport.Y;
         float tileSize = Game1.tileSize;

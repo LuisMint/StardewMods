@@ -107,6 +107,14 @@ internal class JunimoMachineGroup : MachineGroup
             : ImmutableHashSet<Vector2>.Empty;
     }
 
+    /// <inheritdoc />
+    /// MOD: added. Junimo chests aren't reached through paths, so there's no connector role concept
+    /// for this aggregate group — always empty.
+    public override IReadOnlyDictionary<Vector2, ConnectorRole> GetConnectorRoles(string locationKey)
+    {
+        return ImmutableDictionary<Vector2, ConnectorRole>.Empty;
+    }
+
     /// <summary>Get whether the tile area intersects this machine group.</summary>
     /// <param name="locationKey">The location key as formatted by <see cref="MachineGroupFactory.GetLocationKey"/>.</param>
     /// <param name="tileArea">The tile area to check.</param>

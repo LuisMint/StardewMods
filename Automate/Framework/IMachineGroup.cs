@@ -36,4 +36,8 @@ internal interface IMachineGroup
     /// <summary>Get the tiles covered by this machine group.</summary>
     /// <param name="locationKey">The location key for which to get tiles.</param>
     IReadOnlySet<Vector2> GetTiles(string locationKey);
+
+    /// <summary>MOD: added. Get the connector role (Both/ChestInputOnly/ChestOutputOnly) for each connector tile covered by this group, keyed by tile position. Only connector tiles appear here — machine and chest tiles don't have a role of their own.</summary>
+    /// <param name="locationKey">The location key for which to get tiles.</param>
+    IReadOnlyDictionary<Vector2, ConnectorRole> GetConnectorRoles(string locationKey);
 }
