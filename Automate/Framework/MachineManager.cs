@@ -53,6 +53,14 @@ internal class MachineManager
     /// <summary>MOD: added. Ticks elapsed since the last sign-change check.</summary>
     private int TicksSinceSignCheck;
 
+    /// <summary>
+    /// MOD: added. A cached lookup of the current <see cref="GameLocation"/> instance for each
+    /// location key that's been scanned, populated whenever a location is reloaded. Used by
+    /// <see cref="CheckForSignChanges"/> so it doesn't need to search every location in the save on
+    /// each periodic check — just an O(1) dictionary lookup for locations known to have signs.
+    /// </summary>
+    private readonly Dictionary<string, GameLocation> LocationsByKey = new(StringComparer.OrdinalIgnoreCase);
+
 
     /*********
     ** Accessors
@@ -169,6 +177,7 @@ internal class MachineManager
         this.ActiveMachineGroups = [];
         this.DisabledMachineGroups = [];
         this.JunimoMachineGroup.Clear();
+        this.LocationsByKey.Clear(); // MOD: added
     }
 
     /// <summary>Clear all registered machines and add all locations to the reload queue.</summary>
@@ -252,8 +261,7 @@ internal class MachineManager
 
             foreach (Vector2 tile in data.SignCandidateTiles)
             {
-                location ??= CommonHelper.GetLocations().FirstOrDefault(loc => this.Factory.GetLocationKey(loc) == data.LocationKey);
-                if (location == null)
+                if (location == null && !this.LocationsByKey.TryGetValue(data.LocationKey, out location))
                     break; // location no longer exists — nothing to check
 
                 string? currentItemId = this.Factory.GetCurrentSignItemId(location, tile);
@@ -297,6 +305,10 @@ internal class MachineManager
             foreach (string locationKey in locationKeys)
                 anyChanged |= this.MachineData.Remove(locationKey);
 
+            // MOD: added — drop stale cached location references for locations being reloaded/removed too.
+            foreach (string locationKey in locationKeys)
+                this.LocationsByKey.Remove(locationKey);
+
             // MOD: added — drop stale sign snapshot entries for locations being reloaded/removed;
             // they'll be reseeded fresh below for anything still active.
             foreach ((string LocationKey, Vector2 Tile) key in this.LastKnownSignItems.Keys.Where(k => locationKeys.Contains(k.LocationKey)).ToArray())
@@ -333,6 +345,7 @@ internal class MachineManager
             // add groups
             MachineDataForLocation locationData = new(locationKey, active, disabled);
             this.MachineData[locationKey] = locationData;
+            this.LocationsByKey[locationKey] = location; // MOD: added — keep the cache fresh for CheckForSignChanges
 
             // MOD: added — reseed the sign snapshot for this location's current sign candidate tiles
             // (not just ones with an item currently on them), so this fresh rescan isn't immediately

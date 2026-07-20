@@ -47,12 +47,6 @@ internal class MachineGroupBuilder
     private readonly Func<IContainer[], StorageManager> BuildStorage;
 
     /*********
-    ** Accessors
-    *********/
-    /// <summary>The tile areas added to the machine group since the queue was last cleared.</summary>
-    internal IList<Rectangle> NewTileAreas { get; } = new List<Rectangle>();
-
-    /*********
     ** Public methods
     *********/
     /// <summary>Create an instance.</summary>
@@ -109,7 +103,6 @@ internal class MachineGroupBuilder
             if (role.HasValue)
                 this.ConnectorRoles[tile] = role.Value;
         }
-        this.NewTileAreas.Add(tileArea);
     }
 
     /// <summary>MOD: added. Set an item filter derived from whitelist/blacklist signs touching this group. Items not matching the filter won't move through the group's storage in either direction. Must be called BEFORE any containers are added, since it's applied at add-time.</summary>
@@ -145,17 +138,5 @@ internal class MachineGroupBuilder
     {
         var machines = this.SortMachines(this.Machines.Select(p => new MachineWrapper(p)));
         return new MachineGroup(this.LocationKey, machines, this.Containers, this.Tiles, this.BuildStorage, this.Monitor, this.ConnectorRoles, this.ItemFilter, this.SignMarkers, this.SignCandidateTiles); // MOD: added connectorRoles + itemFilter + signMarkers + signCandidateTiles args
-    }
-
-    /// <summary>Clear the saved data.</summary>
-    public void Reset()
-    {
-        this.Machines.Clear();
-        this.Containers.Clear();
-        this.Tiles.Clear();
-        this.ConnectorRoles.Clear(); // MOD: added
-        this.ItemFilter = null; // MOD: added
-        this.SignMarkers.Clear(); // MOD: added
-        this.SignCandidateTiles.Clear(); // MOD: added
     }
 }
