@@ -122,6 +122,13 @@ internal class JunimoMachineGroup : MachineGroup
         return ImmutableDictionary<Vector2, bool>.Empty;
     }
 
+    /// <inheritdoc />
+    /// MOD: added. Same reasoning as GetSignMarkers — always empty for this aggregate group.
+    public override IReadOnlySet<Vector2> GetSignCandidateTiles(string locationKey)
+    {
+        return ImmutableHashSet<Vector2>.Empty;
+    }
+
     /// <summary>Get whether the tile area intersects this machine group.</summary>
     /// <param name="locationKey">The location key as formatted by <see cref="MachineGroupFactory.GetLocationKey"/>.</param>
     /// <param name="tileArea">The tile area to check.</param>

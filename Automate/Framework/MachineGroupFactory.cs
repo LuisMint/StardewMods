@@ -291,7 +291,10 @@ internal class MachineGroupFactory
         // step 5.5 (MOD: added): detect whitelist/blacklist signs touching each connector network,
         // and resolve one item filter per root. Unlike machines/chests, a sign must be placed
         // DIRECTLY ON TOP of a path tile to count — being merely adjacent isn't enough. An empty
-        // sign (nothing displayed on it) is fully ignored — no marker, no filter contribution.
+        // sign contributes no marker/filter, but its tile is still tracked as a "candidate" (see
+        // MarkSignCandidateTile) so periodic polling knows to watch it in case an item gets placed
+        // on it later — otherwise a sign that was empty during the last full scan would be invisible
+        // to change-detection entirely until another full scan happens to notice it.
         // Whitelist signs win over blacklist signs if both are accidentally present on one group;
         // multiple signs of the same kind are combined (any item matching ANY of them applies).
         {
@@ -301,10 +304,6 @@ internal class MachineGroupFactory
             {
                 (bool IsWhitelist, string? HeldItemQualifiedId)? signInfo = this.GetSignInfo(locationIndex, tile);
                 if (signInfo == null)
-                    continue;
-
-                // an empty sign is fully ignored — no marker, no filter contribution
-                if (signInfo.Value.HeldItemQualifiedId == null)
                     continue;
 
                 // MOD: restricted to ONLY the sign's own tile — a sign must be placed directly ON
@@ -321,6 +320,14 @@ internal class MachineGroupFactory
 
                 foreach (int root in touchedRootsForSign)
                 {
+                    // MOD: added — track this tile as a sign candidate regardless of held item, so
+                    // it's watched by periodic polling even while empty.
+                    GetOrCreateBuilder(root).MarkSignCandidateTile(tile);
+
+                    // an empty sign contributes no marker/filter beyond the candidate tracking above
+                    if (signInfo.Value.HeldItemQualifiedId == null)
+                        continue;
+
                     if (!signEntriesByRoot.TryGetValue(root, out List<(Vector2, bool, string)>? list))
                         signEntriesByRoot[root] = list = new List<(Vector2, bool, string)>();
                     list.Add((tile, signInfo.Value.IsWhitelist, signInfo.Value.HeldItemQualifiedId));
@@ -343,9 +350,6 @@ internal class MachineGroupFactory
                     filter = itemId => whitelistItems.Contains(itemId); // whitelist wins over blacklist
                 else if (blacklistItems.Count > 0)
                     filter = itemId => !blacklistItems.Contains(itemId);
-
-                // TEMP DIAGNOSTIC (MOD: added) — confirm the filter is actually being resolved and applied.
-                this.Monitor.Log($"[Automate sign debug] resolved filter for root {root}: whitelistItems=[{string.Join(",", whitelistItems)}], blacklistItems=[{string.Join(",", blacklistItems)}], filter applied={filter != null}", LogLevel.Info);
 
                 if (filter != null)
                     GetOrCreateBuilder(root).SetItemFilter(filter);
@@ -572,75 +576,61 @@ internal class MachineGroupFactory
             if (!isWhitelist && !isBlacklist)
                 continue;
 
-            // MOD: fixed — the item displayed on a sign is read via `displayItem`, not `heldObject`
-            // (confirmed via diagnostic field dump). `displayItem` is a PRIVATE field, found via a
-            // runtime-type-aware reflection cache.
+            // The item displayed on a sign is read via the private `displayItem` field (not
+            // `heldObject`, which is unrelated for signs). It's a NetRef<Item> whose `Value` property
+            // holds the actual displayed item, or null if the sign is empty.
             SObject? heldItem = null;
             System.Reflection.FieldInfo? displayItemField = MachineGroupFactory.GetSignDisplayItemField(signObj.GetType());
-            object? rawNetRef = displayItemField?.GetValue(signObj);
-
-            // TEMP DIAGNOSTIC (MOD: added) — broad one-shot dump of the raw NetRef-like object's
-            // actual type, properties, and fields, to find the correct way to read its contents
-            // without guessing member names one at a time. Remove once confirmed working.
-            if (rawNetRef != null)
-            {
-                Type rawType = rawNetRef.GetType();
-                this.Monitor.Log($"[Automate sign debug] tile {tile}: rawNetRef actual type={rawType.FullName}", LogLevel.Info);
-
-                foreach (System.Reflection.PropertyInfo prop in rawType.GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance))
-                {
-                    object? value;
-                    try
-                    {
-                        value = prop.GetValue(rawNetRef);
-                    }
-                    catch (Exception ex)
-                    {
-                        value = $"(threw: {ex.GetType().Name})";
-                    }
-
-                    // MOD: added — if the value is an item, print its actual ID/name instead of the
-                    // generic ToString() (which just prints the class name for Object instances).
-                    string displayValue = value is StardewValley.Item itemValue
-                        ? $"ITEM: QualifiedItemId={itemValue.QualifiedItemId}, Name={itemValue.Name}, DisplayName={itemValue.DisplayName}"
-                        : (value?.ToString() ?? "null");
-
-                    this.Monitor.Log($"    property '{prop.Name}' ({prop.PropertyType.Name}) = {displayValue}", LogLevel.Info);
-
-                    // opportunistically try this as the held item if it looks like the right type
-                    if (heldItem == null && value is SObject candidateItem)
-                        heldItem = candidateItem;
-                }
-
-                foreach (System.Reflection.FieldInfo field in rawType.GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance))
-                {
-                    object? value;
-                    try
-                    {
-                        value = field.GetValue(rawNetRef);
-                    }
-                    catch (Exception ex)
-                    {
-                        value = $"(threw: {ex.GetType().Name})";
-                    }
-
-                    string displayValue = value is StardewValley.Item itemValue2
-                        ? $"ITEM: QualifiedItemId={itemValue2.QualifiedItemId}, Name={itemValue2.Name}, DisplayName={itemValue2.DisplayName}"
-                        : (value?.ToString() ?? "null");
-
-                    this.Monitor.Log($"    field '{field.Name}' ({field.FieldType.Name}) = {displayValue}", LogLevel.Info);
-
-                    if (heldItem == null && value is SObject candidateItem)
-                        heldItem = candidateItem;
-                }
-            }
-            else
-            {
-                this.Monitor.Log($"[Automate sign debug] tile {tile}: field found={displayItemField != null}, rawNetRef is null", LogLevel.Info);
-            }
+            if (displayItemField?.GetValue(signObj) is NetRef<StardewValley.Item> displayItemRef)
+                heldItem = displayItemRef.Value as SObject;
 
             return (isWhitelist, heldItem?.QualifiedItemId);
         }
+
+        return null;
+    }
+
+    /// <summary>
+    /// MOD: added. Get the qualified item ID currently displayed on a configured whitelist/blacklist
+    /// sign at a specific tile, if any — a cheap, direct lookup (no full location scan) meant for
+    /// periodic polling to detect when a sign's content changes. Returns <c>null</c> if there's no
+    /// matching sign there, or if it's empty. This exists because changing what's displayed on a
+    /// sign doesn't trigger any of the normal "something changed in the world" events — the sign
+    /// object itself is never added or removed, just one of its internal fields — so without this,
+    /// there'd be no way to detect the change without an unrelated nearby world change forcing a
+    /// rescan.
+    /// </summary>
+    /// <param name="location">The location to check.</param>
+    /// <param name="tile">The tile to check.</param>
+    public string? GetCurrentSignItemId(GameLocation location, Vector2 tile)
+    {
+        HashSet<string> whitelistSigns = this.GetWhitelistSignNames();
+        HashSet<string> blacklistSigns = this.GetBlacklistSignNames();
+
+        if (whitelistSigns.Count == 0 && blacklistSigns.Count == 0)
+            return null;
+
+        // MOD: fixed — check both netObjects AND overlayObjects, matching the two sources
+        // LocationFloodFillIndex.Scan() checks (confirmed working, since full rescans reliably find
+        // signs). Checking only netObjects meant this could silently miss a sign living in
+        // overlayObjects instead, always reporting "no sign here" with no error.
+        SObject? signObj = null;
+        if (location.netObjects.TryGetValue(tile, out SObject? netObj) && netObj != null)
+            signObj = netObj;
+        else if (location.overlayObjects.TryGetValue(tile, out SObject? overlayObj) && overlayObj != null)
+            signObj = overlayObj;
+
+        if (signObj == null)
+            return null;
+
+        bool isWhitelist = whitelistSigns.Contains(signObj.QualifiedItemId) || whitelistSigns.Contains(signObj.Name);
+        bool isBlacklist = !isWhitelist && (blacklistSigns.Contains(signObj.QualifiedItemId) || blacklistSigns.Contains(signObj.Name));
+        if (!isWhitelist && !isBlacklist)
+            return null;
+
+        System.Reflection.FieldInfo? displayItemField = MachineGroupFactory.GetSignDisplayItemField(signObj.GetType());
+        if (displayItemField?.GetValue(signObj) is NetRef<StardewValley.Item> displayItemRef)
+            return (displayItemRef.Value as SObject)?.QualifiedItemId;
 
         return null;
     }
@@ -659,7 +649,11 @@ internal class MachineGroupFactory
                 case SObject obj:
                     {
                         IAutomatable? entity = this.GetEntityFor(location, tile, obj);
-                        if (entity != null)
+
+                        // MOD: added — SignPlaceholder exists purely so ModEntry's placement-change
+                        // tracking notices signs; it's not a real machine/container/connector, so
+                        // skip it here. Actual sign detection happens separately via GetSignInfo.
+                        if (entity != null && entity is not SignPlaceholder)
                             yield return entity;
 
                         if (obj is IndoorPot pot && pot.bush.Value != null)

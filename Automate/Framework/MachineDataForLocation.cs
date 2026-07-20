@@ -33,6 +33,9 @@ internal record MachineDataForLocation(string LocationKey, IReadOnlyCollection<I
     /// <summary>MOD: added. The backing field for <see cref="SignMarkersByTile"/>.</summary>
     private readonly Lazy<Dictionary<Vector2, bool>> SignMarkersByTileImpl = new(() => GetSignMarkerLookup(LocationKey, ActiveMachineGroups));
 
+    /// <summary>MOD: added. The backing field for <see cref="SignCandidateTiles"/>.</summary>
+    private readonly Lazy<HashSet<Vector2>> SignCandidateTilesImpl = new(() => GetSignCandidateTileLookup(LocationKey, ActiveMachineGroups));
+
 
     /*********
     ** Accessors
@@ -68,6 +71,13 @@ internal record MachineDataForLocation(string LocationKey, IReadOnlyCollection<I
     /// holds an item. Exists purely so the overlay can show whether sign detection is matching.
     /// </summary>
     public IReadOnlyDictionary<Vector2, bool> SignMarkersByTile => this.SignMarkersByTileImpl.Value;
+
+    /// <summary>
+    /// MOD: added. Every tile where a configured whitelist/blacklist sign object exists, regardless
+    /// of whether it currently holds an item. Broader than <see cref="SignMarkersByTile"/> — meant
+    /// for periodic polling to detect when a previously-empty sign gets an item placed on it.
+    /// </summary>
+    public IReadOnlySet<Vector2> SignCandidateTiles => this.SignCandidateTilesImpl.Value;
 
 
     /*********
@@ -206,6 +216,22 @@ internal record MachineDataForLocation(string LocationKey, IReadOnlyCollection<I
         {
             foreach ((Vector2 tile, bool isWhitelist) in machineGroup.GetSignMarkers(locationKey))
                 result[tile] = isWhitelist;
+        }
+
+        return result;
+    }
+
+    /// <summary>MOD: added. Get the set of sign candidate tiles across all the given machine groups.</summary>
+    /// <param name="locationKey">The location key for which to get tiles.</param>
+    /// <param name="machineGroups">The machine groups to index.</param>
+    private static HashSet<Vector2> GetSignCandidateTileLookup(string locationKey, IEnumerable<IMachineGroup> machineGroups)
+    {
+        HashSet<Vector2> result = [];
+
+        foreach (IMachineGroup machineGroup in machineGroups)
+        {
+            foreach (Vector2 tile in machineGroup.GetSignCandidateTiles(locationKey))
+                result.Add(tile);
         }
 
         return result;

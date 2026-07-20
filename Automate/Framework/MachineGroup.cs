@@ -48,6 +48,9 @@ internal class MachineGroup : IMachineGroup
     /// <summary>MOD: added. The debug sign markers for each tile where a configured sign was detected, regardless of whether it currently holds an item.</summary>
     private readonly Dictionary<Vector2, bool> SignMarkers;
 
+    /// <summary>MOD: added. Every tile where a configured whitelist/blacklist sign object exists, regardless of whether it currently holds an item — broader than <see cref="SignMarkers"/>, used so periodic polling can watch a sign even while it's empty.</summary>
+    private readonly HashSet<Vector2> SignCandidateTiles;
+
     /****
     ** Pooled instances
     ** (These just minimize object allocations, and aren't used to store state between ticks.)
@@ -95,7 +98,8 @@ internal class MachineGroup : IMachineGroup
     /// <param name="connectorRoles">MOD: added. The connector role for each connector tile covered by this group, if any.</param>
     /// <param name="itemFilter">MOD: added. An item filter derived from whitelist/blacklist signs touching this group, if any (operating on qualified item ID). Items not matching the filter won't move through the group's storage in either direction.</param>
     /// <param name="signMarkers">MOD: added. Debug markers for tiles where a configured sign was detected, regardless of whether it currently holds an item.</param>
-    public MachineGroup(string? locationKey, IEnumerable<IMachine> machines, IEnumerable<IContainer> containers, IEnumerable<Vector2> tiles, Func<IContainer[], StorageManager> buildStorage, IMonitor monitor, IReadOnlyDictionary<Vector2, ConnectorRole>? connectorRoles = null, Func<string, bool>? itemFilter = null, IReadOnlyDictionary<Vector2, bool>? signMarkers = null)
+    /// <param name="signCandidateTiles">MOD: added. Every tile where a configured whitelist/blacklist sign object exists, regardless of whether it currently holds an item.</param>
+    public MachineGroup(string? locationKey, IEnumerable<IMachine> machines, IEnumerable<IContainer> containers, IEnumerable<Vector2> tiles, Func<IContainer[], StorageManager> buildStorage, IMonitor monitor, IReadOnlyDictionary<Vector2, ConnectorRole>? connectorRoles = null, Func<string, bool>? itemFilter = null, IReadOnlyDictionary<Vector2, bool>? signMarkers = null, IReadOnlySet<Vector2>? signCandidateTiles = null)
     {
         this.LocationKey = locationKey;
         this.Machines = machines.ToArray();
@@ -104,6 +108,7 @@ internal class MachineGroup : IMachineGroup
         this.Monitor = monitor;
         this.ConnectorRoles = connectorRoles != null ? new Dictionary<Vector2, ConnectorRole>(connectorRoles) : []; // MOD: added
         this.SignMarkers = signMarkers != null ? new Dictionary<Vector2, bool>(signMarkers) : []; // MOD: added
+        this.SignCandidateTiles = signCandidateTiles != null ? new HashSet<Vector2>(signCandidateTiles) : []; // MOD: added
 
         this.IsJunimoGroup = this.Containers.Any(p => p.IsJunimoChest);
         this.StorageManager = buildStorage(this.GetUniqueContainers(this.Containers));
@@ -112,12 +117,8 @@ internal class MachineGroup : IMachineGroup
         // filter operates on qualified item ID; FilteredStorage itself works with ITrackedStack, so
         // adapt here.
         this.EffectiveStorage = itemFilter != null
-            ? new FilteredStorage(this.StorageManager, stack => itemFilter(stack.Sample.QualifiedItemId), this.Monitor)
+            ? new FilteredStorage(this.StorageManager, stack => itemFilter(stack.Sample.QualifiedItemId))
             : this.StorageManager;
-
-        // TEMP DIAGNOSTIC (MOD: added) — confirm whether this specific group actually got a filter.
-        if (itemFilter != null)
-            this.Monitor.Log($"[Automate sign debug] MachineGroup at {locationKey} built WITH an item filter ({this.Machines.Length} machines, {this.Containers.Length} containers)", LogLevel.Info);
     }
 
     /// <inheritdoc />
@@ -144,6 +145,15 @@ internal class MachineGroup : IMachineGroup
         return this.LocationKey == locationKey
             ? this.SignMarkers
             : ImmutableDictionary<Vector2, bool>.Empty;
+    }
+
+    /// <inheritdoc />
+    /// MOD: added.
+    public virtual IReadOnlySet<Vector2> GetSignCandidateTiles(string locationKey)
+    {
+        return this.LocationKey == locationKey
+            ? this.SignCandidateTiles
+            : ImmutableHashSet<Vector2>.Empty;
     }
 
     /// <inheritdoc />

@@ -37,6 +37,9 @@ internal class MachineGroupBuilder
     /// <summary>MOD: added. Debug markers for tiles where a configured sign was detected, regardless of whether it currently holds an item.</summary>
     private readonly Dictionary<Vector2, bool> SignMarkers = [];
 
+    /// <summary>MOD: added. Every tile where a configured whitelist/blacklist sign object exists, regardless of whether it currently holds an item — broader than <see cref="SignMarkers"/>, used so periodic polling can watch a sign even while it's empty.</summary>
+    private readonly HashSet<Vector2> SignCandidateTiles = [];
+
     /// <summary>Sort machines by priority.</summary>
     private readonly Func<IEnumerable<IMachine>, IEnumerable<IMachine>> SortMachines;
 
@@ -124,6 +127,13 @@ internal class MachineGroupBuilder
         this.SignMarkers[tile] = isWhitelist;
     }
 
+    /// <summary>MOD: added. Mark a tile as having a configured whitelist/blacklist sign object, regardless of whether it currently holds an item — used so periodic polling knows to watch this tile even while the sign is empty.</summary>
+    /// <param name="tile">The tile where the sign was found.</param>
+    public void MarkSignCandidateTile(Vector2 tile)
+    {
+        this.SignCandidateTiles.Add(tile);
+    }
+
     /// <summary>Get whether any tiles were added to the builder.</summary>
     public bool HasTiles()
     {
@@ -134,7 +144,7 @@ internal class MachineGroupBuilder
     public IMachineGroup Build()
     {
         var machines = this.SortMachines(this.Machines.Select(p => new MachineWrapper(p)));
-        return new MachineGroup(this.LocationKey, machines, this.Containers, this.Tiles, this.BuildStorage, this.Monitor, this.ConnectorRoles, this.ItemFilter, this.SignMarkers); // MOD: added connectorRoles + itemFilter + signMarkers args
+        return new MachineGroup(this.LocationKey, machines, this.Containers, this.Tiles, this.BuildStorage, this.Monitor, this.ConnectorRoles, this.ItemFilter, this.SignMarkers, this.SignCandidateTiles); // MOD: added connectorRoles + itemFilter + signMarkers + signCandidateTiles args
     }
 
     /// <summary>Clear the saved data.</summary>
@@ -146,5 +156,6 @@ internal class MachineGroupBuilder
         this.ConnectorRoles.Clear(); // MOD: added
         this.ItemFilter = null; // MOD: added
         this.SignMarkers.Clear(); // MOD: added
+        this.SignCandidateTiles.Clear(); // MOD: added
     }
 }

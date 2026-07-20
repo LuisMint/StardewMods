@@ -104,6 +104,19 @@ internal class AutomationFactory : IAutomationFactory
         if (role != null)
             return new Connector(location, tile, role.Value);
 
+        // MOD: added — a configured whitelist/blacklist sign. Returning a SignPlaceholder here makes
+        // Automate's existing "was something automatable placed/removed nearby?" change-tracking
+        // notice this sign, so placing/removing it triggers a rescan the same way placing a machine
+        // or path does. The actual sign content (whitelist/blacklist item) is still read separately
+        // by MachineGroupFactory during a scan — this placeholder is never itself treated as a
+        // machine, container, or connector.
+        ModConfig config = this.Config();
+        if (config.WhitelistSignNames.Contains(obj.QualifiedItemId) || config.WhitelistSignNames.Contains(obj.Name)
+            || config.BlacklistSignNames.Contains(obj.QualifiedItemId) || config.BlacklistSignNames.Contains(obj.Name))
+        {
+            return new SignPlaceholder(location, tile);
+        }
+
         return null;
     }
 

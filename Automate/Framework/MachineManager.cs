@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Microsoft.Xna.Framework;
 using Pathoschild.Stardew.Automate.Framework.Models;
 using Pathoschild.Stardew.Common;
 using StardewModdingAPI;
@@ -38,6 +39,19 @@ internal class MachineManager
 
     /// <summary>The locations that should be reloaded on the next update tick.</summary>
     private readonly HashSet<GameLocation> ReloadQueue = new(new GameLocationNameComparer());
+
+    /// <summary>
+    /// MOD: added. The last-known displayed item ID for each tracked whitelist/blacklist sign, keyed
+    /// by (location key, tile). Used to detect when a sign's content changes so the location can be
+    /// rescanned automatically, without needing an unrelated nearby world change to force it.
+    /// </summary>
+    private readonly Dictionary<(string LocationKey, Vector2 Tile), string?> LastKnownSignItems = new();
+
+    /// <summary>MOD: added. How many ticks to wait between each check for sign content changes — doesn't need to be as frequent as automation itself, since it's just a convenience so players don't need to nudge the world to force a rescan.</summary>
+    private const int SignCheckIntervalTicks = 30;
+
+    /// <summary>MOD: added. Ticks elapsed since the last sign-change check.</summary>
+    private int TicksSinceSignCheck;
 
 
     /*********
@@ -199,6 +213,8 @@ internal class MachineManager
     /// <returns>Returns whether any locations were reloaded.</returns>
     public bool ReloadQueuedLocations()
     {
+        this.CheckForSignChanges(); // MOD: added
+
         if (this.ReloadQueue.Any() || this.RemoveQueue.Any())
         {
             this.ReloadMachinesIn(this.ReloadQueue, this.RemoveQueue);
@@ -214,6 +230,49 @@ internal class MachineManager
     /*********
     ** Private methods
     *********/
+    /// <summary>
+    /// MOD: added. Check whether any tracked whitelist/blacklist sign's displayed item has changed
+    /// since the last scan, and queue affected locations for reload if so. Throttled to run only
+    /// every <see cref="SignCheckIntervalTicks"/> ticks, since it's just a UX convenience rather than
+    /// something that needs to react instantly.
+    /// </summary>
+    private void CheckForSignChanges()
+    {
+        this.TicksSinceSignCheck++;
+        if (this.TicksSinceSignCheck < MachineManager.SignCheckIntervalTicks)
+            return;
+        this.TicksSinceSignCheck = 0;
+
+        foreach (MachineDataForLocation data in this.MachineData.Values)
+        {
+            if (data.SignCandidateTiles.Count == 0)
+                continue; // no signs to watch in this location — skip entirely, no lookup needed
+
+            GameLocation? location = null;
+
+            foreach (Vector2 tile in data.SignCandidateTiles)
+            {
+                location ??= CommonHelper.GetLocations().FirstOrDefault(loc => this.Factory.GetLocationKey(loc) == data.LocationKey);
+                if (location == null)
+                    break; // location no longer exists — nothing to check
+
+                string? currentItemId = this.Factory.GetCurrentSignItemId(location, tile);
+                (string LocationKey, Vector2 Tile) key = (data.LocationKey, tile);
+
+                if (this.LastKnownSignItems.TryGetValue(key, out string? lastItemId))
+                {
+                    if (currentItemId != lastItemId)
+                    {
+                        this.LastKnownSignItems[key] = currentItemId;
+                        this.QueueReload(location);
+                    }
+                }
+                else
+                    this.LastKnownSignItems[key] = currentItemId;
+            }
+        }
+    }
+
     /// <summary>Build a storage manager for the given containers.</summary>
     /// <param name="containers">The storage containers.</param>
     private StorageManager BuildStorage(IContainer[] containers)
@@ -237,6 +296,11 @@ internal class MachineManager
 
             foreach (string locationKey in locationKeys)
                 anyChanged |= this.MachineData.Remove(locationKey);
+
+            // MOD: added — drop stale sign snapshot entries for locations being reloaded/removed;
+            // they'll be reseeded fresh below for anything still active.
+            foreach ((string LocationKey, Vector2 Tile) key in this.LastKnownSignItems.Keys.Where(k => locationKeys.Contains(k.LocationKey)).ToArray())
+                this.LastKnownSignItems.Remove(key);
 
             if (this.JunimoMachineGroup.RemoveLocations(locationKeys))
             {
@@ -267,7 +331,15 @@ internal class MachineManager
             }
 
             // add groups
-            this.MachineData[locationKey] = new MachineDataForLocation(locationKey, active, disabled);
+            MachineDataForLocation locationData = new(locationKey, active, disabled);
+            this.MachineData[locationKey] = locationData;
+
+            // MOD: added — reseed the sign snapshot for this location's current sign candidate tiles
+            // (not just ones with an item currently on them), so this fresh rescan isn't immediately
+            // (and incorrectly) treated as "a sign changed" on the next periodic check, and so
+            // currently-empty signs are seeded too and thus watched going forward.
+            foreach (Vector2 signTile in locationData.SignCandidateTiles)
+                this.LastKnownSignItems[(locationKey, signTile)] = this.Factory.GetCurrentSignItemId(location, signTile);
 
             // track change
             if (junimo.Any())
@@ -279,6 +351,7 @@ internal class MachineManager
             else if (active.Any() || disabled.Any())
                 anyChanged = true;
         }
+
 
         // rebuild caches
         if (anyChanged)
