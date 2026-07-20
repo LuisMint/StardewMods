@@ -334,11 +334,15 @@ internal class MachineGroupFactory
 
                 bool usingWhitelist = whitelistItems.Count > 0;
 
-                Func<ITrackedStack, bool>? filter = null;
+                // MOD: changed from Func<ITrackedStack,bool> to Func<string,bool> operating directly
+                // on qualified item ID — simpler, and reusable both at the IStorage level
+                // (FilteredStorage) and the raw IInventory level (FilteredInventory/ItemFilteredContainer),
+                // since some machines bypass IStorage entirely and read a container's Inventory directly.
+                Func<string, bool>? filter = null;
                 if (usingWhitelist)
-                    filter = stack => whitelistItems.Contains(stack.Sample.QualifiedItemId); // whitelist wins over blacklist
+                    filter = itemId => whitelistItems.Contains(itemId); // whitelist wins over blacklist
                 else if (blacklistItems.Count > 0)
-                    filter = stack => !blacklistItems.Contains(stack.Sample.QualifiedItemId);
+                    filter = itemId => !blacklistItems.Contains(itemId);
 
                 // TEMP DIAGNOSTIC (MOD: added) — confirm the filter is actually being resolved and applied.
                 this.Monitor.Log($"[Automate sign debug] resolved filter for root {root}: whitelistItems=[{string.Join(",", whitelistItems)}], blacklistItems=[{string.Join(",", blacklistItems)}], filter applied={filter != null}", LogLevel.Info);

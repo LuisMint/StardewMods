@@ -31,8 +31,8 @@ internal class MachineGroupBuilder
     /// <summary>MOD: added. The connector role for each connector tile added to the group.</summary>
     private readonly Dictionary<Vector2, ConnectorRole> ConnectorRoles = [];
 
-    /// <summary>MOD: added. An optional item filter derived from whitelist/blacklist signs touching this group.</summary>
-    private Func<ITrackedStack, bool>? ItemFilter;
+    /// <summary>MOD: added. An optional item filter derived from whitelist/blacklist signs touching this group. Operates on qualified item ID directly so it's reusable at both the storage and raw-inventory level.</summary>
+    private Func<string, bool>? ItemFilter;
 
     /// <summary>MOD: added. Debug markers for tiles where a configured sign was detected, regardless of whether it currently holds an item.</summary>
     private readonly Dictionary<Vector2, bool> SignMarkers = [];
@@ -77,6 +77,13 @@ internal class MachineGroupBuilder
     /// <param name="container">The container to add.</param>
     public void Add(IContainer container)
     {
+        // MOD: added — if this group has an item filter, wrap the container so its raw Inventory is
+        // also filtered. This matters because some machines (most vanilla ones, via
+        // SObject.AttemptAutoLoad) read directly from a container's Inventory instead of going
+        // through Automate's IStorage abstraction, which FilteredStorage alone can't intercept.
+        if (this.ItemFilter != null)
+            container = new ItemFilteredContainer(container, this.ItemFilter);
+
         this.Containers.Add(container);
         this.Add(container.TileArea);
     }
@@ -102,9 +109,9 @@ internal class MachineGroupBuilder
         this.NewTileAreas.Add(tileArea);
     }
 
-    /// <summary>MOD: added. Set an item filter derived from whitelist/blacklist signs touching this group. Items not matching the filter won't move through the group's storage in either direction.</summary>
-    /// <param name="filter">The item filter, or <c>null</c> to clear it.</param>
-    public void SetItemFilter(Func<ITrackedStack, bool>? filter)
+    /// <summary>MOD: added. Set an item filter derived from whitelist/blacklist signs touching this group. Items not matching the filter won't move through the group's storage in either direction. Must be called BEFORE any containers are added, since it's applied at add-time.</summary>
+    /// <param name="filter">The item filter (operating on qualified item ID), or <c>null</c> to clear it.</param>
+    public void SetItemFilter(Func<string, bool>? filter)
     {
         this.ItemFilter = filter;
     }

@@ -93,9 +93,9 @@ internal class MachineGroup : IMachineGroup
     /// <param name="buildStorage">Build a storage manager for the given containers.</param>
     /// <param name="monitor">Encapsulates monitoring and logging.</param>
     /// <param name="connectorRoles">MOD: added. The connector role for each connector tile covered by this group, if any.</param>
-    /// <param name="itemFilter">MOD: added. An item filter derived from whitelist/blacklist signs touching this group, if any. Items not matching the filter won't move through the group's storage in either direction.</param>
+    /// <param name="itemFilter">MOD: added. An item filter derived from whitelist/blacklist signs touching this group, if any (operating on qualified item ID). Items not matching the filter won't move through the group's storage in either direction.</param>
     /// <param name="signMarkers">MOD: added. Debug markers for tiles where a configured sign was detected, regardless of whether it currently holds an item.</param>
-    public MachineGroup(string? locationKey, IEnumerable<IMachine> machines, IEnumerable<IContainer> containers, IEnumerable<Vector2> tiles, Func<IContainer[], StorageManager> buildStorage, IMonitor monitor, IReadOnlyDictionary<Vector2, ConnectorRole>? connectorRoles = null, Func<ITrackedStack, bool>? itemFilter = null, IReadOnlyDictionary<Vector2, bool>? signMarkers = null)
+    public MachineGroup(string? locationKey, IEnumerable<IMachine> machines, IEnumerable<IContainer> containers, IEnumerable<Vector2> tiles, Func<IContainer[], StorageManager> buildStorage, IMonitor monitor, IReadOnlyDictionary<Vector2, ConnectorRole>? connectorRoles = null, Func<string, bool>? itemFilter = null, IReadOnlyDictionary<Vector2, bool>? signMarkers = null)
     {
         this.LocationKey = locationKey;
         this.Machines = machines.ToArray();
@@ -108,8 +108,12 @@ internal class MachineGroup : IMachineGroup
         this.IsJunimoGroup = this.Containers.Any(p => p.IsJunimoChest);
         this.StorageManager = buildStorage(this.GetUniqueContainers(this.Containers));
 
-        // MOD: added — wrap storage in a filter if signs touching this group resolved one.
-        this.EffectiveStorage = itemFilter != null ? new FilteredStorage(this.StorageManager, itemFilter, this.Monitor) : this.StorageManager;
+        // MOD: added — wrap storage in a filter if signs touching this group resolved one. The
+        // filter operates on qualified item ID; FilteredStorage itself works with ITrackedStack, so
+        // adapt here.
+        this.EffectiveStorage = itemFilter != null
+            ? new FilteredStorage(this.StorageManager, stack => itemFilter(stack.Sample.QualifiedItemId), this.Monitor)
+            : this.StorageManager;
 
         // TEMP DIAGNOSTIC (MOD: added) — confirm whether this specific group actually got a filter.
         if (itemFilter != null)
