@@ -30,6 +30,9 @@ internal record MachineDataForLocation(string LocationKey, IReadOnlyCollection<I
     /// <summary>MOD: added. The backing field for <see cref="ConnectorRolesByTile"/>.</summary>
     private readonly Lazy<Dictionary<Vector2, ConnectorRole>> ConnectorRolesByTileImpl = new(() => GetConnectorRoleLookup(LocationKey, ActiveMachineGroups));
 
+    /// <summary>MOD: added. The backing field for <see cref="SignMarkersByTile"/>.</summary>
+    private readonly Lazy<Dictionary<Vector2, bool>> SignMarkersByTileImpl = new(() => GetSignMarkerLookup(LocationKey, ActiveMachineGroups));
+
 
     /*********
     ** Accessors
@@ -58,6 +61,13 @@ internal record MachineDataForLocation(string LocationKey, IReadOnlyCollection<I
     /// multi-group ambiguity here the way there is for <see cref="ActiveGroupsByTile"/>.
     /// </summary>
     public IReadOnlyDictionary<Vector2, ConnectorRole> ConnectorRolesByTile => this.ConnectorRolesByTileImpl.Value;
+
+    /// <summary>
+    /// MOD: added. Debug markers for tiles where a configured whitelist/blacklist sign was detected
+    /// (<c>true</c> = whitelist, <c>false</c> = blacklist), regardless of whether the sign currently
+    /// holds an item. Exists purely so the overlay can show whether sign detection is matching.
+    /// </summary>
+    public IReadOnlyDictionary<Vector2, bool> SignMarkersByTile => this.SignMarkersByTileImpl.Value;
 
 
     /*********
@@ -180,6 +190,22 @@ internal record MachineDataForLocation(string LocationKey, IReadOnlyCollection<I
         {
             foreach ((Vector2 tile, ConnectorRole role) in machineGroup.GetConnectorRoles(locationKey))
                 result[tile] = role;
+        }
+
+        return result;
+    }
+
+    /// <summary>MOD: added. Get a lookup of sign detection markers by the tile positions they cover, across all the given machine groups.</summary>
+    /// <param name="locationKey">The location key for which to get tiles.</param>
+    /// <param name="machineGroups">The machine groups to index.</param>
+    private static Dictionary<Vector2, bool> GetSignMarkerLookup(string locationKey, IEnumerable<IMachineGroup> machineGroups)
+    {
+        Dictionary<Vector2, bool> result = [];
+
+        foreach (IMachineGroup machineGroup in machineGroups)
+        {
+            foreach ((Vector2 tile, bool isWhitelist) in machineGroup.GetSignMarkers(locationKey))
+                result[tile] = isWhitelist;
         }
 
         return result;

@@ -52,6 +52,9 @@ internal class OverlayMenu : BaseOverlay
     /// <summary>MOD: added. The thickness in pixels of the group edge border lines.</summary>
     private const int BorderSize = 5;
 
+    /// <summary>MOD: added. The fill opacity for the white/black sign-detection debug marker.</summary>
+    private const float SignMarkerFillOpacity = 0.65f;
+
 
     /*********
     ** Public methods
@@ -138,6 +141,14 @@ internal class OverlayMenu : BaseOverlay
                         if (connectorRoleColor.HasValue)
                             color = connectorRoleColor.Value * OverlayMenu.ConnectorRoleFillOpacity;
                     }
+
+                    // MOD: added — debug marker: override just the FILL color (never the border) for
+                    // a tile where a configured whitelist/blacklist sign was detected, regardless of
+                    // connector role or whether the sign currently holds an item. White = whitelist
+                    // sign detected, black = blacklist sign detected. This exists purely so it's
+                    // visually obvious whether sign detection is matching at all.
+                    if (this.MachineData.SignMarkersByTile.TryGetValue(tile, out bool isWhitelistSign))
+                        color = (isWhitelistSign ? Color.White : Color.Black) * OverlayMenu.SignMarkerFillOpacity;
                 }
                 else if (this.MachineData.DisabledTiles.TryGetValue(tile, out group) || this.MachineData.OutdatedTiles.ContainsKey(tile))
                     color = OverlayMenu.DisabledColor * OverlayMenu.NormalFillOpacity;

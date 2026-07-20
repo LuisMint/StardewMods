@@ -40,4 +40,8 @@ internal interface IMachineGroup
     /// <summary>MOD: added. Get the connector role (Both/ChestInputOnly/ChestOutputOnly) for each connector tile covered by this group, keyed by tile position. Only connector tiles appear here — machine and chest tiles don't have a role of their own.</summary>
     /// <param name="locationKey">The location key for which to get tiles.</param>
     IReadOnlyDictionary<Vector2, ConnectorRole> GetConnectorRoles(string locationKey);
+
+    /// <summary>MOD: added. Get a debug marker for each tile with a configured whitelist/blacklist sign directly on top of a connector tile in this group — <c>true</c> for whitelist, <c>false</c> for blacklist. This is set regardless of whether the sign currently has an item on it (unlike the actual item filter), purely so the overlay can show that sign detection itself is working.</summary>
+    /// <param name="locationKey">The location key for which to get tiles.</param>
+    IReadOnlyDictionary<Vector2, bool> GetSignMarkers(string locationKey);
 }

@@ -115,6 +115,13 @@ internal class JunimoMachineGroup : MachineGroup
         return ImmutableDictionary<Vector2, ConnectorRole>.Empty;
     }
 
+    /// <inheritdoc />
+    /// MOD: added. Junimo chests aren't reached through paths, so there's no sign marker concept for this aggregate group — always empty.
+    public override IReadOnlyDictionary<Vector2, bool> GetSignMarkers(string locationKey)
+    {
+        return ImmutableDictionary<Vector2, bool>.Empty;
+    }
+
     /// <summary>Get whether the tile area intersects this machine group.</summary>
     /// <param name="locationKey">The location key as formatted by <see cref="MachineGroupFactory.GetLocationKey"/>.</param>
     /// <param name="tileArea">The tile area to check.</param>

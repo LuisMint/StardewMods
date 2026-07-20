@@ -4,6 +4,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Text;
 using Microsoft.Xna.Framework;
+using Netcode;
 using Pathoschild.Stardew.Automate.Framework.Models;
 using Pathoschild.Stardew.Automate.Framework.Storage;
 using Pathoschild.Stardew.Common;
@@ -25,6 +26,30 @@ internal class MachineGroupFactory
     /// <summary>The automation factories which construct machines, containers, and connectors.</summary>
     private readonly List<IAutomationFactory> AutomationFactories = [];
 
+    /// <summary>
+    /// MOD: added. Cache of reflection access to the base game's private <c>displayItem</c> field
+    /// used to read what's shown on a sign, keyed by the sign's actual runtime type (e.g. the
+    /// dedicated <c>Sign</c> class, not necessarily the base <c>Object</c> class).
+    /// </summary>
+    private static readonly Dictionary<Type, System.Reflection.FieldInfo?> SignDisplayItemFieldCache = new();
+
+    /// <summary>MOD: added. Get the reflected <c>displayItem</c> field for a sign's actual runtime type.</summary>
+    /// <param name="signType">The sign's actual runtime type (i.e. <c>signObj.GetType()</c>).</param>
+    private static System.Reflection.FieldInfo? GetSignDisplayItemField(Type signType)
+    {
+        if (MachineGroupFactory.SignDisplayItemFieldCache.TryGetValue(signType, out System.Reflection.FieldInfo? cached))
+            return cached;
+
+        // MOD: fixed — no DeclaredOnly and no manual hierarchy walk. For instance fields (unlike
+        // static ones), Type.GetField without DeclaredOnly already searches the full inheritance
+        // chain on its own — this exactly mirrors how the original diagnostic dump found this same
+        // field via GetFields() with the same flags.
+        System.Reflection.FieldInfo? field = signType.GetField("displayItem", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+
+        MachineGroupFactory.SignDisplayItemFieldCache[signType] = field;
+        return field;
+    }
+
     /// <summary>Get the configuration for specific machines by ID, if any.</summary>
     private readonly Func<string, ModConfigMachine?> GetMachineOverride;
 
@@ -33,6 +58,12 @@ internal class MachineGroupFactory
 
     /// <summary>Get whether storage containers should be enabled by default if not set via <see cref="GetChestOverride"/>.</summary>
     private readonly Func<bool> GetChestsEnabledByDefault;
+
+    /// <summary>MOD: added. Get the sign item names/IDs that act as a whitelist filter for a touching connector group.</summary>
+    private readonly Func<HashSet<string>> GetWhitelistSignNames;
+
+    /// <summary>MOD: added. Get the sign item names/IDs that act as a blacklist filter for a touching connector group.</summary>
+    private readonly Func<HashSet<string>> GetBlacklistSignNames;
 
     /// <summary>Build a storage manager for the given containers.</summary>
     private readonly Func<IContainer[], StorageManager> BuildStorage;
@@ -48,13 +79,17 @@ internal class MachineGroupFactory
     /// <param name="getMachineOverride">Get the configuration for specific machines by ID, if any.</param>
     /// <param name="getChestOverride">Get the configuration for specific chests by ID, if any.</param>
     /// <param name="getChestsEnabledByDefault">Get whether chests should be enabled by default if not set via <see cref="getChestOverride"/>.</param>
+    /// <param name="getWhitelistSignNames">MOD: added. Get the sign item names/IDs that act as a whitelist filter for a touching connector group.</param>
+    /// <param name="getBlacklistSignNames">MOD: added. Get the sign item names/IDs that act as a blacklist filter for a touching connector group.</param>
     /// <param name="buildStorage">Build a storage manager for the given containers.</param>
     /// <param name="monitor">Encapsulates monitoring and logging.</param>
-    public MachineGroupFactory(Func<string, ModConfigMachine?> getMachineOverride, Func<string, ModConfigStorage?> getChestOverride, Func<bool> getChestsEnabledByDefault, Func<IContainer[], StorageManager> buildStorage, IMonitor monitor)
+    public MachineGroupFactory(Func<string, ModConfigMachine?> getMachineOverride, Func<string, ModConfigStorage?> getChestOverride, Func<bool> getChestsEnabledByDefault, Func<HashSet<string>> getWhitelistSignNames, Func<HashSet<string>> getBlacklistSignNames, Func<IContainer[], StorageManager> buildStorage, IMonitor monitor)
     {
         this.GetMachineOverride = getMachineOverride;
         this.GetChestOverride = getChestOverride;
         this.GetChestsEnabledByDefault = getChestsEnabledByDefault;
+        this.GetWhitelistSignNames = getWhitelistSignNames; // MOD: added
+        this.GetBlacklistSignNames = getBlacklistSignNames; // MOD: added
         this.BuildStorage = buildStorage;
         this.Monitor = monitor;
     }
@@ -253,6 +288,78 @@ internal class MachineGroupFactory
                 GetOrCreateBuilder(Find(i)).Add(nodes[i].TileArea, connectorRoles[i]); // MOD: pass role
         }
 
+        // step 5.5 (MOD: added): detect whitelist/blacklist signs touching each connector network,
+        // and resolve one item filter per root. Unlike machines/chests, a sign must be placed
+        // DIRECTLY ON TOP of a path tile to count — being merely adjacent isn't enough. An empty
+        // sign (nothing displayed on it) is fully ignored — no marker, no filter contribution.
+        // Whitelist signs win over blacklist signs if both are accidentally present on one group;
+        // multiple signs of the same kind are combined (any item matching ANY of them applies).
+        {
+            Dictionary<int, List<(Vector2 Tile, bool IsWhitelist, string ItemId)>> signEntriesByRoot = new();
+
+            foreach (Vector2 tile in location.GetTiles())
+            {
+                (bool IsWhitelist, string? HeldItemQualifiedId)? signInfo = this.GetSignInfo(locationIndex, tile);
+                if (signInfo == null)
+                    continue;
+
+                // an empty sign is fully ignored — no marker, no filter contribution
+                if (signInfo.Value.HeldItemQualifiedId == null)
+                    continue;
+
+                // MOD: restricted to ONLY the sign's own tile — a sign must be placed directly ON
+                // TOP of a path tile to count, not just next to it.
+                if (!tileToNodeIndices.TryGetValue(tile, out List<int>? indices))
+                    continue;
+
+                HashSet<int> touchedRootsForSign = new();
+                foreach (int j in indices)
+                {
+                    if (IsConnector(nodes[j]))
+                        touchedRootsForSign.Add(Find(j));
+                }
+
+                foreach (int root in touchedRootsForSign)
+                {
+                    if (!signEntriesByRoot.TryGetValue(root, out List<(Vector2, bool, string)>? list))
+                        signEntriesByRoot[root] = list = new List<(Vector2, bool, string)>();
+                    list.Add((tile, signInfo.Value.IsWhitelist, signInfo.Value.HeldItemQualifiedId));
+                }
+            }
+
+            foreach ((int root, List<(Vector2 Tile, bool IsWhitelist, string ItemId)> entries) in signEntriesByRoot)
+            {
+                HashSet<string> whitelistItems = entries.Where(e => e.IsWhitelist).Select(e => e.ItemId).ToHashSet();
+                HashSet<string> blacklistItems = entries.Where(e => !e.IsWhitelist).Select(e => e.ItemId).ToHashSet();
+
+                bool usingWhitelist = whitelistItems.Count > 0;
+
+                Func<ITrackedStack, bool>? filter = null;
+                if (usingWhitelist)
+                    filter = stack => whitelistItems.Contains(stack.Sample.QualifiedItemId); // whitelist wins over blacklist
+                else if (blacklistItems.Count > 0)
+                    filter = stack => !blacklistItems.Contains(stack.Sample.QualifiedItemId);
+
+                // TEMP DIAGNOSTIC (MOD: added) — confirm the filter is actually being resolved and applied.
+                this.Monitor.Log($"[Automate sign debug] resolved filter for root {root}: whitelistItems=[{string.Join(",", whitelistItems)}], blacklistItems=[{string.Join(",", blacklistItems)}], filter applied={filter != null}", LogLevel.Info);
+
+                if (filter != null)
+                    GetOrCreateBuilder(root).SetItemFilter(filter);
+
+                // MOD: added — only mark tiles whose sign TYPE actually won for this root. A
+                // blacklist sign overridden by a whitelist sign elsewhere in the same group is left
+                // unmarked entirely, so its tile shows its normal color instead of a stale black
+                // highlight that no longer reflects what's actually being enforced.
+                foreach ((Vector2 signTile, bool isWhitelistSign, string _) in entries)
+                {
+                    if (usingWhitelist && !isWhitelistSign)
+                        continue; // this blacklist sign lost to a whitelist sign elsewhere in the group — leave unmarked
+
+                    GetOrCreateBuilder(root).MarkSignTile(signTile, isWhitelistSign);
+                }
+            }
+        }
+
         // step 6: attach each machine or container to every distinct connector network it touches,
         // without merging those networks together. A machine/container touching no connector at all
         // becomes its own solo (non-automated) group, same as before.
@@ -428,6 +535,107 @@ internal class MachineGroupFactory
                 case Building building:
                     return $"building:{building.buildingType.Value}";
             }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// MOD: added. Get sign detection info for a tile, if a configured whitelist/blacklist sign is
+    /// there — regardless of whether it currently has an item displayed on it. Returns <c>null</c>
+    /// if there's no such sign on the tile at all. <c>HeldItemQualifiedId</c> is <c>null</c> if the
+    /// sign is empty (nothing displayed on it); callers should treat that case as "detected but not
+    /// currently filtering anything" rather than "not detected."
+    /// </summary>
+    /// <param name="locationIndex">An indexed view of the location.</param>
+    /// <param name="tile">The tile to check.</param>
+    private (bool IsWhitelist, string? HeldItemQualifiedId)? GetSignInfo(LocationFloodFillIndex locationIndex, Vector2 tile)
+    {
+        HashSet<string> whitelistSigns = this.GetWhitelistSignNames();
+        HashSet<string> blacklistSigns = this.GetBlacklistSignNames();
+
+        if (whitelistSigns.Count == 0 && blacklistSigns.Count == 0)
+            return null; // feature not configured at all — skip the scan entirely
+
+        foreach (object target in locationIndex.GetEntities(tile))
+        {
+            if (target is not SObject signObj)
+                continue;
+
+            bool isWhitelist = whitelistSigns.Contains(signObj.QualifiedItemId) || whitelistSigns.Contains(signObj.Name);
+            bool isBlacklist = !isWhitelist && (blacklistSigns.Contains(signObj.QualifiedItemId) || blacklistSigns.Contains(signObj.Name));
+
+            if (!isWhitelist && !isBlacklist)
+                continue;
+
+            // MOD: fixed — the item displayed on a sign is read via `displayItem`, not `heldObject`
+            // (confirmed via diagnostic field dump). `displayItem` is a PRIVATE field, found via a
+            // runtime-type-aware reflection cache.
+            SObject? heldItem = null;
+            System.Reflection.FieldInfo? displayItemField = MachineGroupFactory.GetSignDisplayItemField(signObj.GetType());
+            object? rawNetRef = displayItemField?.GetValue(signObj);
+
+            // TEMP DIAGNOSTIC (MOD: added) — broad one-shot dump of the raw NetRef-like object's
+            // actual type, properties, and fields, to find the correct way to read its contents
+            // without guessing member names one at a time. Remove once confirmed working.
+            if (rawNetRef != null)
+            {
+                Type rawType = rawNetRef.GetType();
+                this.Monitor.Log($"[Automate sign debug] tile {tile}: rawNetRef actual type={rawType.FullName}", LogLevel.Info);
+
+                foreach (System.Reflection.PropertyInfo prop in rawType.GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance))
+                {
+                    object? value;
+                    try
+                    {
+                        value = prop.GetValue(rawNetRef);
+                    }
+                    catch (Exception ex)
+                    {
+                        value = $"(threw: {ex.GetType().Name})";
+                    }
+
+                    // MOD: added — if the value is an item, print its actual ID/name instead of the
+                    // generic ToString() (which just prints the class name for Object instances).
+                    string displayValue = value is StardewValley.Item itemValue
+                        ? $"ITEM: QualifiedItemId={itemValue.QualifiedItemId}, Name={itemValue.Name}, DisplayName={itemValue.DisplayName}"
+                        : (value?.ToString() ?? "null");
+
+                    this.Monitor.Log($"    property '{prop.Name}' ({prop.PropertyType.Name}) = {displayValue}", LogLevel.Info);
+
+                    // opportunistically try this as the held item if it looks like the right type
+                    if (heldItem == null && value is SObject candidateItem)
+                        heldItem = candidateItem;
+                }
+
+                foreach (System.Reflection.FieldInfo field in rawType.GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance))
+                {
+                    object? value;
+                    try
+                    {
+                        value = field.GetValue(rawNetRef);
+                    }
+                    catch (Exception ex)
+                    {
+                        value = $"(threw: {ex.GetType().Name})";
+                    }
+
+                    string displayValue = value is StardewValley.Item itemValue2
+                        ? $"ITEM: QualifiedItemId={itemValue2.QualifiedItemId}, Name={itemValue2.Name}, DisplayName={itemValue2.DisplayName}"
+                        : (value?.ToString() ?? "null");
+
+                    this.Monitor.Log($"    field '{field.Name}' ({field.FieldType.Name}) = {displayValue}", LogLevel.Info);
+
+                    if (heldItem == null && value is SObject candidateItem)
+                        heldItem = candidateItem;
+                }
+            }
+            else
+            {
+                this.Monitor.Log($"[Automate sign debug] tile {tile}: field found={displayItemField != null}, rawNetRef is null", LogLevel.Info);
+            }
+
+            return (isWhitelist, heldItem?.QualifiedItemId);
         }
 
         return null;

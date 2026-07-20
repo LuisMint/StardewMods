@@ -68,6 +68,8 @@ internal class MachineManager
             getMachineOverride: this.GetMachineOverride,
             getChestOverride: this.GetChestOverride,
             getChestsEnabledByDefault: () => this.Config().ChestsEnabledByDefault,
+            getWhitelistSignNames: () => this.Config().WhitelistSignNames, // MOD: added
+            getBlacklistSignNames: () => this.Config().BlacklistSignNames, // MOD: added
             buildStorage: this.BuildStorage,
             monitor: monitor
         );

@@ -45,6 +45,25 @@ internal class ModConfig
     [JsonProperty("ChestOutputConnectorNames")]
     public HashSet<string> ChestOutputConnectors { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// MOD: added. The sign item(s) that act as a WHITELIST filter when placed touching a connector
+    /// group with an item displayed on them — only the displayed item can move through that group's
+    /// storage (input, output, or both). This can be the internal name or qualified item ID, same
+    /// format as <see cref="Connectors"/>. Whitelist signs take priority over blacklist signs if both
+    /// are accidentally present on the same group.
+    /// </summary>
+    [JsonProperty("WhitelistSignNames")]
+    public HashSet<string> WhitelistSignNames { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// MOD: added. The sign item(s) that act as a BLACKLIST filter when placed touching a connector
+    /// group with an item displayed on them — the displayed item is blocked from moving through that
+    /// group's storage (input, output, or both). This can be the internal name or qualified item ID,
+    /// same format as <see cref="Connectors"/>. An empty sign (nothing displayed on it) is ignored.
+    /// </summary>
+    [JsonProperty("BlacklistSignNames")]
+    public HashSet<string> BlacklistSignNames { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>How Junimo huts should automate gems.</summary>
     /// <remarks>The <see cref="JunimoHutBehavior.AutoDetect"/> option is equivalent to <see cref="JunimoHutBehavior.Ignore"/>.</remarks>
     public JunimoHutBehavior JunimoHutBehaviorForGems { get; set; } = JunimoHutBehavior.AutoDetect;
@@ -102,6 +121,13 @@ internal class ModConfig
 
         this.ChestOutputConnectors = this.ChestOutputConnectors.ToNonNullCaseInsensitive();
         this.ChestOutputConnectors.RemoveWhere(string.IsNullOrWhiteSpace);
+
+        // MOD: added — normalize the two new sign filter sets the same way.
+        this.WhitelistSignNames = this.WhitelistSignNames.ToNonNullCaseInsensitive();
+        this.WhitelistSignNames.RemoveWhere(string.IsNullOrWhiteSpace);
+
+        this.BlacklistSignNames = this.BlacklistSignNames.ToNonNullCaseInsensitive();
+        this.BlacklistSignNames.RemoveWhere(string.IsNullOrWhiteSpace);
 
         this.JunimoHutBehaviors = this.JunimoHutBehaviors.ToNonNullCaseInsensitive();
 

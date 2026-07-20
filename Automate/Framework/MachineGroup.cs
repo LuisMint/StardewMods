@@ -42,6 +42,12 @@ internal class MachineGroup : IMachineGroup
     /// <summary>MOD: added. The connector role for each connector tile covered by this group.</summary>
     private readonly Dictionary<Vector2, ConnectorRole> ConnectorRoles;
 
+    /// <summary>MOD: added. The storage actually used when automating — either <see cref="StorageManager"/> directly, or a <see cref="FilteredStorage"/> wrapping it if an item filter applies (from whitelist/blacklist signs touching this group).</summary>
+    private readonly IStorage EffectiveStorage;
+
+    /// <summary>MOD: added. The debug sign markers for each tile where a configured sign was detected, regardless of whether it currently holds an item.</summary>
+    private readonly Dictionary<Vector2, bool> SignMarkers;
+
     /****
     ** Pooled instances
     ** (These just minimize object allocations, and aren't used to store state between ticks.)
@@ -87,7 +93,9 @@ internal class MachineGroup : IMachineGroup
     /// <param name="buildStorage">Build a storage manager for the given containers.</param>
     /// <param name="monitor">Encapsulates monitoring and logging.</param>
     /// <param name="connectorRoles">MOD: added. The connector role for each connector tile covered by this group, if any.</param>
-    public MachineGroup(string? locationKey, IEnumerable<IMachine> machines, IEnumerable<IContainer> containers, IEnumerable<Vector2> tiles, Func<IContainer[], StorageManager> buildStorage, IMonitor monitor, IReadOnlyDictionary<Vector2, ConnectorRole>? connectorRoles = null)
+    /// <param name="itemFilter">MOD: added. An item filter derived from whitelist/blacklist signs touching this group, if any. Items not matching the filter won't move through the group's storage in either direction.</param>
+    /// <param name="signMarkers">MOD: added. Debug markers for tiles where a configured sign was detected, regardless of whether it currently holds an item.</param>
+    public MachineGroup(string? locationKey, IEnumerable<IMachine> machines, IEnumerable<IContainer> containers, IEnumerable<Vector2> tiles, Func<IContainer[], StorageManager> buildStorage, IMonitor monitor, IReadOnlyDictionary<Vector2, ConnectorRole>? connectorRoles = null, Func<ITrackedStack, bool>? itemFilter = null, IReadOnlyDictionary<Vector2, bool>? signMarkers = null)
     {
         this.LocationKey = locationKey;
         this.Machines = machines.ToArray();
@@ -95,9 +103,17 @@ internal class MachineGroup : IMachineGroup
         this.Tiles = [.. tiles];
         this.Monitor = monitor;
         this.ConnectorRoles = connectorRoles != null ? new Dictionary<Vector2, ConnectorRole>(connectorRoles) : []; // MOD: added
+        this.SignMarkers = signMarkers != null ? new Dictionary<Vector2, bool>(signMarkers) : []; // MOD: added
 
         this.IsJunimoGroup = this.Containers.Any(p => p.IsJunimoChest);
         this.StorageManager = buildStorage(this.GetUniqueContainers(this.Containers));
+
+        // MOD: added — wrap storage in a filter if signs touching this group resolved one.
+        this.EffectiveStorage = itemFilter != null ? new FilteredStorage(this.StorageManager, itemFilter, this.Monitor) : this.StorageManager;
+
+        // TEMP DIAGNOSTIC (MOD: added) — confirm whether this specific group actually got a filter.
+        if (itemFilter != null)
+            this.Monitor.Log($"[Automate sign debug] MachineGroup at {locationKey} built WITH an item filter ({this.Machines.Length} machines, {this.Containers.Length} containers)", LogLevel.Info);
     }
 
     /// <inheritdoc />
@@ -118,9 +134,18 @@ internal class MachineGroup : IMachineGroup
     }
 
     /// <inheritdoc />
+    /// MOD: added.
+    public virtual IReadOnlyDictionary<Vector2, bool> GetSignMarkers(string locationKey)
+    {
+        return this.LocationKey == locationKey
+            ? this.SignMarkers
+            : ImmutableDictionary<Vector2, bool>.Empty;
+    }
+
+    /// <inheritdoc />
     public void Automate()
     {
-        IStorage storage = this.StorageManager;
+        IStorage storage = this.EffectiveStorage; // MOD: changed from this.StorageManager, to respect any sign-based item filter
 
         // if a chest is locked (e.g. player has it open), pause machines to avoid losing items in update collisions
         if (storage.HasLockedContainers())

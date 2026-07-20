@@ -31,6 +31,12 @@ internal class MachineGroupBuilder
     /// <summary>MOD: added. The connector role for each connector tile added to the group.</summary>
     private readonly Dictionary<Vector2, ConnectorRole> ConnectorRoles = [];
 
+    /// <summary>MOD: added. An optional item filter derived from whitelist/blacklist signs touching this group.</summary>
+    private Func<ITrackedStack, bool>? ItemFilter;
+
+    /// <summary>MOD: added. Debug markers for tiles where a configured sign was detected, regardless of whether it currently holds an item.</summary>
+    private readonly Dictionary<Vector2, bool> SignMarkers = [];
+
     /// <summary>Sort machines by priority.</summary>
     private readonly Func<IEnumerable<IMachine>, IEnumerable<IMachine>> SortMachines;
 
@@ -96,6 +102,21 @@ internal class MachineGroupBuilder
         this.NewTileAreas.Add(tileArea);
     }
 
+    /// <summary>MOD: added. Set an item filter derived from whitelist/blacklist signs touching this group. Items not matching the filter won't move through the group's storage in either direction.</summary>
+    /// <param name="filter">The item filter, or <c>null</c> to clear it.</param>
+    public void SetItemFilter(Func<ITrackedStack, bool>? filter)
+    {
+        this.ItemFilter = filter;
+    }
+
+    /// <summary>MOD: added. Mark a tile as having a detected whitelist/blacklist sign, for debug overlay purposes — regardless of whether the sign currently holds an item.</summary>
+    /// <param name="tile">The tile where the sign was found.</param>
+    /// <param name="isWhitelist"><c>true</c> if it's a whitelist sign, <c>false</c> if it's a blacklist sign.</param>
+    public void MarkSignTile(Vector2 tile, bool isWhitelist)
+    {
+        this.SignMarkers[tile] = isWhitelist;
+    }
+
     /// <summary>Get whether any tiles were added to the builder.</summary>
     public bool HasTiles()
     {
@@ -106,7 +127,7 @@ internal class MachineGroupBuilder
     public IMachineGroup Build()
     {
         var machines = this.SortMachines(this.Machines.Select(p => new MachineWrapper(p)));
-        return new MachineGroup(this.LocationKey, machines, this.Containers, this.Tiles, this.BuildStorage, this.Monitor, this.ConnectorRoles); // MOD: added connectorRoles arg
+        return new MachineGroup(this.LocationKey, machines, this.Containers, this.Tiles, this.BuildStorage, this.Monitor, this.ConnectorRoles, this.ItemFilter, this.SignMarkers); // MOD: added connectorRoles + itemFilter + signMarkers args
     }
 
     /// <summary>Clear the saved data.</summary>
@@ -116,5 +137,7 @@ internal class MachineGroupBuilder
         this.Containers.Clear();
         this.Tiles.Clear();
         this.ConnectorRoles.Clear(); // MOD: added
+        this.ItemFilter = null; // MOD: added
+        this.SignMarkers.Clear(); // MOD: added
     }
 }
