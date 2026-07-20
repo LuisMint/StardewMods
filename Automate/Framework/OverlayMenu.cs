@@ -40,6 +40,12 @@ internal class OverlayMenu : BaseOverlay
     /// <summary>MOD: added. The color used for disabled tiles — a darker, less vibrant red than the plain <see cref="Color.Red"/> used elsewhere.</summary>
     private static readonly Color DisabledColor = new(120, 30, 30);
 
+    /// <summary>MOD: added. The color used for tiles outside every power source's range when the power system is enabled — deliberately a different, darker/more saturated red than <see cref="DisabledColor"/> so the two are visually distinct.</summary>
+    private static readonly Color UnpoweredColor = new(45, 0, 0);
+
+    /// <summary>MOD: added. The fill opacity for unpowered tiles — deliberately higher than the normal black background opacity, so out-of-range areas read as more solid/darker rather than just tinted.</summary>
+    private const float UnpoweredFillOpacity = 0.75f;
+
     /// <summary>MOD: added. The background fill opacity for normal (single-role) tile highlights.</summary>
     private const float NormalFillOpacity = 0.3f;
 
@@ -153,7 +159,20 @@ internal class OverlayMenu : BaseOverlay
                 else if (this.MachineData.DisabledTiles.TryGetValue(tile, out group) || this.MachineData.OutdatedTiles.ContainsKey(tile))
                     color = OverlayMenu.DisabledColor * OverlayMenu.NormalFillOpacity;
             }
-            color ??= Color.Black * 0.5f;
+            // MOD: added — for tiles with no group/connector/sign info above, fall back to a
+            // power-aware default instead of always plain black: if the power system is enabled,
+            // show dark red for tiles outside every power source's range, and black for tiles that
+            // are powered but have nothing else going on. If the power system is disabled, keep the
+            // original plain black default (unrestricted, nothing to visualize).
+            if (color == null)
+            {
+                if (this.MachineData?.PoweredTiles == null)
+                    color = Color.Black * 0.5f;
+                else if (this.MachineData.PoweredTiles.Contains(tile))
+                    color = Color.Black * 0.5f;
+                else
+                    color = OverlayMenu.UnpoweredColor * OverlayMenu.UnpoweredFillOpacity;
+            }
 
             // draw background
             // MOD: drawn slightly LARGER than the tile itself (instead of shrunk with a gap), so

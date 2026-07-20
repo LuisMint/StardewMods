@@ -86,12 +86,21 @@ internal class MachineManager
         this.Data = data;
         this.Monitor = monitor;
 
+        // MOD: added — the power system is its own self-contained class (see PowerSystem.cs);
+        // construct it here from config and hand the whole thing to the factory.
+        PowerSystem powerSystem = new(
+            getEnabled: () => this.Config().PowerSystemEnabled,
+            getSourceNames: () => this.Config().PowerSourceNames,
+            getRangeSize: () => this.Config().PowerRangeSize
+        );
+
         this.Factory = new(
             getMachineOverride: this.GetMachineOverride,
             getChestOverride: this.GetChestOverride,
             getChestsEnabledByDefault: () => this.Config().ChestsEnabledByDefault,
             getWhitelistSignNames: () => this.Config().WhitelistSignNames, // MOD: added
             getBlacklistSignNames: () => this.Config().BlacklistSignNames, // MOD: added
+            powerSystem: powerSystem, // MOD: added
             buildStorage: this.BuildStorage,
             monitor: monitor
         );
@@ -326,11 +335,18 @@ internal class MachineManager
         {
             string locationKey = this.Factory.GetLocationKey(location);
 
+            // MOD: changed — build the location index and powered tiles ONCE, and reuse both for
+            // group building and the overlay's PoweredTiles data. Previously these were computed
+            // twice per rescan (once inside GetMachineGroups, once here) — each involving a full
+            // scan of the location — which was pure redundant work.
+            LocationFloodFillIndex locationIndex = new(location, this.Monitor);
+            HashSet<Vector2>? poweredTiles = this.Factory.PowerSystem.GetPoweredTiles(location, locationIndex);
+
             // collect new groups
             List<IMachineGroup> active = [];
             List<IMachineGroup> disabled = [];
             List<IMachineGroup> junimo = [];
-            foreach (IMachineGroup group in this.Factory.GetMachineGroups(location, this.Monitor))
+            foreach (IMachineGroup group in this.Factory.GetMachineGroups(location, locationIndex, poweredTiles))
             {
                 if (!group.HasInternalAutomation)
                     disabled.Add(group);
@@ -343,7 +359,7 @@ internal class MachineManager
             }
 
             // add groups
-            MachineDataForLocation locationData = new(locationKey, active, disabled);
+            MachineDataForLocation locationData = new(locationKey, active, disabled, poweredTiles);
             this.MachineData[locationKey] = locationData;
             this.LocationsByKey[locationKey] = location; // MOD: added — keep the cache fresh for CheckForSignChanges
 

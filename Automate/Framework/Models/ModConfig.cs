@@ -64,6 +64,31 @@ internal class ModConfig
     [JsonProperty("BlacklistSignNames")]
     public HashSet<string> BlacklistSignNames { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// MOD: added. Whether the "power system" is enabled. When true, automation only works within
+    /// range of a configured power source (see <see cref="PowerSourceNames"/>) — anything outside
+    /// range is treated as if it doesn't exist to Automate at all (not just disabled; fully ignored,
+    /// the same as if it were never placed). Defaults to <c>true</c> — this is a deliberate gameplay
+    /// gate, not an opt-in convenience feature, so automation is expected to require power sources
+    /// out of the box.
+    /// </summary>
+    public bool PowerSystemEnabled { get; set; } = true;
+
+    /// <summary>
+    /// MOD: added. The in-game objects that act as a power source for the power system (see
+    /// <see cref="PowerSystemEnabled"/>) — currently intended to be the vanilla Lightning Rod as a
+    /// placeholder for a dedicated custom object later. This can be the internal name or qualified
+    /// item ID, same format as <see cref="Connectors"/>.
+    /// </summary>
+    [JsonProperty("PowerSourceNames")]
+    public HashSet<string> PowerSourceNames { get; set; } = new(StringComparer.OrdinalIgnoreCase) { "Lightning Rod" };
+
+    /// <summary>
+    /// MOD: added. The width and height, in tiles, of the square area powered by each power source,
+    /// centered on it (e.g. 10 means a 10x10 square = 100 tiles).
+    /// </summary>
+    public int PowerRangeSize { get; set; } = 10;
+
     /// <summary>How Junimo huts should automate gems.</summary>
     /// <remarks>The <see cref="JunimoHutBehavior.AutoDetect"/> option is equivalent to <see cref="JunimoHutBehavior.Ignore"/>.</remarks>
     public JunimoHutBehavior JunimoHutBehaviorForGems { get; set; } = JunimoHutBehavior.AutoDetect;
@@ -128,6 +153,12 @@ internal class ModConfig
 
         this.BlacklistSignNames = this.BlacklistSignNames.ToNonNullCaseInsensitive();
         this.BlacklistSignNames.RemoveWhere(string.IsNullOrWhiteSpace);
+
+        // MOD: added — normalize the power source set the same way, and guard against a nonsensical range.
+        this.PowerSourceNames = this.PowerSourceNames.ToNonNullCaseInsensitive();
+        this.PowerSourceNames.RemoveWhere(string.IsNullOrWhiteSpace);
+        if (this.PowerRangeSize < 1)
+            this.PowerRangeSize = 1;
 
         this.JunimoHutBehaviors = this.JunimoHutBehaviors.ToNonNullCaseInsensitive();
 

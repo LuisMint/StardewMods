@@ -10,7 +10,8 @@ namespace Pathoschild.Stardew.Automate.Framework;
 /// <param name="LocationKey">The location key as formatted by <see cref="MachineGroupFactory.GetLocationKey"/>.</param>
 /// <param name="ActiveMachineGroups">The machines to process.</param>
 /// <param name="DisabledMachineGroups">The disabled machine groups (e.g. machines not connected to a chest).</param>
-internal record MachineDataForLocation(string LocationKey, IReadOnlyCollection<IMachineGroup> ActiveMachineGroups, IReadOnlyCollection<IMachineGroup> DisabledMachineGroups)
+/// <param name="PoweredTiles">MOD: added. The set of tiles powered by a power source (see <see cref="PowerSystem"/>), or <c>null</c> if the power system is disabled (everything unrestricted). Unlike the other tile lookups, this isn't derived from the machine groups — it's a location-wide computation independent of them.</param>
+internal record MachineDataForLocation(string LocationKey, IReadOnlyCollection<IMachineGroup> ActiveMachineGroups, IReadOnlyCollection<IMachineGroup> DisabledMachineGroups, IReadOnlySet<Vector2>? PoweredTiles = null)
 {
     /*********
     ** Fields

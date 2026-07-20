@@ -65,6 +65,9 @@ internal class MachineGroupFactory
     /// <summary>MOD: added. Get the sign item names/IDs that act as a blacklist filter for a touching connector group.</summary>
     private readonly Func<HashSet<string>> GetBlacklistSignNames;
 
+    /// <summary>MOD: added. Encapsulates the power system, which (if enabled) restricts automation to tiles within range of a power source. See <see cref="PowerSystem"/> for details. Public so callers (e.g. for the overlay) can query powered tiles directly.</summary>
+    public PowerSystem PowerSystem { get; }
+
     /// <summary>Build a storage manager for the given containers.</summary>
     private readonly Func<IContainer[], StorageManager> BuildStorage;
 
@@ -81,15 +84,17 @@ internal class MachineGroupFactory
     /// <param name="getChestsEnabledByDefault">Get whether chests should be enabled by default if not set via <see cref="getChestOverride"/>.</param>
     /// <param name="getWhitelistSignNames">MOD: added. Get the sign item names/IDs that act as a whitelist filter for a touching connector group.</param>
     /// <param name="getBlacklistSignNames">MOD: added. Get the sign item names/IDs that act as a blacklist filter for a touching connector group.</param>
+    /// <param name="powerSystem">MOD: added. Encapsulates the power system, which (if enabled) restricts automation to tiles within range of a power source.</param>
     /// <param name="buildStorage">Build a storage manager for the given containers.</param>
     /// <param name="monitor">Encapsulates monitoring and logging.</param>
-    public MachineGroupFactory(Func<string, ModConfigMachine?> getMachineOverride, Func<string, ModConfigStorage?> getChestOverride, Func<bool> getChestsEnabledByDefault, Func<HashSet<string>> getWhitelistSignNames, Func<HashSet<string>> getBlacklistSignNames, Func<IContainer[], StorageManager> buildStorage, IMonitor monitor)
+    public MachineGroupFactory(Func<string, ModConfigMachine?> getMachineOverride, Func<string, ModConfigStorage?> getChestOverride, Func<bool> getChestsEnabledByDefault, Func<HashSet<string>> getWhitelistSignNames, Func<HashSet<string>> getBlacklistSignNames, PowerSystem powerSystem, Func<IContainer[], StorageManager> buildStorage, IMonitor monitor)
     {
         this.GetMachineOverride = getMachineOverride;
         this.GetChestOverride = getChestOverride;
         this.GetChestsEnabledByDefault = getChestsEnabledByDefault;
         this.GetWhitelistSignNames = getWhitelistSignNames; // MOD: added
         this.GetBlacklistSignNames = getBlacklistSignNames; // MOD: added
+        this.PowerSystem = powerSystem; // MOD: added
         this.BuildStorage = buildStorage;
         this.Monitor = monitor;
     }
@@ -126,6 +131,18 @@ internal class MachineGroupFactory
     /// <summary>Get all machine groups in a location.</summary>
     /// <param name="location">The location to search.</param>
     /// <param name="monitor">The monitor with which to log errors.</param>
+    public IEnumerable<IMachineGroup> GetMachineGroups(GameLocation location, IMonitor monitor)
+    {
+        LocationFloodFillIndex locationIndex = new(location, monitor);
+        HashSet<Vector2>? poweredTiles = this.PowerSystem.GetPoweredTiles(location, locationIndex);
+        return this.GetMachineGroups(location, locationIndex, poweredTiles);
+    }
+
+    /// <summary>
+    /// MOD: added. Same as <see cref="GetMachineGroups(GameLocation,IMonitor)"/>, but for callers
+    /// that already have a <see cref="LocationFloodFillIndex"/> and/or the powered-tiles set built
+    /// (e.g. <c>MachineManager</c>, which also needs the powered tiles separately for the overlay) —
+    /// avoids redundantly re-scanning the whole location for either one.
     ///
     /// MOD: Uses a union-find (disjoint set) approach instead of a plain flood-fill with a "visited"
     /// set, so results don't depend on tile scan order.
@@ -148,10 +165,12 @@ internal class MachineGroupFactory
     /// Valley (flooring is a background layer under the object), nodes are deduped by (area,
     /// category) rather than area alone, so a connector and a machine sharing one tile are both kept
     /// instead of one silently overwriting the other.
-    public IEnumerable<IMachineGroup> GetMachineGroups(GameLocation location, IMonitor monitor)
+    /// </summary>
+    /// <param name="location">The location to search.</param>
+    /// <param name="locationIndex">An already-built indexed view of the location.</param>
+    /// <param name="poweredTiles">The already-computed powered tiles (see <see cref="PowerSystem"/>), or <c>null</c> if the power system is disabled.</param>
+    public IEnumerable<IMachineGroup> GetMachineGroups(GameLocation location, LocationFloodFillIndex locationIndex, HashSet<Vector2>? poweredTiles)
     {
-        LocationFloodFillIndex locationIndex = new(location, monitor);
-
         static string Categorize(IAutomatable entity) => entity switch
         {
             IMachine => "machine",
@@ -171,6 +190,10 @@ internal class MachineGroupFactory
 
         foreach (Vector2 tile in location.GetTiles())
         {
+            // MOD: added — power system gate. An unpowered tile contributes nothing at all.
+            if (poweredTiles != null && !poweredTiles.Contains(tile))
+                continue;
+
             foreach (IAutomatable entity in this.GetEntities(location, locationIndex, tile))
             {
                 string category = Categorize(entity);
@@ -302,6 +325,12 @@ internal class MachineGroupFactory
 
             foreach (Vector2 tile in location.GetTiles())
             {
+                // MOD: added — power system gate (also naturally enforced via tileToNodeIndices
+                // below, since an unpowered connector tile never makes it into `nodes` in step 1,
+                // but skip early here too to avoid a wasted GetSignInfo call).
+                if (poweredTiles != null && !poweredTiles.Contains(tile))
+                    continue;
+
                 (bool IsWhitelist, string? HeldItemQualifiedId)? signInfo = this.GetSignInfo(locationIndex, tile);
                 if (signInfo == null)
                     continue;

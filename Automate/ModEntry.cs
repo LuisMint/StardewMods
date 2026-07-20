@@ -492,9 +492,33 @@ internal class ModEntry : Mod
         bool shouldReload = false;
         foreach ((Rectangle tileArea, TEntity entity, bool isAdded) in entities)
         {
+            // MOD: added — placing or removing a configured power source always forces a rescan,
+            // regardless of the normal "is this near something already tracked" heuristic below.
+            // That heuristic can't work for the power system: when a tile is out of power range,
+            // whatever's there is never tracked at all (not even as "disabled" or "outdated") — so
+            // there's nothing for a newly-placed or moved power source to appear "adjacent to,"
+            // and the heuristic would otherwise never realize the powered area changed.
+            if (this.Config.PowerSystemEnabled
+                && entity is StardewValley.Object powerSourceCandidate
+                && (this.Config.PowerSourceNames.Contains(powerSourceCandidate.QualifiedItemId) || this.Config.PowerSourceNames.Contains(powerSourceCandidate.Name)))
+            {
+                shouldReload = true;
+                break;
+            }
+
             // ignore unknown entity
             IAutomatable? automateable = this.MachineManager.Factory.GetEntityFor(location, new Vector2(tileArea.X, tileArea.Y), entity);
             if (automateable is null)
+                continue;
+
+            // MOD: added — if this tile is currently outside the powered range, ignore the change
+            // entirely (no reload, no outdated-tracking). An out-of-range tile is treated as if
+            // nothing is there at all, so a change there shouldn't affect anything — including not
+            // marking it "outdated," which would otherwise briefly overwrite the overlay's
+            // unpowered coloring with a generic "something changed" look until the next real
+            // rescan. (Power source placement/removal is handled separately above, since that's
+            // what actually changes which tiles are powered in the first place.)
+            if (data?.PoweredTiles != null && !data.PoweredTiles.Contains(new Vector2(tileArea.X, tileArea.Y)))
                 continue;
 
             // reload if added to an unknown location
