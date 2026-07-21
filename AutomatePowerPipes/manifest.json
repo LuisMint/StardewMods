@@ -1,0 +1,12 @@
+{
+  "Name": "Automate Power Pipes",
+  "Author": "luisMint",
+  "Version": "1.0.0",
+  "Description": "Adds custom path connectors for Automate",
+  "UniqueID": "luisMint.AutomatePowerPipes",
+  "MinimumApiVersion": "4.0.0",
+  "ContentPackFor": {
+    "UniqueID": "Pathoschild.ContentPatcher",
+    "MinimumVersion": "2.0.0"
+  }
+}

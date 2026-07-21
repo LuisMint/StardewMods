@@ -1,0 +1,14 @@
+{
+    "Changes": [
+        {
+            "Action": "Load",
+            "Target": "Mods/{{ModId}}/Pipes",
+            "FromFile": "Pipes/Pipes_{{season}}.png"
+        },
+        {
+            "Action": "Load",
+            "Target": "Mods/{{ModId}}/PipesPowered",
+            "FromFile": "Pipes/PipesPowered.png"
+        }
+    ]
+}

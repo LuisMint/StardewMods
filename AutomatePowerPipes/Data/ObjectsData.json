@@ -1,0 +1,31 @@
+{
+    "Changes": [
+        {
+            "Action": "EditData",
+            "Target": "Data/Objects",
+            "Entries": {
+                "{{ModId}}_PullPushPipe": {
+                    "Name": "{{ModId}}_PullPushPipe",
+                    "DisplayName": "Pull & Push Pipe",
+                    "Description": "Lets automation both pull from and push into chests along this path, as long as it's within power range.",
+                    "Type": "Crafting",
+                    "Category": -24,
+                    "Price": 1,
+                    "Texture": "Mods/{{ModId}}/Pipes",
+                    "SpriteIndex": 0,
+                    "Edibility": -300,
+                    "IsDrink": false,
+                    "Buffs": null,
+                    "GeodeDropsDefaultItems": false,
+                    "GeodeDrops": null,
+                    "ArtifactSpotChances": null,
+                    "ExcludeFromFishingCollection": false,
+                    "ExcludeFromShippingCollection": false,
+                    "ExcludeFromRandomSale": false,
+                    "ContextTags": null,
+                    "CustomFields": null
+                }
+            }
+        }
+    ]
+}

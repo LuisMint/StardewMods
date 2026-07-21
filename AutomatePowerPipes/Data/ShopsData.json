@@ -1,0 +1,46 @@
+{
+    "Changes": [
+        {
+            "Action": "EditData",
+            "Target": "Data/Shops",
+            "TargetField": ["Carpenter", "Items"],
+            "Entries": {
+                "{{ModId}}_PullPushPipe": {
+                    "ActionsOnPurchase": null,
+                    "CustomFields": null,
+                    "TradeItemId": null,
+                    "TradeItemAmount": 1,
+                    "Price": 10,
+                    "ApplyProfitMargins": null,
+                    "AvailableStock": -1,
+                    "AvailableStockLimit": "Global",
+                    "AvoidRepeat": false,
+                    "UseObjectDataPrice": false,
+                    "IgnoreShopPriceModifiers": false,
+                    "PriceModifiers": null,
+                    "PriceModifierMode": "Stack",
+                    "AvailableStockModifiers": null,
+                    "AvailableStockModifierMode": "Stack",
+                    "Condition": null,
+                    "Id": "(O){{ModId}}_PullPushPipe (Recipe)",
+                    "ItemId": "(O){{ModId}}_PullPushPipe",
+                    "RandomItemId": null,
+                    "MaxItems": null,
+                    "MinStack": -1,
+                    "MaxStack": -1,
+                    "Quality": -1,
+                    "ObjectInternalName": null,
+                    "ObjectDisplayName": null,
+                    "ToolUpgradeLevel": -1,
+                    "IsRecipe": true,
+                    "StackModifiers": null,
+                    "StackModifierMode": "Stack",
+                    "QualityModifiers": null,
+                    "QualityModifierMode": "Stack",
+                    "ModData": null,
+                    "PerItemCondition": null
+                }
+            }
+        }
+    ]
+}

@@ -1,0 +1,11 @@
+{
+    "Changes": [
+        {
+            "Action": "EditData",
+            "Target": "Data/CraftingRecipes",
+            "Entries": {
+                "{{ModId}}_PullPushPipe": "388 1/Field/{{ModId}}_PullPushPipe 1/false/default/"
+            }
+        }
+    ]
+}

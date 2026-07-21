@@ -1,0 +1,9 @@
+{
+   "Format": "2.0.0",
+   "Changes": [
+      {
+         "Action": "Include",
+         "FromFile": "Pipes/Pipes.json, Data/ObjectsData.json, Data/PathsData.json, Data/CraftingData.json, Data/ShopsData.json"
+      }
+   ]
+}
