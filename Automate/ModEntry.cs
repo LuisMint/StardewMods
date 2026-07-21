@@ -14,6 +14,7 @@ using StardewModdingAPI.Events;
 using StardewModdingAPI.Utilities;
 using StardewValley;
 using StardewValley.GameData.BigCraftables;
+using StardewValley.TerrainFeatures;
 
 namespace Pathoschild.Stardew.Automate;
 
@@ -527,6 +528,25 @@ internal class ModEntry : Mod
             {
                 shouldReload = true;
                 break;
+            }
+
+            // MOD: added — placing a connector with a registered "powered variant" always forces a
+            // rescan too, regardless of power range. This is needed because the game's own
+            // placement logic has to pick one of two Data/FloorsAndPaths entries that intentionally
+            // share the same ItemId (the base and powered look for the same craftable item), and
+            // which one it picks isn't guaranteed — so a freshly-placed tile might start out
+            // showing the wrong texture. An immediate rescan lets PoweredFloorSync correct it to
+            // match the tile's actual current power state right away, instead of potentially
+            // leaving it wrong until some unrelated nearby change happens to trigger a rescan.
+            if (isAdded && entity is Flooring placedFloor)
+            {
+                Dictionary<string, string> poweredVariants = this.Config.ConnectorPoweredVariants;
+                string currentFloorId = placedFloor.whichFloor.Value;
+                if (poweredVariants.ContainsKey(currentFloorId) || poweredVariants.ContainsValue(currentFloorId))
+                {
+                    shouldReload = true;
+                    break;
+                }
             }
 
             // ignore unknown entity

@@ -91,6 +91,16 @@ internal class ModConfig
     /// </summary>
     public int PowerRangeDistance { get; set; } = 2;
 
+    /// <summary>
+    /// MOD: added. Maps a connector's base <c>Data/FloorsAndPaths</c> ID to a "powered" variant ID
+    /// to switch it to whenever it's within power system range (and back when it isn't) — e.g. a
+    /// custom pipe's own powered-look floor entry. Empty by default; populated by content packs
+    /// adding a custom connector with a powered variant. Both entries should normally share the
+    /// same ItemId (they're two appearances of the same craftable item, not separate items) and use
+    /// matching ConnectType/CornerSize/etc. so only the texture actually changes.
+    /// </summary>
+    public Dictionary<string, string> ConnectorPoweredVariants { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>How Junimo huts should automate gems.</summary>
     /// <remarks>The <see cref="JunimoHutBehavior.AutoDetect"/> option is equivalent to <see cref="JunimoHutBehavior.Ignore"/>.</remarks>
     public JunimoHutBehavior JunimoHutBehaviorForGems { get; set; } = JunimoHutBehavior.AutoDetect;
@@ -163,6 +173,9 @@ internal class ModConfig
             this.PowerRangeDistance = 0;
 
         this.JunimoHutBehaviors = this.JunimoHutBehaviors.ToNonNullCaseInsensitive();
+
+        // MOD: added.
+        this.ConnectorPoweredVariants = this.ConnectorPoweredVariants.ToNonNullCaseInsensitive();
 
         this.ChestOverrides = this.ChestOverrides.ToNonNullCaseInsensitive();
         this.ChestOverrides.RemoveWhere(pair => pair.Value is null);

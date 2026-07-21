@@ -68,6 +68,9 @@ internal class MachineManager
     /// <summary>Constructs machine groups.</summary>
     public MachineGroupFactory Factory { get; }
 
+    /// <summary>MOD: added. Swaps a connector's floor appearance between its base and "powered" variant based on power range.</summary>
+    private readonly PoweredFloorSync PoweredFloorSync;
+
     /// <summary>An aggregate collection of machine groups linked by Junimo chests.</summary>
     public JunimoMachineGroup JunimoMachineGroup { get; }
 
@@ -93,6 +96,10 @@ internal class MachineManager
             getSourceNames: () => this.Config().PowerSourceNames,
             getRangeDistance: () => this.Config().PowerRangeDistance
         );
+
+        // MOD: added — swaps a connector's floor appearance between its base and "powered" variant
+        // based on power range. See PoweredFloorSync.cs for details.
+        this.PoweredFloorSync = new PoweredFloorSync(getConnectorPoweredVariants: () => this.Config().ConnectorPoweredVariants);
 
         this.Factory = new(
             getMachineOverride: this.GetMachineOverride,
@@ -341,6 +348,9 @@ internal class MachineManager
             // scan of the location — which was pure redundant work.
             LocationFloodFillIndex locationIndex = new(location, this.Monitor);
             HashSet<Vector2>? poweredTiles = this.Factory.PowerSystem.GetPoweredTiles(location, locationIndex);
+
+            // MOD: added — swap any managed connector's floor appearance to match its current power state.
+            this.PoweredFloorSync.Sync(location, poweredTiles);
 
             // collect new groups
             List<IMachineGroup> active = [];
