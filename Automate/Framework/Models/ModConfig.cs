@@ -92,14 +92,30 @@ internal class ModConfig
     public int PowerRangeDistance { get; set; } = 2;
 
     /// <summary>
-    /// MOD: added. Maps a connector's base <c>Data/FloorsAndPaths</c> ID to a "powered" variant ID
-    /// to switch it to whenever it's within power system range (and back when it isn't) — e.g. a
-    /// custom pipe's own powered-look floor entry. Empty by default; populated by content packs
-    /// adding a custom connector with a powered variant. Both entries should normally share the
-    /// same ItemId (they're two appearances of the same craftable item, not separate items) and use
-    /// matching ConnectType/CornerSize/etc. so only the texture actually changes.
+    /// MOD: added. Maps a connector's <c>Data/FloorsAndPaths</c> ID to the Alternative Textures
+    /// texture ID (in the form <c>{Owner}.{ModelName}</c>, e.g.
+    /// <c>luisMint.ATAutomatePowerPipes.Flooring_luisMint.AutomatePowerPipes_PullPushPipe</c>)
+    /// providing its four appearance variations: 0 = unpowered, 1 = powered, 2 = powered (dimmer),
+    /// 3 = powered (dimmest). Empty by default; populated for a custom connector that has a matching
+    /// Alternative Textures content pack installed. Requires the Alternative Textures mod — see
+    /// <see cref="PoweredFloorAnimator"/>.
     /// </summary>
-    public Dictionary<string, string> ConnectorPoweredVariants { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, string> ConnectorPoweredTextureIds { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// MOD: added. The animation speed, in frames per second, for a connector that's powered but not
+    /// part of a valid (active) automation group — a "flickering" cue that it's connected to power
+    /// but isn't actually automating anything (e.g. missing a machine or chest). See
+    /// <see cref="PoweredFloorAnimator"/>.
+    /// </summary>
+    public double PoweredFloorAnimationFps { get; set; } = 6;
+
+    /// <summary>
+    /// MOD: added. How many times longer to hold the fully-unpowered frame, relative to the other
+    /// frames, in the "powered but not part of a valid group" flicker animation. See
+    /// <see cref="PoweredFloorAnimator"/>.
+    /// </summary>
+    public double PoweredFloorUnpoweredHoldMultiplier { get; set; } = 2;
 
     /// <summary>How Junimo huts should automate gems.</summary>
     /// <remarks>The <see cref="JunimoHutBehavior.AutoDetect"/> option is equivalent to <see cref="JunimoHutBehavior.Ignore"/>.</remarks>
@@ -172,10 +188,16 @@ internal class ModConfig
         if (this.PowerRangeDistance < 0)
             this.PowerRangeDistance = 0;
 
+        // MOD: added — guard against a nonsensical animation speed/hold multiplier.
+        if (this.PoweredFloorAnimationFps <= 0)
+            this.PoweredFloorAnimationFps = 6;
+        if (this.PoweredFloorUnpoweredHoldMultiplier < 1)
+            this.PoweredFloorUnpoweredHoldMultiplier = 1;
+
         this.JunimoHutBehaviors = this.JunimoHutBehaviors.ToNonNullCaseInsensitive();
 
         // MOD: added.
-        this.ConnectorPoweredVariants = this.ConnectorPoweredVariants.ToNonNullCaseInsensitive();
+        this.ConnectorPoweredTextureIds = this.ConnectorPoweredTextureIds.ToNonNullCaseInsensitive();
 
         this.ChestOverrides = this.ChestOverrides.ToNonNullCaseInsensitive();
         this.ChestOverrides.RemoveWhere(pair => pair.Value is null);

@@ -575,7 +575,20 @@ internal class MachineGroupFactory
         foreach (object target in targets)
         {
             if (target is Flooring floor)
-                return $"floor:{floor.whichFloor.Value}";
+            {
+                // MOD: fixed — key on the floor's underlying ITEM identity (shared by every
+                // Data/FloorsAndPaths entry for the same craftable), not the specific entry ID in
+                // `whichFloor.Value`. Guards against any connector whose Data/FloorsAndPaths
+                // entries share one ItemId (e.g. an earlier version of the power pipe swapped
+                // between a base and "powered" entry this way) — keying on `whichFloor.Value`
+                // would treat those as different connector types, so adjacent tiles of one
+                // continuous path could silently fail to union just because they happened to
+                // currently point at different entries, fragmenting the network into isolated
+                // tiles. Falls back to the entry ID itself if the item can't be resolved, matching
+                // the old behavior for that edge case.
+                string? itemId = floor.GetData()?.ItemId;
+                return itemId != null ? $"floor-item:{itemId}" : $"floor:{floor.whichFloor.Value}";
+            }
         }
 
         foreach (object target in targets)

@@ -327,6 +327,21 @@ internal class ModEntry : Mod
                 this.HandleError(ex, "processing machines");
             }
         }
+
+        // MOD: added — animate any "powered but not part of a valid group" connectors in the
+        // player's current location. Purely visual, so it's kept in its own try/catch and doesn't
+        // depend on EnableAutomation — it's a no-op anyway once there's no cached machine data.
+        if (Context.IsWorldReady && this.Config.PowerSystemEnabled)
+        {
+            try
+            {
+                this.MachineManager.TickPoweredFloorAnimation(Game1.currentLocation);
+            }
+            catch (Exception ex)
+            {
+                this.HandleError(ex, "animating powered connectors");
+            }
+        }
     }
 
     /// <inheritdoc cref="IInputEvents.ButtonsChanged" />
@@ -530,23 +545,14 @@ internal class ModEntry : Mod
                 break;
             }
 
-            // MOD: added — placing a connector with a registered "powered variant" always forces a
-            // rescan too, regardless of power range. This is needed because the game's own
-            // placement logic has to pick one of two Data/FloorsAndPaths entries that intentionally
-            // share the same ItemId (the base and powered look for the same craftable item), and
-            // which one it picks isn't guaranteed — so a freshly-placed tile might start out
-            // showing the wrong texture. An immediate rescan lets PoweredFloorSync correct it to
-            // match the tile's actual current power state right away, instead of potentially
-            // leaving it wrong until some unrelated nearby change happens to trigger a rescan.
-            if (isAdded && entity is Flooring placedFloor)
+            // MOD: added — placing a connector that has a registered Alternative Textures powered
+            // look always forces a rescan too, regardless of power range, so its displayed texture
+            // gets assigned promptly instead of sitting on the vanilla look until some unrelated
+            // nearby change happens to trigger a rescan.
+            if (isAdded && entity is Flooring placedFloor && this.Config.ConnectorPoweredTextureIds.ContainsKey(placedFloor.whichFloor.Value))
             {
-                Dictionary<string, string> poweredVariants = this.Config.ConnectorPoweredVariants;
-                string currentFloorId = placedFloor.whichFloor.Value;
-                if (poweredVariants.ContainsKey(currentFloorId) || poweredVariants.ContainsValue(currentFloorId))
-                {
-                    shouldReload = true;
-                    break;
-                }
+                shouldReload = true;
+                break;
             }
 
             // ignore unknown entity

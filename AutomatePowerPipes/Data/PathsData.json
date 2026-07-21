@@ -17,21 +17,6 @@
                     "ShadowType": "None",
                     "CornerSize": 4,
                     "FarmSpeedBuff": 0.1
-                },
-
-                "{{ModId}}_PullPushPipe_Powered": {
-                    "ID": "{{ModId}}_PullPushPipe_Powered",
-                    "ItemId": "{{ModId}}_PullPushPipe",
-                    "Texture": "Mods/{{ModId}}/PipesPowered",
-                    "Corner": { "X": 0, "Y": 0 },
-                    "PlacementSound": "axchop",
-                    "RemovalSound": "axchop",
-                    "RemovalDebrisType": 12,
-                    "FootstepSound": "stoneStep",
-                    "ConnectType": "Path",
-                    "ShadowType": "None",
-                    "CornerSize": 4,
-                    "FarmSpeedBuff": 0.1
                 }
             }
         }

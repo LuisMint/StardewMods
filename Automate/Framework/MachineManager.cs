@@ -68,8 +68,11 @@ internal class MachineManager
     /// <summary>Constructs machine groups.</summary>
     public MachineGroupFactory Factory { get; }
 
-    /// <summary>MOD: added. Swaps a connector's floor appearance between its base and "powered" variant based on power range.</summary>
+    /// <summary>MOD: added. Swaps a connector's displayed appearance between its unpowered and powered variant based on power range.</summary>
     private readonly PoweredFloorSync PoweredFloorSync;
+
+    /// <summary>MOD: added. Animates a connector's displayed appearance while it's powered but not part of a valid automation group.</summary>
+    private readonly PoweredFloorAnimator PoweredFloorAnimator;
 
     /// <summary>An aggregate collection of machine groups linked by Junimo chests.</summary>
     public JunimoMachineGroup JunimoMachineGroup { get; }
@@ -97,9 +100,17 @@ internal class MachineManager
             getRangeDistance: () => this.Config().PowerRangeDistance
         );
 
-        // MOD: added — swaps a connector's floor appearance between its base and "powered" variant
-        // based on power range. See PoweredFloorSync.cs for details.
-        this.PoweredFloorSync = new PoweredFloorSync(getConnectorPoweredVariants: () => this.Config().ConnectorPoweredVariants);
+        // MOD: added — swaps a connector's displayed appearance between its unpowered and "powered"
+        // variant based on power range. See PoweredFloorSync.cs for details.
+        this.PoweredFloorSync = new PoweredFloorSync(getConnectorTextureIds: () => this.Config().ConnectorPoweredTextureIds);
+
+        // MOD: added — animates a connector's displayed appearance while it's powered but not part
+        // of a valid automation group. See PoweredFloorAnimator.cs for details.
+        this.PoweredFloorAnimator = new PoweredFloorAnimator(
+            getConnectorTextureIds: () => this.Config().ConnectorPoweredTextureIds,
+            getFps: () => this.Config().PoweredFloorAnimationFps,
+            getUnpoweredHoldMultiplier: () => this.Config().PoweredFloorUnpoweredHoldMultiplier
+        );
 
         this.Factory = new(
             getMachineOverride: this.GetMachineOverride,
@@ -114,6 +125,17 @@ internal class MachineManager
         this.Factory.Add(defaultFactory);
 
         this.JunimoMachineGroup = new(this.Factory.SortMachines, this.BuildStorage, this.Monitor);
+    }
+
+    /// <summary>
+    /// MOD: added. Advance the "powered but not part of a valid group" connector animation by one
+    /// tick for the given location — normally just the current player's location, since this is a
+    /// purely visual effect and there's no reason to animate tiles nobody can see.
+    /// </summary>
+    /// <param name="location">The location to animate.</param>
+    public void TickPoweredFloorAnimation(GameLocation location)
+    {
+        this.PoweredFloorAnimator.Tick(location, this.GetMachineDataFor(location));
     }
 
     /****
@@ -349,9 +371,6 @@ internal class MachineManager
             LocationFloodFillIndex locationIndex = new(location, this.Monitor);
             HashSet<Vector2>? poweredTiles = this.Factory.PowerSystem.GetPoweredTiles(location, locationIndex);
 
-            // MOD: added — swap any managed connector's floor appearance to match its current power state.
-            this.PoweredFloorSync.Sync(location, poweredTiles);
-
             // collect new groups
             List<IMachineGroup> active = [];
             List<IMachineGroup> disabled = [];
@@ -372,6 +391,10 @@ internal class MachineManager
             MachineDataForLocation locationData = new(locationKey, active, disabled, poweredTiles);
             this.MachineData[locationKey] = locationData;
             this.LocationsByKey[locationKey] = location; // MOD: added — keep the cache fresh for CheckForSignChanges
+
+            // MOD: added — swap any managed connector's displayed appearance to match its current
+            // power and group state (needs the just-built locationData for its ActiveTiles).
+            this.PoweredFloorSync.Sync(location, locationData);
 
             // MOD: added — reseed the sign snapshot for this location's current sign candidate tiles
             // (not just ones with an item currently on them), so this fresh rescan isn't immediately
