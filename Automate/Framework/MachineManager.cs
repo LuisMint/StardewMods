@@ -91,7 +91,7 @@ internal class MachineManager
         PowerSystem powerSystem = new(
             getEnabled: () => this.Config().PowerSystemEnabled,
             getSourceNames: () => this.Config().PowerSourceNames,
-            getRangeSize: () => this.Config().PowerRangeSize
+            getRangeDistance: () => this.Config().PowerRangeDistance
         );
 
         this.Factory = new(

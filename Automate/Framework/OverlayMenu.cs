@@ -157,7 +157,19 @@ internal class OverlayMenu : BaseOverlay
                         color = (isWhitelistSign ? Color.White : Color.Black) * OverlayMenu.SignMarkerFillOpacity;
                 }
                 else if (this.MachineData.DisabledTiles.TryGetValue(tile, out group) || this.MachineData.OutdatedTiles.ContainsKey(tile))
-                    color = OverlayMenu.DisabledColor * OverlayMenu.NormalFillOpacity;
+                {
+                    // MOD: changed — only use the normal disabled-red FILL if this tile is actually
+                    // powered (or the power system is off). If it's out of range, leave `color` as
+                    // null so the power-aware fallback below applies (dark red) instead — but
+                    // `group` is still set above, so the usual disabled-style outline border still
+                    // gets drawn on top of it. This way a viable-but-unpowered machine/chest still
+                    // looks recognizably "there" (an outline on a dark-red tile) instead of either
+                    // vanishing into a featureless background or looking identical to a normal
+                    // powered-but-disconnected machine.
+                    bool isPowered = this.MachineData.PoweredTiles == null || this.MachineData.PoweredTiles.Contains(tile);
+                    if (isPowered)
+                        color = OverlayMenu.DisabledColor * OverlayMenu.NormalFillOpacity;
+                }
             }
             // MOD: added — for tiles with no group/connector/sign info above, fall back to a
             // power-aware default instead of always plain black: if the power system is enabled,

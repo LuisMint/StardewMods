@@ -84,10 +84,12 @@ internal class ModConfig
     public HashSet<string> PowerSourceNames { get; set; } = new(StringComparer.OrdinalIgnoreCase) { "Lightning Rod" };
 
     /// <summary>
-    /// MOD: added. The width and height, in tiles, of the square area powered by each power source,
-    /// centered on it (e.g. 10 means a 10x10 square = 100 tiles).
+    /// MOD: added. How many tiles out from a power source, in each of the 4 cardinal directions, its
+    /// power extends — e.g. 2 means a square reaching 2 tiles in every direction from the source,
+    /// covering 5x5 tiles total (2 + 1 center + 2). Defined as a distance rather than a total width
+    /// so the covered area is always exactly centered on the source, with no rounding ambiguity.
     /// </summary>
-    public int PowerRangeSize { get; set; } = 10;
+    public int PowerRangeDistance { get; set; } = 2;
 
     /// <summary>How Junimo huts should automate gems.</summary>
     /// <remarks>The <see cref="JunimoHutBehavior.AutoDetect"/> option is equivalent to <see cref="JunimoHutBehavior.Ignore"/>.</remarks>
@@ -157,8 +159,8 @@ internal class ModConfig
         // MOD: added — normalize the power source set the same way, and guard against a nonsensical range.
         this.PowerSourceNames = this.PowerSourceNames.ToNonNullCaseInsensitive();
         this.PowerSourceNames.RemoveWhere(string.IsNullOrWhiteSpace);
-        if (this.PowerRangeSize < 1)
-            this.PowerRangeSize = 1;
+        if (this.PowerRangeDistance < 0)
+            this.PowerRangeDistance = 0;
 
         this.JunimoHutBehaviors = this.JunimoHutBehaviors.ToNonNullCaseInsensitive();
 

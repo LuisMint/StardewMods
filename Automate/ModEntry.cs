@@ -478,6 +478,29 @@ internal class ModEntry : Mod
         }
     }
 
+    /// <summary>
+    /// MOD: added. Get whether a tile is powered, or orthogonally touching a powered tile. Used by
+    /// <see cref="ReloadIfNeeded{TEntity}"/> to decide whether a placement/removal change is worth
+    /// reacting to — matches the same "touching" rule (adjacent or same-tile) used by the actual
+    /// grouping logic, so a machine/chest that can legitimately join a group via a powered connector
+    /// touching it doesn't get incorrectly ignored just because its own exact tile is out of range.
+    /// </summary>
+    /// <param name="data">The location's tracked machine data.</param>
+    /// <param name="tile">The tile to check.</param>
+    private bool IsNearPower(MachineDataForLocation data, Vector2 tile)
+    {
+        if (data.PoweredTiles == null)
+            return true; // power system disabled — everything is unrestricted
+
+        if (data.PoweredTiles.Contains(tile))
+            return true;
+
+        return data.PoweredTiles.Contains(new Vector2(tile.X, tile.Y - 1))
+            || data.PoweredTiles.Contains(new Vector2(tile.X, tile.Y + 1))
+            || data.PoweredTiles.Contains(new Vector2(tile.X - 1, tile.Y))
+            || data.PoweredTiles.Contains(new Vector2(tile.X + 1, tile.Y));
+    }
+
     /// <summary>Rescan machines in a location if added/removed entities may change active automation.</summary>
     /// <typeparam name="TEntity">The entity type.</typeparam>
     /// <param name="location">The location whose entities changed.</param>
@@ -511,14 +534,17 @@ internal class ModEntry : Mod
             if (automateable is null)
                 continue;
 
-            // MOD: added — if this tile is currently outside the powered range, ignore the change
-            // entirely (no reload, no outdated-tracking). An out-of-range tile is treated as if
-            // nothing is there at all, so a change there shouldn't affect anything — including not
-            // marking it "outdated," which would otherwise briefly overwrite the overlay's
-            // unpowered coloring with a generic "something changed" look until the next real
-            // rescan. (Power source placement/removal is handled separately above, since that's
-            // what actually changes which tiles are powered in the first place.)
-            if (data?.PoweredTiles != null && !data.PoweredTiles.Contains(new Vector2(tileArea.X, tileArea.Y)))
+            // MOD: added — if this tile (and nothing orthogonally touching it) is powered, ignore
+            // the change entirely (no reload, no outdated-tracking). A tile that's truly isolated
+            // from power is treated as if nothing is there at all, so a change there shouldn't
+            // affect anything. The check also considers the 4 orthogonally-adjacent tiles, not just
+            // the exact tile — a machine/chest can join a group through a powered connector
+            // touching it even while its own tile is technically just outside the configured range
+            // (the same "touching" rule used everywhere else in the grouping logic), so only
+            // skipping based on the exact tile would incorrectly suppress a rescan for that case.
+            // (Power source placement/removal is handled separately above, since that's what
+            // actually changes which tiles are powered in the first place.)
+            if (data != null && !this.IsNearPower(data, new Vector2(tileArea.X, tileArea.Y)))
                 continue;
 
             // reload if added to an unknown location

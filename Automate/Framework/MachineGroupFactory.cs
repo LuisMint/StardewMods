@@ -165,6 +165,14 @@ internal class MachineGroupFactory
     /// Valley (flooring is a background layer under the object), nodes are deduped by (area,
     /// category) rather than area alone, so a connector and a machine sharing one tile are both kept
     /// instead of one silently overwriting the other.
+    ///
+    /// MOD: added. If <paramref name="poweredTiles"/> is non-null (power system enabled), only
+    /// CONNECTOR tiles need to be within it — machines and containers are collected regardless of
+    /// their own tile's power status. A path is what carries power outward from a source, so a
+    /// machine or chest can still join an active group through a powered connector touching it even
+    /// if its own tile is technically out of range. Something that isn't touching any connector at
+    /// all was never going to form an active group anyway (that's true with or without the power
+    /// system), so this doesn't change that case.
     /// </summary>
     /// <param name="location">The location to search.</param>
     /// <param name="locationIndex">An already-built indexed view of the location.</param>
@@ -190,13 +198,21 @@ internal class MachineGroupFactory
 
         foreach (Vector2 tile in location.GetTiles())
         {
-            // MOD: added — power system gate. An unpowered tile contributes nothing at all.
-            if (poweredTiles != null && !poweredTiles.Contains(tile))
-                continue;
-
             foreach (IAutomatable entity in this.GetEntities(location, locationIndex, tile))
             {
                 string category = Categorize(entity);
+
+                // MOD: changed — power gating now only applies to CONNECTOR tiles, not machines or
+                // containers directly. The path is what carries power outward from a source; a
+                // machine or chest can still be part of an active group via a powered connector
+                // touching it, even if its own tile is technically outside range. A machine/chest
+                // that isn't touching any connector at all (powered or not) still won't form an
+                // active group either way — that's already true regardless of the power system,
+                // since a fully isolated machine/chest was never "active" to begin with — so this
+                // doesn't require any extra work to reach the outcome, just a narrower check.
+                if (category == "connector" && poweredTiles != null && !poweredTiles.Contains(tile))
+                    continue;
+
                 if (!seenKeys.Add((entity.TileArea, category)))
                     continue;
 
