@@ -1,0 +1,24 @@
+{
+    "Changes": [
+        {
+            "Action": "EditData",
+            "Target": "Data/BigCraftables",
+            "Entries": {
+                "{{ModId}}_PowerCoil": {
+                    "Name": "{{ModId}}_PowerCoil",
+                    "DisplayName": "Power Coil",
+                    "Description": "Provides power to nearby connectors and machines, just like a Lightning Rod.",
+                    "Price": 50,
+                    "Fragility": 0,
+                    "CanBePlacedOutdoors": true,
+                    "CanBePlacedIndoors": false,
+                    "IsLamp": false,
+                    "Texture": "Mods/{{ModId}}/PowerCoil",
+                    "SpriteIndex": 0,
+                    "ContextTags": null,
+                    "CustomFields": null
+                }
+            }
+        }
+    ]
+}

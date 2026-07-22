@@ -2,10 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using HarmonyLib;
 using Microsoft.Xna.Framework;
 using Pathoschild.Stardew.Automate.Framework;
 using Pathoschild.Stardew.Automate.Framework.Commands;
 using Pathoschild.Stardew.Automate.Framework.Models;
+using Pathoschild.Stardew.Automate.Framework.Patches;
 using Pathoschild.Stardew.Common;
 using Pathoschild.Stardew.Common.Integrations.GenericModConfigMenu;
 using Pathoschild.Stardew.Common.Messages;
@@ -106,6 +108,10 @@ internal class ModEntry : Mod
         );
 
         this.CommandHandler = new CommandHandler(this.Monitor, () => this.Config, this.MachineManager);
+
+        // apply Harmony patches
+        Harmony harmony = new(this.ModManifest.UniqueID);
+        PowerCoilPatches.Apply(harmony);
 
         // hook events
         helper.Events.Content.AssetRequested += this.OnAssetRequested;
@@ -471,6 +477,15 @@ internal class ModEntry : Mod
         if (!Context.IsMainPlayer)
         {
             this.MachineManager.Reset();
+            this.MachineManager.ReloadQueuedLocations();
+        }
+        else
+        {
+            // MOD: added — force a fresh rescan of the current location whenever the overlay is
+            // opened, so it always reflects the actual current state instead of whatever the
+            // automatic change-detection heuristics last cached (which can occasionally miss an
+            // edge case and go stale).
+            this.MachineManager.QueueReload(Game1.currentLocation);
             this.MachineManager.ReloadQueuedLocations();
         }
 

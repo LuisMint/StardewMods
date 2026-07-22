@@ -2,6 +2,7 @@
   <PropertyGroup>
     <Version>2.6.1</Version>
     <RootNamespace>Pathoschild.Stardew.Automate</RootNamespace>
+    <EnableHarmony>true</EnableHarmony>
   </PropertyGroup>
 
   <ItemGroup>

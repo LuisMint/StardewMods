@@ -14,6 +14,11 @@
             "Action": "Load",
             "Target": "Mods/{{ModId}}/PipesOutput",
             "FromFile": "Pipes/PipesOutput.png"
+        },
+        {
+            "Action": "Load",
+            "Target": "Mods/{{ModId}}/PowerCoil",
+            "FromFile": "Pipes/PowerCoil.png"
         }
     ]
 }
