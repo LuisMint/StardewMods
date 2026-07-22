@@ -3,7 +3,17 @@
         {
             "Action": "Load",
             "Target": "Mods/{{ModId}}/Pipes",
-            "FromFile": "Pipes/Pipes_{{season}}.png"
+            "FromFile": "Pipes/Pipes.png"
+        },
+        {
+            "Action": "Load",
+            "Target": "Mods/{{ModId}}/PipesInput",
+            "FromFile": "Pipes/PipesInput.png"
+        },
+        {
+            "Action": "Load",
+            "Target": "Mods/{{ModId}}/PipesOutput",
+            "FromFile": "Pipes/PipesOutput.png"
         }
     ]
 }

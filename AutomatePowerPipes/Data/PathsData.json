@@ -17,6 +17,36 @@
                     "ShadowType": "None",
                     "CornerSize": 4,
                     "FarmSpeedBuff": 0.1
+                },
+
+                "{{ModId}}_InputPipe": {
+                    "ID": "{{ModId}}_InputPipe",
+                    "ItemId": "{{ModId}}_InputPipe",
+                    "Texture": "Mods/{{ModId}}/PipesInput",
+                    "Corner": { "X": 0, "Y": 0 },
+                    "PlacementSound": "axchop",
+                    "RemovalSound": "axchop",
+                    "RemovalDebrisType": 12,
+                    "FootstepSound": "stoneStep",
+                    "ConnectType": "Path",
+                    "ShadowType": "None",
+                    "CornerSize": 4,
+                    "FarmSpeedBuff": 0.1
+                },
+
+                "{{ModId}}_OutputPipe": {
+                    "ID": "{{ModId}}_OutputPipe",
+                    "ItemId": "{{ModId}}_OutputPipe",
+                    "Texture": "Mods/{{ModId}}/PipesOutput",
+                    "Corner": { "X": 0, "Y": 0 },
+                    "PlacementSound": "axchop",
+                    "RemovalSound": "axchop",
+                    "RemovalDebrisType": 12,
+                    "FootstepSound": "stoneStep",
+                    "ConnectType": "Path",
+                    "ShadowType": "None",
+                    "CornerSize": 4,
+                    "FarmSpeedBuff": 0.1
                 }
             }
         }

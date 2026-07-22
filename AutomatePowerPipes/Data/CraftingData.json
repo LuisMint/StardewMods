@@ -4,7 +4,9 @@
             "Action": "EditData",
             "Target": "Data/CraftingRecipes",
             "Entries": {
-                "{{ModId}}_PullPushPipe": "388 1/Field/{{ModId}}_PullPushPipe 1/false/default/"
+                "{{ModId}}_PullPushPipe": "388 1/Field/{{ModId}}_PullPushPipe 1/false/default/",
+                "{{ModId}}_InputPipe": "388 1/Field/{{ModId}}_InputPipe 1/false/default/",
+                "{{ModId}}_OutputPipe": "388 1/Field/{{ModId}}_OutputPipe 1/false/default/"
             }
         }
     ]

@@ -24,6 +24,50 @@
                     "ExcludeFromRandomSale": false,
                     "ContextTags": null,
                     "CustomFields": null
+                },
+
+                "{{ModId}}_InputPipe": {
+                    "Name": "{{ModId}}_InputPipe",
+                    "DisplayName": "Input Pipe",
+                    "Description": "Lets automation store items into chests along this path, as long as it's within power range. Never pulls items from a chest through it.",
+                    "Type": "Crafting",
+                    "Category": -24,
+                    "Price": 1,
+                    "Texture": "Mods/{{ModId}}/PipesInput",
+                    "SpriteIndex": 0,
+                    "Edibility": -300,
+                    "IsDrink": false,
+                    "Buffs": null,
+                    "GeodeDropsDefaultItems": false,
+                    "GeodeDrops": null,
+                    "ArtifactSpotChances": null,
+                    "ExcludeFromFishingCollection": false,
+                    "ExcludeFromShippingCollection": false,
+                    "ExcludeFromRandomSale": false,
+                    "ContextTags": null,
+                    "CustomFields": null
+                },
+
+                "{{ModId}}_OutputPipe": {
+                    "Name": "{{ModId}}_OutputPipe",
+                    "DisplayName": "Output Pipe",
+                    "Description": "Lets automation pull items from chests along this path, as long as it's within power range. Never stores items into a chest through it.",
+                    "Type": "Crafting",
+                    "Category": -24,
+                    "Price": 1,
+                    "Texture": "Mods/{{ModId}}/PipesOutput",
+                    "SpriteIndex": 0,
+                    "Edibility": -300,
+                    "IsDrink": false,
+                    "Buffs": null,
+                    "GeodeDropsDefaultItems": false,
+                    "GeodeDrops": null,
+                    "ArtifactSpotChances": null,
+                    "ExcludeFromFishingCollection": false,
+                    "ExcludeFromShippingCollection": false,
+                    "ExcludeFromRandomSale": false,
+                    "ContextTags": null,
+                    "CustomFields": null
                 }
             }
         }
