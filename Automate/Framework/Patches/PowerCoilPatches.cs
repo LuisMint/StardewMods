@@ -1,15 +1,19 @@
 using System;
+using System.Collections.Generic;
 using HarmonyLib;
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 using StardewValley;
+using StardewValley.ItemTypeDefinitions;
+using StardewValley.Menus;
 using SObject = StardewValley.Object;
 
 namespace Pathoschild.Stardew.Automate.Framework.Patches;
 
 /// <summary>
 /// MOD: added. Harmony patches for the custom Power Coil craftable's visuals — a size-pulse
-/// animation and a light source, neither of which could be reliably achieved through
-/// Data/BigCraftables alone (see each patch's own remarks for why).
+/// animation, a light source, and a taller-than-standard draw size — none of which could be
+/// reliably achieved through Data/BigCraftables alone (see each patch's own remarks for why).
 /// </summary>
 internal static class PowerCoilPatches
 {
@@ -18,6 +22,9 @@ internal static class PowerCoilPatches
     *********/
     /// <summary>The qualified item ID of the object these patches apply to.</summary>
     private const string TargetQualifiedItemId = "(BC)luisMint.AutomatePowerPipes_PowerCoil";
+
+    /// <summary>The asset name of the dedicated, purpose-built crafting-menu icon (loaded by the AutomatePowerPipes content pack), as opposed to the taller world sprite used everywhere else.</summary>
+    private const string CraftIconAssetName = "Mods/luisMint.AutomatePowerPipes/PowerCoilCraftIcon";
 
     /// <summary>How far the sprite grows/shrinks at the peak of the pulse, as a fraction of its normal size (e.g. 0.05 = ±5%).</summary>
     private const float PulseAmplitude = 0.05f;
@@ -34,13 +41,9 @@ internal static class PowerCoilPatches
     private const float LightRadius = 1f;
 
     /// <summary>
-    /// The light's color. Pure white (255,255,255) rendered as a dark void — the game's lighting
-    /// composite apparently doesn't handle a maxed-out color gracefully (possibly overflowing/
-    /// inverting at the extreme, matching what happened with the radius) — so this uses a moderate
-    /// hue-free gray instead: no color tint (equal R/G/B, unlike vanilla's dim-blue lamp default),
-    /// but well clear of the value that broke.
+    /// The light's color.
     /// </summary>
-    private static readonly Color LightColor = new(50, 200, 0,100);
+    private static readonly Color LightColor = new(10, 10, 10, 255);
 
 
     /*********
@@ -58,6 +61,31 @@ internal static class PowerCoilPatches
         harmony.Patch(
             original: AccessTools.Method(typeof(SObject), nameof(SObject.initializeLightSource)),
             postfix: new HarmonyMethod(typeof(PowerCoilPatches), nameof(InitializeLightSource_Postfix))
+        );
+
+        harmony.Patch(
+            original: AccessTools.Method(typeof(SObject), nameof(SObject.draw), [typeof(SpriteBatch), typeof(int), typeof(int), typeof(float)]),
+            prefix: new HarmonyMethod(typeof(PowerCoilPatches), nameof(Draw_Prefix))
+        );
+
+        harmony.Patch(
+            original: AccessTools.Method(typeof(SObject), nameof(SObject.drawInMenu), [typeof(SpriteBatch), typeof(Vector2), typeof(float), typeof(float), typeof(float), typeof(StackDrawType), typeof(Color), typeof(bool)]),
+            prefix: new HarmonyMethod(typeof(PowerCoilPatches), nameof(DrawInMenu_Prefix))
+        );
+
+        harmony.Patch(
+            original: AccessTools.Method(typeof(SObject), nameof(SObject.drawWhenHeld)),
+            prefix: new HarmonyMethod(typeof(PowerCoilPatches), nameof(DrawWhenHeld_Prefix))
+        );
+
+        harmony.Patch(
+            original: AccessTools.Method(typeof(CraftingRecipe), nameof(CraftingRecipe.drawMenuView)),
+            prefix: new HarmonyMethod(typeof(PowerCoilPatches), nameof(DrawMenuView_Prefix))
+        );
+
+        harmony.Patch(
+            original: AccessTools.Method(typeof(CraftingPage), "layoutRecipes"),
+            postfix: new HarmonyMethod(typeof(PowerCoilPatches), nameof(LayoutRecipes_Postfix))
         );
     }
 
@@ -110,5 +138,200 @@ internal static class PowerCoilPatches
             playerID: 0L,
             onlyLocation: __instance.Location?.NameOrUniqueName
         );
+    }
+
+    /// <summary>
+    /// Fully replace the Power Coil's world draw call, so it can be taller than the standard 2-tile
+    /// BigCraftable box. Vanilla's own <c>Object.getSourceRectForBigCraftable</c> hardcodes a 32px
+    /// (2-tile) source height regardless of the actual texture's size — even for the default,
+    /// non-animated sprite index — so simply drawing into a taller destination rectangle (e.g. via
+    /// <see cref="GetScale_Postfix"/> alone) would just stretch that same 32px crop rather than
+    /// reveal any extra art below it. Reading the texture's own height directly here instead means
+    /// the drawn size always matches however tall the source PNG actually is — no code changes
+    /// needed if that height changes later.
+    /// </summary>
+    /// <param name="__instance">The object being drawn.</param>
+    /// <param name="spriteBatch">The sprite batch being drawn to.</param>
+    /// <param name="x">The tile X position being drawn.</param>
+    /// <param name="y">The tile Y position being drawn.</param>
+    /// <param name="alpha">The transparency at which to draw the sprite.</param>
+    /// <returns>Returns <c>false</c> to skip the original method for this item, or <c>true</c> to let it run normally for every other item.</returns>
+    private static bool Draw_Prefix(SObject __instance, SpriteBatch spriteBatch, int x, int y, float alpha)
+    {
+        if (__instance.QualifiedItemId != PowerCoilPatches.TargetQualifiedItemId)
+            return true;
+
+        ParsedItemData data = ItemRegistry.GetDataOrErrorItem(__instance.QualifiedItemId);
+        Texture2D texture = data.GetTexture();
+        Rectangle sourceRect = new(0, 0, texture.Width, texture.Height);
+
+        // MOD: same anchor math vanilla uses for a standard BigCraftable (see Object.draw), extended
+        // to account for a taller-than-standard texture. Vanilla's own formula only shifts the TOP
+        // up by half the pulse's growth while adding the FULL pulse growth to the height — for a
+        // small pulse, that nets out to a fixed bottom edge (top moves up by X, height grows by X,
+        // so top+height is unchanged). But that only works because vanilla's baseline height (128)
+        // matches its baseline top offset (64, i.e. "one tile up"); once the baseline height itself
+        // changes (a taller texture), the top must ALSO shift up by that same extra amount, or the
+        // whole box (including its bottom) drifts downward by the difference — which is exactly what
+        // happened before this fix (a 48px-tall texture, 64px taller than the vanilla 32px baseline,
+        // pushed the bottom down a full tile).
+        Vector2 scale = __instance.getScale() * 4f;
+        float extraBaseHeight = (texture.Height * 4f) - 128f;
+        Vector2 topAnchor = Game1.GlobalToLocal(Game1.viewport, new Vector2(x * 64, y * 64 - 64));
+        Rectangle destination = new(
+            (int)(topAnchor.X - scale.X / 2f),
+            (int)(topAnchor.Y - scale.Y / 2f - extraBaseHeight),
+            (int)(64f + scale.X),
+            (int)(texture.Height * 4f + scale.Y / 2f)
+        );
+
+        float layerDepth = Math.Max(0f, (float)((y + 1) * 64 - 24) / 10000f) + x * 1E-05f;
+        spriteBatch.Draw(texture, destination, sourceRect, Color.White * alpha, 0f, Vector2.Zero, SpriteEffects.None, layerDepth);
+
+        // MOD: replicate vanilla's lamp glow decal, since we're skipping its own draw method entirely
+        // — shifted up by the same extra height so it still sits near the sprite's actual top.
+        if (__instance.isLamp.Value && Game1.isDarkOut(__instance.Location))
+        {
+            spriteBatch.Draw(Game1.mouseCursors, topAnchor + new Vector2(-32f, -32f - extraBaseHeight), new Rectangle(88, 1779, 32, 32), Color.White * 0.75f, 0f, Vector2.Zero, 4f, SpriteEffects.None, Math.Max(0f, (float)((y + 1) * 64 - 20) / 10000f) + x / 1000000f);
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Fully replace the Power Coil's inventory/shop/crafting-menu icon draw, for the same reason as
+    /// <see cref="Draw_Prefix"/> — vanilla's hardcoded 32px source height would otherwise crop the
+    /// icon to the top two-thirds of the texture, cutting off the bottom.
+    /// </summary>
+    /// <param name="__instance">The object being drawn.</param>
+    /// <param name="spriteBatch">The sprite batch being drawn to.</param>
+    /// <param name="location">The top-left pixel position to draw at.</param>
+    /// <param name="scaleSize">The size multiplier to draw at.</param>
+    /// <param name="transparency">The transparency at which to draw the sprite.</param>
+    /// <param name="layerDepth">The layer depth to draw at.</param>
+    /// <param name="drawStackNumber">Whether to draw the stack number, if applicable — ignored here, since a Power Coil is never expected to stack.</param>
+    /// <param name="color">The color to tint the sprite.</param>
+    /// <param name="drawShadow">Whether to also draw a drop shadow — ignored here, since vanilla only draws one for non-BigCraftable items, and a Power Coil is always a BigCraftable.</param>
+    /// <returns>Returns <c>false</c> to skip the original method for this item, or <c>true</c> to let it run normally for every other item.</returns>
+    private static bool DrawInMenu_Prefix(SObject __instance, SpriteBatch spriteBatch, Vector2 location, float scaleSize, float transparency, float layerDepth, StackDrawType drawStackNumber, Color color, bool drawShadow)
+    {
+        if (__instance.QualifiedItemId != PowerCoilPatches.TargetQualifiedItemId)
+            return true;
+
+        ParsedItemData data = ItemRegistry.GetDataOrErrorItem(__instance.QualifiedItemId);
+        Texture2D texture = data.GetTexture();
+        Rectangle sourceRect = new(0, 0, texture.Width, texture.Height);
+
+        // MOD: mirrors vanilla's own halving of the scale for BigCraftable icons (their source rects
+        // are normally twice as tall as a regular item's, so this keeps icon sizes roughly
+        // consistent across item types), PLUS an extra factor normalizing for our texture's actual
+        // height — without it, the drawn icon would be taller than a normal BigCraftable's in
+        // proportion to how much taller our texture is than the vanilla 32px baseline, and overflow
+        // the inventory slot. This keeps the drawn footprint the same size as a normal 16x32 icon
+        // regardless of how tall the underlying texture actually is.
+        float scale = (scaleSize > 0.2f ? scaleSize / 2f : scaleSize) * (32f / texture.Height);
+
+        spriteBatch.Draw(texture, location + new Vector2(32f, 32f), sourceRect, color * transparency, 0f, new Vector2(sourceRect.Width / 2f, sourceRect.Height / 2f), 4f * scale, SpriteEffects.None, layerDepth);
+
+        // MOD: vanilla's own drawInMenu also draws the stack-count/quality badge via this same call —
+        // omitted in an earlier version of this patch, which silently dropped the stack number.
+        __instance.DrawMenuIcons(spriteBatch, location, scaleSize, transparency, layerDepth, drawStackNumber, color);
+
+        return false;
+    }
+
+    /// <summary>Fully replace the Power Coil's "carrying it before placement" draw, for the same reason as <see cref="Draw_Prefix"/>.</summary>
+    /// <param name="__instance">The object being drawn.</param>
+    /// <param name="spriteBatch">The sprite batch being drawn to.</param>
+    /// <param name="objectPosition">The top-left pixel position to draw at.</param>
+    /// <param name="f">The farmer holding the item — unused here, since we don't need their standing position for the layer depth (a fixed reasonable value works fine for something this short-lived).</param>
+    /// <returns>Returns <c>false</c> to skip the original method for this item, or <c>true</c> to let it run normally for every other item.</returns>
+    private static bool DrawWhenHeld_Prefix(SObject __instance, SpriteBatch spriteBatch, Vector2 objectPosition, Farmer f)
+    {
+        if (__instance.QualifiedItemId != PowerCoilPatches.TargetQualifiedItemId)
+            return true;
+
+        ParsedItemData data = ItemRegistry.GetDataOrErrorItem(__instance.QualifiedItemId);
+        Texture2D texture = data.GetTexture();
+        Rectangle sourceRect = new(0, 0, texture.Width, texture.Height);
+
+        // MOD: shifted up by one tile (64px) from vanilla's plain `objectPosition` anchor — vanilla's
+        // anchor assumes a normal 32px-tall sprite drawn from the farmer's hand; with our taller
+        // texture drawn from that same point, the extra height hangs entirely below it, making it
+        // look like the farmer is gripping the middle of the object instead of near its top.
+        Vector2 drawPosition = objectPosition - new Vector2(0f, 64f);
+
+        float layerDepth = Math.Max(0f, (float)(f.StandingPixel.Y + 3) / 10000f);
+        spriteBatch.Draw(texture, drawPosition, sourceRect, Color.White, 0f, Vector2.Zero, 4f, SpriteEffects.None, layerDepth);
+
+        return false;
+    }
+
+    /// <summary>
+    /// Fully replace the Power Coil's crafting-menu recipe icon draw. This is a separate rendering
+    /// path from <see cref="DrawInMenu_Prefix"/> entirely — <c>CraftingRecipe.drawMenuView</c> reads
+    /// the recipe's output item data directly rather than going through <c>Object.drawInMenu</c> —
+    /// so it needed its own patch even though the underlying problem (vanilla's hardcoded 32px source
+    /// height) is the same.
+    /// </summary>
+    /// <param name="__instance">The crafting recipe being drawn.</param>
+    /// <param name="b">The sprite batch being drawn to.</param>
+    /// <param name="x">The top-left X pixel position to draw at.</param>
+    /// <param name="y">The top-left Y pixel position to draw at.</param>
+    /// <param name="layerDepth">The layer depth to draw at.</param>
+    /// <param name="shadow">Whether to draw a drop shadow — unused here, matching vanilla's own <c>drawMenuView</c>, which also never actually reads this parameter despite accepting it.</param>
+    /// <returns>Returns <c>false</c> to skip the original method for this recipe, or <c>true</c> to let it run normally for every other recipe.</returns>
+    private static bool DrawMenuView_Prefix(CraftingRecipe __instance, SpriteBatch b, int x, int y, float layerDepth, bool shadow)
+    {
+        ParsedItemData itemData = __instance.GetItemData(useFirst: true);
+        if (itemData?.QualifiedItemId != PowerCoilPatches.TargetQualifiedItemId)
+            return true;
+
+        Texture2D texture = itemData.GetTexture();
+        Rectangle sourceRect = new(0, 0, texture.Width, texture.Height);
+
+        // MOD: normalizes the scale so the drawn icon occupies the same footprint as a normal 16x32
+        // recipe icon (vanilla always draws at a flat 4x scale here), regardless of how much taller
+        // our texture actually is — so it doesn't crowd out the recipe icons around it in the grid.
+        float scale = 4f * (32f / texture.Height);
+
+        Utility.drawWithShadow(b, texture, new Vector2(x, y), sourceRect, Color.White, 0f, Vector2.Zero, scale, flipped: false, layerDepth);
+
+        return false;
+    }
+
+    /// <summary>
+    /// Fix up the Power Coil's icon in the crafting menu's recipe grid. This turned out to be the
+    /// actual cause of the crafting-menu cropping — <see cref="DrawMenuView_Prefix"/> alone didn't
+    /// fix it because the crafting grid doesn't call <c>CraftingRecipe.drawMenuView</c> at all.
+    /// Instead, <c>CraftingPage.layoutRecipes</c> builds one <c>ClickableTextureComponent</c> per
+    /// recipe ONCE (whenever the page is laid out, not every frame), baking in a texture/source
+    /// rect/scale from the recipe's item data at that point — using the same hardcoded 32px source
+    /// height as everywhere else. Those components are then drawn generically via
+    /// <c>ClickableTextureComponent.draw</c>, which is shared by countless other UI elements, so
+    /// patching that directly would be far too broad; overriding the specific component's fields
+    /// right after they're built is much more scoped.
+    ///
+    /// Uses a dedicated, purpose-built 16x32 icon texture rather than reusing (and scaling down) the
+    /// taller world sprite — simpler and cleaner than the height-normalizing math the other icon
+    /// patches need, since this texture is already the standard BigCraftable icon size.
+    /// </summary>
+    /// <param name="__instance">The crafting page whose recipes were just laid out.</param>
+    private static void LayoutRecipes_Postfix(CraftingPage __instance)
+    {
+        foreach (Dictionary<ClickableTextureComponent, CraftingRecipe> page in __instance.pagesOfCraftingRecipes)
+        {
+            foreach ((ClickableTextureComponent component, CraftingRecipe recipe) in page)
+            {
+                ParsedItemData itemData = recipe.GetItemData(useFirst: true);
+                if (itemData?.QualifiedItemId != PowerCoilPatches.TargetQualifiedItemId)
+                    continue;
+
+                Texture2D texture = Game1.content.Load<Texture2D>(PowerCoilPatches.CraftIconAssetName);
+                component.texture = texture;
+                component.sourceRect = new Rectangle(0, 0, texture.Width, texture.Height);
+                component.baseScale = 4f; // MOD: standard scale — this texture is already a normal 16x32 icon, no normalizing needed
+            }
+        }
     }
 }

@@ -19,6 +19,11 @@
             "Action": "Load",
             "Target": "Mods/{{ModId}}/PowerCoil",
             "FromFile": "Pipes/PowerCoil.png"
+        },
+        {
+            "Action": "Load",
+            "Target": "Mods/{{ModId}}/PowerCoilCraftIcon",
+            "FromFile": "Pipes/PowerCoil_CraftIcon.png"
         }
     ]
 }
