@@ -113,6 +113,12 @@ internal class ModEntry : Mod
         Harmony harmony = new(this.ModManifest.UniqueID);
         PowerCoilPatches.Apply(harmony);
 
+        SignFilterPatches.Initialize(
+            getWhitelistSignNames: () => this.Config.WhitelistSignNames,
+            getBlacklistSignNames: () => this.Config.BlacklistSignNames
+        );
+        SignFilterPatches.Apply(harmony);
+
         // hook events
         helper.Events.Content.AssetRequested += this.OnAssetRequested;
         helper.Events.GameLoop.SaveLoaded += this.OnSaveLoaded;

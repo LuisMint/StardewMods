@@ -8,13 +8,13 @@ namespace Pathoschild.Stardew.Automate.Framework.Machines.Objects;
 
 /// <summary>A mini-shipping bin that accepts input.</summary>
 /// <remarks>See also <see cref="ShippingBinMachine"/>.</remarks>
-internal class MiniShippingBinMachine : BaseMachine
+internal class MiniShippingBinMachine : BaseMachine, IHasFilterableStorage
 {
     /*********
     ** Fields
     *********/
     /// <summary>The mini-shipping bin.</summary>
-    private readonly IContainer MiniBin;
+    private IContainer MiniBin;
 
 
     /*********
@@ -27,6 +27,18 @@ internal class MiniShippingBinMachine : BaseMachine
         : base(location, BaseMachine.GetTileAreaFor(miniBin.TileLocation))
     {
         this.MiniBin = new ChestContainer(miniBin, location, miniBin.TileLocation, migrateLegacyOptions: false);
+    }
+
+    /// <summary>
+    /// MOD: added. The mini-shipping bin's own inventory is never added to the group as a regular
+    /// container (it's only ever reached through this machine wrapper), so it needs to be wrapped here
+    /// directly to pick up the group's whitelist/blacklist sign filter — otherwise a numeric condition
+    /// (e.g. "only ship up to 5 iron ore into this bin") would silently never be enforced.
+    /// </summary>
+    /// <inheritdoc />
+    public void ApplySignFilter(SignFilter filter)
+    {
+        this.MiniBin = new ItemFilteredContainer(this.MiniBin, filter);
     }
 
     /// <inheritdoc />

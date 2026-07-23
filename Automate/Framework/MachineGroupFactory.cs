@@ -328,16 +328,22 @@ internal class MachineGroupFactory
         }
 
         // step 5.5 (MOD: added): detect whitelist/blacklist signs touching each connector network,
-        // and resolve one item filter per root. Unlike machines/chests, a sign must be placed
+        // and resolve one SignFilter per root. Unlike machines/chests, a sign must be placed
         // DIRECTLY ON TOP of a path tile to count — being merely adjacent isn't enough. An empty
         // sign contributes no marker/filter, but its tile is still tracked as a "candidate" (see
         // MarkSignCandidateTile) so periodic polling knows to watch it in case an item gets placed
         // on it later — otherwise a sign that was empty during the last full scan would be invisible
         // to change-detection entirely until another full scan happens to notice it.
-        // Whitelist signs win over blacklist signs if both are accidentally present on one group;
-        // multiple signs of the same kind are combined (any item matching ANY of them applies).
+        //
+        // A non-numeric blacklist sign is still fully overridden if a whitelist sign is present
+        // anywhere in the group, same as before this feature existed. A NUMERIC blacklist sign
+        // (see SignFilter's own remarks for the resolution rule) is no longer overridden that way —
+        // it combines with any whitelist signs instead, whether for the same item or a different one.
+        // Multiple signs of the same kind (both whitelist, or both blacklist) for the SAME item don't
+        // combine: only the first one encountered (by this scan's tile order) counts, later ones are
+        // inert until it's removed.
         {
-            Dictionary<int, List<(Vector2 Tile, bool IsWhitelist, string ItemId)>> signEntriesByRoot = new();
+            Dictionary<int, List<(Vector2 Tile, bool IsWhitelist, string ItemId, int? Number)>> signEntriesByRoot = new();
 
             foreach (Vector2 tile in location.GetTiles())
             {
@@ -347,7 +353,7 @@ internal class MachineGroupFactory
                 if (poweredTiles != null && !poweredTiles.Contains(tile))
                     continue;
 
-                (bool IsWhitelist, string? HeldItemQualifiedId)? signInfo = this.GetSignInfo(locationIndex, tile);
+                (bool IsWhitelist, string? HeldItemQualifiedId, int? Number)? signInfo = this.GetSignInfo(locationIndex, tile);
                 if (signInfo == null)
                     continue;
 
@@ -373,40 +379,55 @@ internal class MachineGroupFactory
                     if (signInfo.Value.HeldItemQualifiedId == null)
                         continue;
 
-                    if (!signEntriesByRoot.TryGetValue(root, out List<(Vector2, bool, string)>? list))
-                        signEntriesByRoot[root] = list = new List<(Vector2, bool, string)>();
-                    list.Add((tile, signInfo.Value.IsWhitelist, signInfo.Value.HeldItemQualifiedId));
+                    if (!signEntriesByRoot.TryGetValue(root, out List<(Vector2, bool, string, int?)>? list))
+                        signEntriesByRoot[root] = list = new List<(Vector2, bool, string, int?)>();
+                    list.Add((tile, signInfo.Value.IsWhitelist, signInfo.Value.HeldItemQualifiedId, signInfo.Value.Number));
                 }
             }
 
-            foreach ((int root, List<(Vector2 Tile, bool IsWhitelist, string ItemId)> entries) in signEntriesByRoot)
+            foreach ((int root, List<(Vector2 Tile, bool IsWhitelist, string ItemId, int? Number)> entries) in signEntriesByRoot)
             {
-                HashSet<string> whitelistItems = entries.Where(e => e.IsWhitelist).Select(e => e.ItemId).ToHashSet();
-                HashSet<string> blacklistItems = entries.Where(e => !e.IsWhitelist).Select(e => e.ItemId).ToHashSet();
+                // MOD: dedup by (IsWhitelist, ItemId), keeping only the first occurrence in scan
+                // order — a second whitelist (or blacklist) sign for the same item is inert.
+                HashSet<(bool IsWhitelist, string ItemId)> seenSignKeys = new();
+                Dictionary<string, SignItemCondition> conditions = new();
+                HashSet<string> nonNumericBlacklistItems = new();
 
-                bool usingWhitelist = whitelistItems.Count > 0;
-
-                // MOD: changed from Func<ITrackedStack,bool> to Func<string,bool> operating directly
-                // on qualified item ID — simpler, and reusable both at the IStorage level
-                // (FilteredStorage) and the raw IInventory level (FilteredInventory/ItemFilteredContainer),
-                // since some machines bypass IStorage entirely and read a container's Inventory directly.
-                Func<string, bool>? filter = null;
-                if (usingWhitelist)
-                    filter = itemId => whitelistItems.Contains(itemId); // whitelist wins over blacklist
-                else if (blacklistItems.Count > 0)
-                    filter = itemId => !blacklistItems.Contains(itemId);
-
-                if (filter != null)
-                    GetOrCreateBuilder(root).SetItemFilter(filter);
-
-                // MOD: added — only mark tiles whose sign TYPE actually won for this root. A
-                // blacklist sign overridden by a whitelist sign elsewhere in the same group is left
-                // unmarked entirely, so its tile shows its normal color instead of a stale black
-                // highlight that no longer reflects what's actually being enforced.
-                foreach ((Vector2 signTile, bool isWhitelistSign, string _) in entries)
+                foreach ((Vector2 _, bool isWhitelist, string itemId, int? number) in entries)
                 {
-                    if (usingWhitelist && !isWhitelistSign)
-                        continue; // this blacklist sign lost to a whitelist sign elsewhere in the group — leave unmarked
+                    if (!seenSignKeys.Add((isWhitelist, itemId)))
+                        continue; // duplicate sign of the same kind for the same item — first one already applied
+
+                    if (isWhitelist)
+                    {
+                        conditions[itemId] = conditions.TryGetValue(itemId, out SignItemCondition existing)
+                            ? existing with { HasWhitelist = true, WhitelistNumber = number }
+                            : new SignItemCondition(HasWhitelist: true, WhitelistNumber: number, HasNumericBlacklist: false, BlacklistNumber: null);
+                    }
+                    else if (number.HasValue)
+                    {
+                        conditions[itemId] = conditions.TryGetValue(itemId, out SignItemCondition existing)
+                            ? existing with { HasNumericBlacklist = true, BlacklistNumber = number }
+                            : new SignItemCondition(HasWhitelist: false, WhitelistNumber: null, HasNumericBlacklist: true, BlacklistNumber: number);
+                    }
+                    else
+                    {
+                        nonNumericBlacklistItems.Add(itemId);
+                    }
+                }
+
+                bool groupHasWhitelist = conditions.Values.Any(c => c.HasWhitelist);
+                GetOrCreateBuilder(root).SetItemFilter(new SignFilter(conditions, nonNumericBlacklistItems, groupHasWhitelist));
+
+                // MOD: mark tiles whose sign actually contributes to the resolved filter. A
+                // non-numeric blacklist sign overridden by a whitelist sign elsewhere in the same
+                // group is left unmarked entirely, so its tile shows its normal color instead of a
+                // stale black highlight that no longer reflects what's actually being enforced.
+                // Numeric blacklist signs stay marked even under a whitelist, since they're active.
+                foreach ((Vector2 signTile, bool isWhitelistSign, string _, int? number) in entries)
+                {
+                    if (!isWhitelistSign && groupHasWhitelist && !number.HasValue)
+                        continue; // non-numeric blacklist sign lost to a whitelist sign elsewhere in the group — leave unmarked
 
                     GetOrCreateBuilder(root).MarkSignTile(signTile, isWhitelistSign);
                 }
@@ -611,11 +632,13 @@ internal class MachineGroupFactory
     /// there — regardless of whether it currently has an item displayed on it. Returns <c>null</c>
     /// if there's no such sign on the tile at all. <c>HeldItemQualifiedId</c> is <c>null</c> if the
     /// sign is empty (nothing displayed on it); callers should treat that case as "detected but not
-    /// currently filtering anything" rather than "not detected."
+    /// currently filtering anything" rather than "not detected." <c>Number</c> is the sign's numeric
+    /// condition (see <see cref="Patches.SignFilterPatches"/> for how it's set by repeatedly clicking
+    /// the same item onto the sign), or <c>null</c> if it's a plain type-only filter.
     /// </summary>
     /// <param name="locationIndex">An indexed view of the location.</param>
     /// <param name="tile">The tile to check.</param>
-    private (bool IsWhitelist, string? HeldItemQualifiedId)? GetSignInfo(LocationFloodFillIndex locationIndex, Vector2 tile)
+    private (bool IsWhitelist, string? HeldItemQualifiedId, int? Number)? GetSignInfo(LocationFloodFillIndex locationIndex, Vector2 tile)
     {
         HashSet<string> whitelistSigns = this.GetWhitelistSignNames();
         HashSet<string> blacklistSigns = this.GetBlacklistSignNames();
@@ -637,30 +660,31 @@ internal class MachineGroupFactory
             // The item displayed on a sign is read via the private `displayItem` field (not
             // `heldObject`, which is unrelated for signs). It's a NetRef<Item> whose `Value` property
             // holds the actual displayed item, or null if the sign is empty.
-            SObject? heldItem = null;
+            Item? heldItem = null;
             System.Reflection.FieldInfo? displayItemField = MachineGroupFactory.GetSignDisplayItemField(signObj.GetType());
             if (displayItemField?.GetValue(signObj) is NetRef<StardewValley.Item> displayItemRef)
-                heldItem = displayItemRef.Value as SObject;
+                heldItem = displayItemRef.Value;
 
-            return (isWhitelist, heldItem?.QualifiedItemId);
+            return (isWhitelist, heldItem?.QualifiedItemId, MachineGroupFactory.GetSignNumber(heldItem));
         }
 
         return null;
     }
 
     /// <summary>
-    /// MOD: added. Get the qualified item ID currently displayed on a configured whitelist/blacklist
-    /// sign at a specific tile, if any — a cheap, direct lookup (no full location scan) meant for
-    /// periodic polling to detect when a sign's content changes. Returns <c>null</c> if there's no
-    /// matching sign there, or if it's empty. This exists because changing what's displayed on a
-    /// sign doesn't trigger any of the normal "something changed in the world" events — the sign
-    /// object itself is never added or removed, just one of its internal fields — so without this,
-    /// there'd be no way to detect the change without an unrelated nearby world change forcing a
-    /// rescan.
+    /// MOD: added. Get the qualified item ID and numeric condition currently displayed on a
+    /// configured whitelist/blacklist sign at a specific tile, if any — a cheap, direct lookup (no
+    /// full location scan) meant for periodic polling to detect when a sign's content changes.
+    /// Returns <c>null</c> if there's no matching sign there, or if it's empty. This exists because
+    /// changing what's displayed on a sign (or clicking the same item again to bump its numeric
+    /// condition) doesn't trigger any of the normal "something changed in the world" events — the
+    /// sign object itself is never added or removed, just one of its internal fields — so without
+    /// this, there'd be no way to detect the change without an unrelated nearby world change forcing
+    /// a rescan.
     /// </summary>
     /// <param name="location">The location to check.</param>
     /// <param name="tile">The tile to check.</param>
-    public string? GetCurrentSignItemId(GameLocation location, Vector2 tile)
+    public (string ItemId, int? Number)? GetCurrentSignItemId(GameLocation location, Vector2 tile)
     {
         HashSet<string> whitelistSigns = this.GetWhitelistSignNames();
         HashSet<string> blacklistSigns = this.GetBlacklistSignNames();
@@ -687,10 +711,24 @@ internal class MachineGroupFactory
             return null;
 
         System.Reflection.FieldInfo? displayItemField = MachineGroupFactory.GetSignDisplayItemField(signObj.GetType());
-        if (displayItemField?.GetValue(signObj) is NetRef<StardewValley.Item> displayItemRef)
-            return (displayItemRef.Value as SObject)?.QualifiedItemId;
+        if (displayItemField?.GetValue(signObj) is NetRef<StardewValley.Item> displayItemRef && displayItemRef.Value is Item heldItem)
+            return (heldItem.QualifiedItemId, MachineGroupFactory.GetSignNumber(heldItem));
 
         return null;
+    }
+
+    /// <summary>
+    /// MOD: added. Get a sign's numeric condition from its displayed item, if any. Repurposes the
+    /// displayed item's own <see cref="Item.Stack"/> as the counter (see
+    /// <see cref="Patches.SignFilterPatches"/>, which increments it each time the same item is placed
+    /// on the sign again) rather than adding new mod data: a fresh placement always has
+    /// <c>Stack == 1</c> (vanilla's own <c>getOne()</c> default), which this treats as "no numeric
+    /// condition set" — the plain type-only filter behavior from before this feature existed.
+    /// </summary>
+    /// <param name="heldItem">The item currently displayed on the sign, or <c>null</c> if it's empty.</param>
+    private static int? GetSignNumber(Item? heldItem)
+    {
+        return heldItem is { Stack: >= 2 } ? heldItem.Stack - 1 : null;
     }
 
     /// <summary>Get the machines, containers, or connectors on the given tile, if any.</summary>

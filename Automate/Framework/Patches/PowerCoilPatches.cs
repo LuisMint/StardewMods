@@ -128,10 +128,16 @@ internal static class PowerCoilPatches
         if (__instance.QualifiedItemId != PowerCoilPatches.TargetQualifiedItemId)
             return;
 
+        // MOD: positioned at the sprite's base (the ground tile it's actually placed on) rather than
+        // vanilla's "middle of a standard 2-tile sprite" anchor (tileLocation.Y*64-64) — that anchor
+        // stayed fixed even after the Power Coil's draw height grew to 3 tiles (see Draw_Prefix's
+        // anchor-preserving math, which keeps the sprite's bottom edge at tileLocation.Y*64+64
+        // regardless of texture height), so the light ended up floating near the sprite's middle
+        // instead of where the object actually sits.
         __instance.lightSource = new LightSource(
             id: __instance.GenerateLightSourceId(tileLocation),
             textureIndex: 4,
-            position: new Vector2(tileLocation.X * 64f + 32f, tileLocation.Y * 64f - 64f),
+            position: new Vector2(tileLocation.X * 64f + 32f, tileLocation.Y * 64f + 64f),
             radius: PowerCoilPatches.LightRadius,
             color: PowerCoilPatches.LightColor,
             lightContext: LightSource.LightContext.None,

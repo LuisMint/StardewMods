@@ -41,11 +41,12 @@ internal class MachineManager
     private readonly HashSet<GameLocation> ReloadQueue = new(new GameLocationNameComparer());
 
     /// <summary>
-    /// MOD: added. The last-known displayed item ID for each tracked whitelist/blacklist sign, keyed
-    /// by (location key, tile). Used to detect when a sign's content changes so the location can be
-    /// rescanned automatically, without needing an unrelated nearby world change to force it.
+    /// MOD: added. The last-known displayed item ID and numeric condition for each tracked
+    /// whitelist/blacklist sign, keyed by (location key, tile). Used to detect when a sign's content
+    /// (or just its numeric condition) changes so the location can be rescanned automatically,
+    /// without needing an unrelated nearby world change to force it.
     /// </summary>
-    private readonly Dictionary<(string LocationKey, Vector2 Tile), string?> LastKnownSignItems = new();
+    private readonly Dictionary<(string LocationKey, Vector2 Tile), (string ItemId, int? Number)?> LastKnownSignItems = new();
 
     /// <summary>MOD: added. How many ticks to wait between each check for sign content changes — doesn't need to be as frequent as automation itself, since it's just a convenience so players don't need to nudge the world to force a rescan.</summary>
     private const int SignCheckIntervalTicks = 30;
@@ -302,19 +303,19 @@ internal class MachineManager
                 if (location == null && !this.LocationsByKey.TryGetValue(data.LocationKey, out location))
                     break; // location no longer exists — nothing to check
 
-                string? currentItemId = this.Factory.GetCurrentSignItemId(location, tile);
+                (string ItemId, int? Number)? currentSignState = this.Factory.GetCurrentSignItemId(location, tile);
                 (string LocationKey, Vector2 Tile) key = (data.LocationKey, tile);
 
-                if (this.LastKnownSignItems.TryGetValue(key, out string? lastItemId))
+                if (this.LastKnownSignItems.TryGetValue(key, out (string ItemId, int? Number)? lastSignState))
                 {
-                    if (currentItemId != lastItemId)
+                    if (currentSignState != lastSignState)
                     {
-                        this.LastKnownSignItems[key] = currentItemId;
+                        this.LastKnownSignItems[key] = currentSignState;
                         this.QueueReload(location);
                     }
                 }
                 else
-                    this.LastKnownSignItems[key] = currentItemId;
+                    this.LastKnownSignItems[key] = currentSignState;
             }
         }
     }

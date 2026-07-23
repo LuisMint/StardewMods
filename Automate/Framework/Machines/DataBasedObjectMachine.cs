@@ -53,10 +53,19 @@ internal class DataBasedObjectMachine : GenericObjectMachine<SObject>
             return false;
 
         // add machine input
+        // MOD: routed through ItemFilteredContainer's own AttemptAutoLoad when a sign filter applies,
+        // since vanilla's own ingredient consumption mutates the input item's Stack directly — bypassing
+        // any count-checking method a plain container.Inventory call could otherwise clamp — so a
+        // numeric whitelist/blacklist condition needs that method's own stack-clamping workaround to be
+        // enforced here at all. See ItemFilteredContainer.AttemptAutoLoad's own remarks for why.
         bool addedInput = false;
         foreach (IContainer container in input.OutputContainers)
         {
-            if (machine.AttemptAutoLoad(container.Inventory, Game1.player))
+            bool loaded = container is ItemFilteredContainer filtered
+                ? filtered.AttemptAutoLoad(machine, Game1.player)
+                : machine.AttemptAutoLoad(container.Inventory, Game1.player);
+
+            if (loaded)
             {
                 addedInput = true;
                 break;

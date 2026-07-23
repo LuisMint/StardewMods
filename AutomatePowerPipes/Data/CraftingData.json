@@ -7,7 +7,9 @@
                 "{{ModId}}_PullPushPipe": "388 1/Field/{{ModId}}_PullPushPipe 1/false/default/",
                 "{{ModId}}_InputPipe": "388 1/Field/{{ModId}}_InputPipe 1/false/default/",
                 "{{ModId}}_OutputPipe": "388 1/Field/{{ModId}}_OutputPipe 1/false/default/",
-                "{{ModId}}_PowerCoil": "388 5/Field/{{ModId}}_PowerCoil 1/false/default/"
+                "{{ModId}}_PowerCoil": "388 5/Field/{{ModId}}_PowerCoil 1/false/default/",
+                "{{ModId}}_WhitelistSign": "388 5/Field/{{ModId}}_WhitelistSign 1/false/default/",
+                "{{ModId}}_BlacklistSign": "390 5/Field/{{ModId}}_BlacklistSign 1/false/default/"
             }
         }
     ]

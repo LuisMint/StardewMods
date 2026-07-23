@@ -11,9 +11,14 @@ namespace Pathoschild.Stardew.Automate.Framework;
 /// MOD: added. Wraps an <see cref="IInventory"/> to hide items that don't pass an item filter (from
 /// whitelist/blacklist signs). This exists because some game machine logic (e.g.
 /// <c>SObject.AttemptAutoLoad</c>, used by most vanilla machines) reads directly from a container's
-/// raw <see cref="IContainer.Inventory"/> instead of going through Automate's own <see cref="IStorage"/>
-/// abstraction — so filtering only at the <see cref="IStorage"/> level (via <see cref="FilteredStorage"/>)
-/// isn't enough; this closes that gap by filtering at the source.
+/// raw <see cref="IContainer.Inventory"/> instead of going through Automate's own
+/// <see cref="ItemFilteredContainer.Get"/>/<see cref="ItemFilteredContainer.Store"/> — so filtering
+/// only there isn't enough; this closes that gap by filtering at the source. Only the item TYPE
+/// filter is enforced here, not a numeric sign condition's quantity clamp — this path hands out the
+/// real, unmodified item reference, so truncating its apparent stack size would mean either mutating
+/// the real item (visible elsewhere, e.g. an open chest UI) or risking a caller consuming more than
+/// intended. Since this is a narrow gap-filler for vanilla machines that bypass Automate's own
+/// pull/push flow entirely, that's an acceptable scope limit rather than something worth the risk.
 ///
 /// Filtered-out items appear as empty slots (returned as <c>null</c>) rather than being removed from
 /// the underlying list, matching how real empty inventory slots normally appear. Read operations

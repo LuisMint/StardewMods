@@ -31,8 +31,8 @@ internal class MachineGroupBuilder
     /// <summary>MOD: added. The connector role for each connector tile added to the group.</summary>
     private readonly Dictionary<Vector2, ConnectorRole> ConnectorRoles = [];
 
-    /// <summary>MOD: added. An optional item filter derived from whitelist/blacklist signs touching this group. Operates on qualified item ID directly so it's reusable at both the storage and raw-inventory level.</summary>
-    private Func<string, bool>? ItemFilter;
+    /// <summary>MOD: added. An optional item filter derived from whitelist/blacklist signs touching this group.</summary>
+    private SignFilter? ItemFilter;
 
     /// <summary>MOD: added. Debug markers for tiles where a configured sign was detected, regardless of whether it currently holds an item.</summary>
     private readonly Dictionary<Vector2, bool> SignMarkers = [];
@@ -66,6 +66,12 @@ internal class MachineGroupBuilder
     /// <param name="machine">The machine to add.</param>
     public void Add(IMachine machine)
     {
+        // MOD: added — a machine with its own private storage (e.g. a Mini-Shipping Bin's own 3x3
+        // inventory) never otherwise passes through Add(IContainer), so it needs the group's item
+        // filter applied directly. See IHasFilterableStorage's own remarks for why.
+        if (this.ItemFilter != null && machine is IHasFilterableStorage filterable)
+            filterable.ApplySignFilter(this.ItemFilter);
+
         this.Machines.Add(machine);
         this.Add(machine.TileArea);
     }
@@ -74,10 +80,9 @@ internal class MachineGroupBuilder
     /// <param name="container">The container to add.</param>
     public void Add(IContainer container)
     {
-        // MOD: added — if this group has an item filter, wrap the container so its raw Inventory is
-        // also filtered. This matters because some machines (most vanilla ones, via
-        // SObject.AttemptAutoLoad) read directly from a container's Inventory instead of going
-        // through Automate's IStorage abstraction, which FilteredStorage alone can't intercept.
+        // MOD: added — if this group has an item filter, wrap the container so both Automate's own
+        // pull/push flow and its raw Inventory (read directly by some vanilla machines, e.g. via
+        // SObject.AttemptAutoLoad) respect it.
         if (this.ItemFilter != null)
             container = new ItemFilteredContainer(container, this.ItemFilter);
 
@@ -106,8 +111,8 @@ internal class MachineGroupBuilder
     }
 
     /// <summary>MOD: added. Set an item filter derived from whitelist/blacklist signs touching this group. Items not matching the filter won't move through the group's storage in either direction. Must be called BEFORE any containers are added, since it's applied at add-time.</summary>
-    /// <param name="filter">The item filter (operating on qualified item ID), or <c>null</c> to clear it.</param>
-    public void SetItemFilter(Func<string, bool>? filter)
+    /// <param name="filter">The item filter, or <c>null</c> to clear it.</param>
+    public void SetItemFilter(SignFilter? filter)
     {
         this.ItemFilter = filter;
     }
@@ -137,6 +142,6 @@ internal class MachineGroupBuilder
     public IMachineGroup Build()
     {
         var machines = this.SortMachines(this.Machines.Select(p => new MachineWrapper(p)));
-        return new MachineGroup(this.LocationKey, machines, this.Containers, this.Tiles, this.BuildStorage, this.Monitor, this.ConnectorRoles, this.ItemFilter, this.SignMarkers, this.SignCandidateTiles); // MOD: added connectorRoles + itemFilter + signMarkers + signCandidateTiles args
+        return new MachineGroup(this.LocationKey, machines, this.Containers, this.Tiles, this.BuildStorage, this.Monitor, this.ConnectorRoles, this.SignMarkers, this.SignCandidateTiles); // MOD: added connectorRoles + signMarkers + signCandidateTiles args
     }
 }

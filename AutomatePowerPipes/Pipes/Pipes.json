@@ -24,6 +24,16 @@
             "Action": "Load",
             "Target": "Mods/{{ModId}}/PowerCoilCraftIcon",
             "FromFile": "Pipes/PowerCoil_CraftIcon.png"
+        },
+        {
+            "Action": "Load",
+            "Target": "Mods/{{ModId}}/WhitelistSign",
+            "FromFile": "Pipes/WhitelistSign.png"
+        },
+        {
+            "Action": "Load",
+            "Target": "Mods/{{ModId}}/BlacklistSign",
+            "FromFile": "Pipes/BlacklistSign.png"
         }
     ]
 }
