@@ -219,6 +219,42 @@
                     "QualityModifierMode": "Stack",
                     "ModData": null,
                     "PerItemCondition": null
+                },
+
+                "{{ModId}}_PoweredChest": {
+                    "ActionsOnPurchase": null,
+                    "CustomFields": null,
+                    "TradeItemId": null,
+                    "TradeItemAmount": 1,
+                    "Price": 200,
+                    "ApplyProfitMargins": null,
+                    "AvailableStock": -1,
+                    "AvailableStockLimit": "Global",
+                    "AvoidRepeat": false,
+                    "UseObjectDataPrice": false,
+                    "IgnoreShopPriceModifiers": false,
+                    "PriceModifiers": null,
+                    "PriceModifierMode": "Stack",
+                    "AvailableStockModifiers": null,
+                    "AvailableStockModifierMode": "Stack",
+                    "Condition": null,
+                    "Id": "(BC){{ModId}}_PoweredChest (Recipe)",
+                    "ItemId": "(BC){{ModId}}_PoweredChest",
+                    "RandomItemId": null,
+                    "MaxItems": null,
+                    "MinStack": -1,
+                    "MaxStack": -1,
+                    "Quality": -1,
+                    "ObjectInternalName": null,
+                    "ObjectDisplayName": null,
+                    "ToolUpgradeLevel": -1,
+                    "IsRecipe": true,
+                    "StackModifiers": null,
+                    "StackModifierMode": "Stack",
+                    "QualityModifiers": null,
+                    "QualityModifierMode": "Stack",
+                    "ModData": null,
+                    "PerItemCondition": null
                 }
             }
         }

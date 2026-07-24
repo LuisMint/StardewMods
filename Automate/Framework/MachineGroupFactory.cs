@@ -501,26 +501,23 @@ internal class MachineGroupFactory
     /// <param name="role">The connector role this entity was reached through (only meaningful for containers).</param>
     private void AddToBuilder(MachineGroupBuilder builder, IAutomatable entity, ConnectorRole role)
     {
-        switch (entity)
-        {
-            case IMachine machine:
-                if (this.GetMachineOverride(machine.MachineTypeID)?.Enabled != false)
-                    builder.Add(machine);
-                break;
+        // MOD: changed from a type-switch (which only ever takes its FIRST matching case) to two
+        // independent checks, so an entity implementing BOTH interfaces (like PoweredChestMachine —
+        // a chest that's also its own machine) gets added as both a machine AND a container, instead
+        // of only ever being treated as a machine.
+        if (entity is IMachine machine && this.GetMachineOverride(machine.MachineTypeID)?.Enabled != false)
+            builder.Add(machine);
 
-            case IContainer container:
-                if (container.StorageAllowed() || container.TakingItemsAllowed())
-                {
-                    bool enabled = this.GetChestOverride(container.TypeId)?.Enabled ?? this.GetChestsEnabledByDefault();
-                    if (enabled)
-                    {
-                        IContainer toAdd = role == ConnectorRole.Both
-                            ? container
-                            : new RoleRestrictedContainer(container, role);
-                        builder.Add(toAdd);
-                    }
-                }
-                break;
+        if (entity is IContainer container && (container.StorageAllowed() || container.TakingItemsAllowed()))
+        {
+            bool enabled = this.GetChestOverride(container.TypeId)?.Enabled ?? this.GetChestsEnabledByDefault();
+            if (enabled)
+            {
+                IContainer toAdd = role == ConnectorRole.Both
+                    ? container
+                    : new RoleRestrictedContainer(container, role);
+                builder.Add(toAdd);
+            }
         }
     }
 
@@ -665,7 +662,7 @@ internal class MachineGroupFactory
             if (displayItemField?.GetValue(signObj) is NetRef<StardewValley.Item> displayItemRef)
                 heldItem = displayItemRef.Value;
 
-            return (isWhitelist, heldItem?.QualifiedItemId, MachineGroupFactory.GetSignNumber(heldItem));
+            return (isWhitelist, heldItem?.QualifiedItemId, MachineGroupFactory.GetSignNumber(signObj, heldItem));
         }
 
         return null;
@@ -712,23 +709,25 @@ internal class MachineGroupFactory
 
         System.Reflection.FieldInfo? displayItemField = MachineGroupFactory.GetSignDisplayItemField(signObj.GetType());
         if (displayItemField?.GetValue(signObj) is NetRef<StardewValley.Item> displayItemRef && displayItemRef.Value is Item heldItem)
-            return (heldItem.QualifiedItemId, MachineGroupFactory.GetSignNumber(heldItem));
+            return (heldItem.QualifiedItemId, MachineGroupFactory.GetSignNumber(signObj, heldItem));
 
         return null;
     }
 
     /// <summary>
-    /// MOD: added. Get a sign's numeric condition from its displayed item, if any. Repurposes the
-    /// displayed item's own <see cref="Item.Stack"/> as the counter (see
-    /// <see cref="Patches.SignFilterPatches"/>, which increments it each time the same item is placed
-    /// on the sign again) rather than adding new mod data: a fresh placement always has
-    /// <c>Stack == 1</c> (vanilla's own <c>getOne()</c> default), which this treats as "no numeric
-    /// condition set" — the plain type-only filter behavior from before this feature existed.
+    /// MOD: added. Get a sign's numeric condition from its displayed item, if any. The condition's
+    /// VALUE is the displayed item's own <see cref="Item.Stack"/> (see <see cref="Patches.SignFilterPatches"/>,
+    /// which increments it each time the same item is placed on the sign again), but whether a
+    /// condition is set AT ALL is tracked separately via <see cref="Patches.SignFilterPatches.HasNumberKey"/>
+    /// in the sign's own mod data, rather than reserving a specific Stack value as a sentinel — see
+    /// that class's own remarks for why (in short: reserving a sentinel value wastes one of the only
+    /// 999 values a stack can hold, capping the highest reachable number short of 999).
     /// </summary>
+    /// <param name="signObj">The sign object itself.</param>
     /// <param name="heldItem">The item currently displayed on the sign, or <c>null</c> if it's empty.</param>
-    private static int? GetSignNumber(Item? heldItem)
+    private static int? GetSignNumber(SObject signObj, Item? heldItem)
     {
-        return heldItem is { Stack: >= 2 } ? heldItem.Stack - 1 : null;
+        return heldItem != null && signObj.modData.ContainsKey(Patches.SignFilterPatches.HasNumberKey) ? heldItem.Stack : null;
     }
 
     /// <summary>Get the machines, containers, or connectors on the given tile, if any.</summary>

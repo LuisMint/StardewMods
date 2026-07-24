@@ -31,6 +31,9 @@ internal class PowerSystem
     /// <summary>MOD: changed from a total width to a distance-from-center, to guarantee exact centering with no rounding ambiguity. Get how many tiles out from a power source, in each cardinal direction, its power extends.</summary>
     private readonly Func<int> GetRangeDistance;
 
+    /// <summary>MOD: added. Get the item names/IDs that currently act as a "local" power source — e.g. the Powered Chest — which powers only its own tile plus the 4 orthogonal neighbors, regardless of <see cref="GetRangeDistance"/>.</summary>
+    private readonly Func<HashSet<string>> GetLocalSourceNames;
+
 
     /*********
     ** Accessors
@@ -46,18 +49,22 @@ internal class PowerSystem
     /// <param name="getEnabled">Get whether the power system is currently enabled.</param>
     /// <param name="getSourceNames">Get the item names/IDs that currently act as a power source.</param>
     /// <param name="getRangeDistance">MOD: changed. Get how many tiles out from a power source, in each cardinal direction, its power extends.</param>
-    public PowerSystem(Func<bool> getEnabled, Func<HashSet<string>> getSourceNames, Func<int> getRangeDistance)
+    /// <param name="getLocalSourceNames">MOD: added. Get the item names/IDs that currently act as a "local" power source, which always powers only its own tile plus the 4 orthogonal neighbors regardless of <paramref name="getRangeDistance"/>.</param>
+    public PowerSystem(Func<bool> getEnabled, Func<HashSet<string>> getSourceNames, Func<int> getRangeDistance, Func<HashSet<string>> getLocalSourceNames)
     {
         this.GetEnabledFromConfig = getEnabled;
         this.GetSourceNames = getSourceNames;
         this.GetRangeDistance = getRangeDistance;
+        this.GetLocalSourceNames = getLocalSourceNames;
     }
 
     /// <summary>
     /// Get the set of tiles powered by a power source in the given location, or <c>null</c> if the
     /// power system is disabled — meaning every tile should be treated as unrestricted. Each power
     /// source covers a square area centered on it, extending the configured distance in each
-    /// cardinal direction; multiple sources' areas simply combine (no stacking/overlap logic).
+    /// cardinal direction; multiple sources' areas simply combine (no stacking/overlap logic). A
+    /// "local" power source (see <see cref="GetLocalSourceNames"/>) instead always covers a fixed
+    /// plus-shape (itself plus its 4 orthogonal neighbors), regardless of the configured range.
     /// </summary>
     /// <param name="location">The location to scan for power sources.</param>
     /// <param name="locationIndex">An indexed view of the location.</param>
@@ -67,7 +74,8 @@ internal class PowerSystem
             return null;
 
         HashSet<string> sourceNames = this.GetSourceNames();
-        if (sourceNames.Count == 0)
+        HashSet<string> localSourceNames = this.GetLocalSourceNames();
+        if (sourceNames.Count == 0 && localSourceNames.Count == 0)
             return []; // power system is on, but nothing is configured as a source — nothing is powered
 
         int rangeDistance = Math.Max(0, this.GetRangeDistance());
@@ -80,9 +88,11 @@ internal class PowerSystem
                 if (target is not SObject sourceObj)
                     continue;
 
-                bool isPowerSource = sourceNames.Contains(sourceObj.QualifiedItemId) || sourceNames.Contains(sourceObj.Name);
-                if (isPowerSource)
+                if (sourceNames.Contains(sourceObj.QualifiedItemId) || sourceNames.Contains(sourceObj.Name))
                     this.AddPoweredArea(powered, tile, rangeDistance);
+
+                if (localSourceNames.Contains(sourceObj.QualifiedItemId) || localSourceNames.Contains(sourceObj.Name))
+                    this.AddLocalPoweredArea(powered, tile);
             }
         }
 
@@ -107,5 +117,17 @@ internal class PowerSystem
             for (int y = (int)sourceTile.Y - rangeDistance; y <= (int)sourceTile.Y + rangeDistance; y++)
                 powered.Add(new Vector2(x, y));
         }
+    }
+
+    /// <summary>MOD: added. Add a "local" power source's fixed plus-shaped coverage area (itself plus its 4 orthogonal neighbors) to the given set.</summary>
+    /// <param name="powered">The set to add tiles to.</param>
+    /// <param name="sourceTile">The power source's tile position.</param>
+    private void AddLocalPoweredArea(HashSet<Vector2> powered, Vector2 sourceTile)
+    {
+        powered.Add(sourceTile);
+        powered.Add(sourceTile + new Vector2(1, 0));
+        powered.Add(sourceTile + new Vector2(-1, 0));
+        powered.Add(sourceTile + new Vector2(0, 1));
+        powered.Add(sourceTile + new Vector2(0, -1));
     }
 }

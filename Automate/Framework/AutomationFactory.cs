@@ -63,6 +63,12 @@ internal class AutomationFactory : IAutomationFactory
         // chest
         if (obj is Chest chest && chest.playerChest.Value)
         {
+            // MOD: added — the custom Powered Chest acts as both a machine and a container; see
+            // PoweredChestMachine's own remarks for why it needs its own dedicated entity type rather
+            // than falling into the generic ChestContainer case below.
+            if (chest.QualifiedItemId == PoweredChestMachine.QualifiedItemId)
+                return new PoweredChestMachine(chest, location, tile);
+
             switch (chest.SpecialChestType)
             {
                 case Chest.SpecialChestTypes.AutoLoader when chest.modData.ContainsKey("spacechase0.SuperHopper"): // super hopper is used to transfer items between two chests without connecting them to the same group

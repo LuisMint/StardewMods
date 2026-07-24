@@ -29,21 +29,33 @@ internal static class PowerCoilPatches
     /// <summary>How far the sprite grows/shrinks at the peak of the pulse, as a fraction of its normal size (e.g. 0.05 = ±5%).</summary>
     private const float PulseAmplitude = 0.05f;
 
-    /// <summary>How fast the pulse cycles, in radians per second.</summary>
-    private const float PulseSpeed = 2f;
+    /// <summary>
+    /// How fast the pulse cycles, in radians per second. Sped up from the original 2f, and
+    /// deliberately a different value than <see cref="PoweredChestPatches"/>'s own pulse speed (along
+    /// with <see cref="PulsePhaseOffset"/>) so the two objects' pulses don't stay in visual sync with
+    /// each other.
+    /// </summary>
+    private const float PulseSpeed = 3f;
+
+    /// <summary>A fixed phase offset added to the pulse, purely so it starts out of sync with <see cref="PoweredChestPatches"/>'s own pulse (which starts at phase 0) — combined with the different <see cref="PulseSpeed"/>, the two never stay aligned.</summary>
+    private const float PulsePhaseOffset = MathF.PI;
 
     /// <summary>
     /// The light's radius. A radius of 10 rendered as a large dark void instead of a bigger light —
     /// the game's light renderer apparently doesn't handle an extreme radius gracefully — so this
     /// started from the same value vanilla itself uses for a lamp-type BigCraftable (3), then reduced
     /// further per testing.
+    ///
+    /// MOD: made internal (not private) so <see cref="PoweredChestPatches"/> can reuse the same
+    /// hand-tuned color at a different radius, instead of duplicating a value that would drift out of
+    /// sync if this one's ever retuned again.
     /// </summary>
-    private const float LightRadius = 1f;
+    internal const float LightRadius = 1f;
 
     /// <summary>
     /// The light's color.
     /// </summary>
-    private static readonly Color LightColor = new(10, 10, 10, 255);
+    internal static readonly Color LightColor = new(10, 10, 10, 255);
 
 
     /*********
@@ -102,7 +114,7 @@ internal static class PowerCoilPatches
             return;
 
         double elapsedSeconds = Game1.currentGameTime?.TotalGameTime.TotalSeconds ?? 0;
-        float pulse = (float)Math.Sin(elapsedSeconds * PowerCoilPatches.PulseSpeed) * PowerCoilPatches.PulseAmplitude;
+        float pulse = (float)Math.Sin(elapsedSeconds * PowerCoilPatches.PulseSpeed + PowerCoilPatches.PulsePhaseOffset) * PowerCoilPatches.PulseAmplitude;
 
         // MOD: reverse-engineered from how Object.draw() consumes this value for a bigCraftable — it
         // multiplies the result by 4 (the game's zoom factor) and adds it directly to the drawn

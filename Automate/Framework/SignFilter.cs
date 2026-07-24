@@ -26,7 +26,9 @@ internal readonly record struct SignItemCondition(bool HasWhitelist, int? Whitel
 /// why), further reduced by any numeric blacklist reserve for the same item. Store is capped so the
 /// destination's count never exceeds the whitelist number.</item>
 /// <item>Else has a NUMERIC blacklist entry -> allowed. Take is reduced to the excess above the
-/// reserve. Store is gated off until the container's count already exceeds the reserve.</item>
+/// reserve (a "keep at least this many, drain the rest" rule on the container it protects). Store is
+/// unrestricted — the reserve only limits what may be taken FROM this container, not what a different
+/// container may receive of the same item.</item>
 /// <item>Else if the group has a whitelist anywhere -> blocked (unlisted item under an active
 /// whitelist).</item>
 /// <item>Else if the item has a non-numeric blacklist entry -> blocked entirely.</item>
@@ -125,10 +127,13 @@ internal class SignFilter
             return System.Math.Min(requested, System.Math.Max(0, cap - currentCount));
         }
 
-        // numeric blacklist only: gated until the container already holds more than the reserve
-        if (currentCount <= (condition.BlacklistNumber ?? 0))
-            return 0;
-
+        // MOD: fixed — a numeric-blacklist-only condition no longer restricts storage at all. The
+        // reserve only limits how much may be TAKEN from the container it protects (see
+        // GetMaxTakeable); it says nothing about a DIFFERENT container that's merely allowed to hold
+        // the item type. The old rule here ("gated until the container already holds more than the
+        // reserve") blocked ALL storage into a container starting at 0 of the item — currentCount(0)
+        // <= reserve(e.g. 10) is always true for a fresh destination, so a blacklist-only group could
+        // never receive its first unit of that item at all, no matter how much was available to pull.
         return requested;
     }
 }

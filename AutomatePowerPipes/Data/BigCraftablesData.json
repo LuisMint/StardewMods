@@ -47,6 +47,21 @@
                     "SpriteIndex": 0,
                     "ContextTags": ["sign_item"],
                     "CustomFields": null
+                },
+
+                "{{ModId}}_PoweredChest": {
+                    "Name": "{{ModId}}_PoweredChest",
+                    "DisplayName": "Powered Chest",
+                    "Description": "A chest that passively powers its own tile and the 4 tiles touching it, and can pull/push items to and from neighboring chests through one-directional pipes.",
+                    "Price": 100,
+                    "Fragility": 0,
+                    "CanBePlacedOutdoors": true,
+                    "CanBePlacedIndoors": true,
+                    "IsLamp": false,
+                    "Texture": "Mods/{{ModId}}/PoweredChest",
+                    "SpriteIndex": 0,
+                    "ContextTags": null,
+                    "CustomFields": null
                 }
             }
         }

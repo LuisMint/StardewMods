@@ -75,6 +75,9 @@ internal class MachineManager
     /// <summary>MOD: added. Animates a connector's displayed appearance while it's powered but not part of a valid automation group.</summary>
     private readonly PoweredFloorAnimator PoweredFloorAnimator;
 
+    /// <summary>MOD: added. Swaps a whitelist/blacklist sign's displayed appearance between a valid and invalid variant based on whether it's actually enforcing its filter.</summary>
+    private readonly SignTextureSync SignTextureSync;
+
     /// <summary>An aggregate collection of machine groups linked by Junimo chests.</summary>
     public JunimoMachineGroup JunimoMachineGroup { get; }
 
@@ -98,12 +101,17 @@ internal class MachineManager
         PowerSystem powerSystem = new(
             getEnabled: () => this.Config().PowerSystemEnabled,
             getSourceNames: () => this.Config().PowerSourceNames,
-            getRangeDistance: () => this.Config().PowerRangeDistance
+            getRangeDistance: () => this.Config().PowerRangeDistance,
+            getLocalSourceNames: () => this.Config().LocalPowerSourceNames // MOD: added
         );
 
         // MOD: added — swaps a connector's displayed appearance between its unpowered and "powered"
         // variant based on power range. See PoweredFloorSync.cs for details.
         this.PoweredFloorSync = new PoweredFloorSync(getConnectorTextureIds: () => this.Config().ConnectorPoweredTextureIds);
+
+        // MOD: added — swaps a whitelist/blacklist sign's displayed appearance between a valid and
+        // invalid variant. See SignTextureSync.cs for details.
+        this.SignTextureSync = new SignTextureSync(getSignTextureIds: () => this.Config().SignTextureIds);
 
         // MOD: added — animates a connector's displayed appearance while it's powered but not part
         // of a valid automation group. See PoweredFloorAnimator.cs for details.
@@ -396,6 +404,10 @@ internal class MachineManager
             // MOD: added — swap any managed connector's displayed appearance to match its current
             // power and group state (needs the just-built locationData for its ActiveTiles).
             this.PoweredFloorSync.Sync(location, locationData);
+
+            // MOD: added — swap any managed whitelist/blacklist sign's displayed appearance to match
+            // whether it's currently valid (enforcing its filter) or not.
+            this.SignTextureSync.Sync(location, locationData);
 
             // MOD: added — reseed the sign snapshot for this location's current sign candidate tiles
             // (not just ones with an item currently on them), so this fresh rescan isn't immediately

@@ -92,6 +92,16 @@ internal class ModConfig
     public int PowerRangeDistance { get; set; } = 2;
 
     /// <summary>
+    /// MOD: added. The in-game objects that act as a "local" power source for the power system (see
+    /// <see cref="PowerSystemEnabled"/>) — e.g. the Powered Chest. Unlike <see cref="PowerSourceNames"/>,
+    /// a local power source always powers only its own tile plus the 4 orthogonal neighbors,
+    /// regardless of <see cref="PowerRangeDistance"/>. This can be the internal name or qualified
+    /// item ID, same format as <see cref="Connectors"/>.
+    /// </summary>
+    [JsonProperty("LocalPowerSourceNames")]
+    public HashSet<string> LocalPowerSourceNames { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
     /// MOD: added. Maps a connector's <c>Data/FloorsAndPaths</c> ID to the Alternative Textures
     /// texture ID (in the form <c>{Owner}.{ModelName}</c>, e.g.
     /// <c>luisMint.ATAutomatePowerPipes.Flooring_luisMint.AutomatePowerPipes_PullPushPipe</c>)
@@ -101,6 +111,16 @@ internal class ModConfig
     /// <see cref="PoweredFloorAnimator"/>.
     /// </summary>
     public Dictionary<string, string> ConnectorPoweredTextureIds { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// MOD: added. Maps a whitelist/blacklist sign's qualified item ID to the Alternative Textures
+    /// texture ID (in the form <c>{Owner}.{ModelName}</c>, e.g.
+    /// <c>luisMint.ATAutomatePowerPipes.Craftable_luisMint.AutomatePowerPipes_WhitelistSign</c>)
+    /// providing its two appearance variations: 0 = invalid (not currently enforcing its filter), 1 =
+    /// valid. Empty by default; populated for a custom sign that has a matching Alternative Textures
+    /// content pack installed. Requires the Alternative Textures mod — see <see cref="SignTextureSync"/>.
+    /// </summary>
+    public Dictionary<string, string> SignTextureIds { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// MOD: added. The animation speed, in frames per second, for a connector that's powered but not
@@ -188,6 +208,10 @@ internal class ModConfig
         if (this.PowerRangeDistance < 0)
             this.PowerRangeDistance = 0;
 
+        // MOD: added — normalize the local power source set the same way.
+        this.LocalPowerSourceNames = this.LocalPowerSourceNames.ToNonNullCaseInsensitive();
+        this.LocalPowerSourceNames.RemoveWhere(string.IsNullOrWhiteSpace);
+
         // MOD: added — guard against a nonsensical animation speed/hold multiplier.
         if (this.PoweredFloorAnimationFps <= 0)
             this.PoweredFloorAnimationFps = 6;
@@ -198,6 +222,7 @@ internal class ModConfig
 
         // MOD: added.
         this.ConnectorPoweredTextureIds = this.ConnectorPoweredTextureIds.ToNonNullCaseInsensitive();
+        this.SignTextureIds = this.SignTextureIds.ToNonNullCaseInsensitive();
 
         this.ChestOverrides = this.ChestOverrides.ToNonNullCaseInsensitive();
         this.ChestOverrides.RemoveWhere(pair => pair.Value is null);

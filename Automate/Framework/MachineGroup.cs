@@ -4,6 +4,7 @@ using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using Microsoft.Xna.Framework;
+using Pathoschild.Stardew.Automate.Framework.Machines.Objects;
 using Pathoschild.Stardew.Common;
 using Pathoschild.Stardew.Common.Utilities;
 using StardewModdingAPI;
@@ -78,8 +79,37 @@ internal class MachineGroup : IMachineGroup
     [MemberNotNullWhen(false, nameof(IMachineGroup.LocationKey))]
     public bool IsJunimoGroup { get; protected set; }
 
+    /// <summary>
+    /// MOD: changed. A group with only "chest-like" machines (see <see cref="IChestLikeMachine"/> —
+    /// e.g. the Powered Chest, which is both a machine and its own container) isn't really automating
+    /// anything: such a machine explicitly ignores other chest-like machines to avoid an infinite
+    /// loop, so a lone Powered Chest — or two Powered Chests only connected to each other — can never
+    /// actually move an item. The group only counts as active once it also has at least one machine
+    /// or container that isn't chest-like for a Powered Chest to interact with.
+    /// </summary>
     /// <inheritdoc />
-    public virtual bool HasInternalAutomation => this.IsJunimoGroup || (this.Machines.Length > 0 && this.Containers.Any(p => !p.IsJunimoChest));
+    public virtual bool HasInternalAutomation
+    {
+        get
+        {
+            if (this.IsJunimoGroup)
+                return true;
+
+            if (this.Machines.Any(m => !MachineGroup.IsChestLikeMachine(m)) && this.Containers.Any(p => !p.IsJunimoChest))
+                return true;
+
+            return
+                this.Machines.Any(MachineGroup.IsChestLikeMachine)
+                && this.Containers.Any(p => !p.IsJunimoChest && p.TypeId != PoweredChestMachine.QualifiedItemId);
+        }
+    }
+
+    /// <summary>Get whether a machine is "chest-like" (see <see cref="IChestLikeMachine"/>), unwrapping a <see cref="MachineWrapper"/> if needed.</summary>
+    /// <param name="machine">The machine to check.</param>
+    private static bool IsChestLikeMachine(IMachine machine)
+    {
+        return machine is IChestLikeMachine || (machine is MachineWrapper wrapper && wrapper.Machine is IChestLikeMachine);
+    }
 
 
     /*********
@@ -256,7 +286,17 @@ internal class MachineGroup : IMachineGroup
 
             try
             {
-                if (!machine.SetInput(storage))
+                // MOD: added the IsChestLikeMachine exemption — this "skip every instance of the type"
+                // optimization assumes machines sharing a MachineTypeID are interchangeable (if one
+                // Furnace can't find coal+ore, no other Furnace will either, since they all draw from
+                // the same shared group storage). That assumption breaks for a chest-like machine like
+                // PoweredChestMachine: each instance has its OWN destination inventory (and its own
+                // distance to a whitelist sign's numeric cap), so one powered chest returning "nothing
+                // to do" (e.g. because IT already hit the cap) says nothing about whether a different
+                // powered chest in the same group still has room. Without this exemption, whichever
+                // powered chest happened to be full (or otherwise idle) first in iteration order would
+                // silently block every other powered chest in the group for the rest of the tick.
+                if (!machine.SetInput(storage) && !MachineGroup.IsChestLikeMachine(machine))
                     ignoreMachines.Add(machine.MachineTypeID); // if the machine can't process available input, no need to ask every instance of its type
             }
             catch (Exception ex)

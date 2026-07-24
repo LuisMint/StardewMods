@@ -119,6 +119,8 @@ internal class ModEntry : Mod
         );
         SignFilterPatches.Apply(harmony);
 
+        PoweredChestPatches.Apply(harmony);
+
         // hook events
         helper.Events.Content.AssetRequested += this.OnAssetRequested;
         helper.Events.GameLoop.SaveLoaded += this.OnSaveLoaded;
@@ -552,15 +554,16 @@ internal class ModEntry : Mod
         bool shouldReload = false;
         foreach ((Rectangle tileArea, TEntity entity, bool isAdded) in entities)
         {
-            // MOD: added — placing or removing a configured power source always forces a rescan,
-            // regardless of the normal "is this near something already tracked" heuristic below.
-            // That heuristic can't work for the power system: when a tile is out of power range,
-            // whatever's there is never tracked at all (not even as "disabled" or "outdated") — so
-            // there's nothing for a newly-placed or moved power source to appear "adjacent to,"
-            // and the heuristic would otherwise never realize the powered area changed.
+            // MOD: added — placing or removing a configured power source (ranged or local) always
+            // forces a rescan, regardless of the normal "is this near something already tracked"
+            // heuristic below. That heuristic can't work for the power system: when a tile is out of
+            // power range, whatever's there is never tracked at all (not even as "disabled" or
+            // "outdated") — so there's nothing for a newly-placed or moved power source to appear
+            // "adjacent to," and the heuristic would otherwise never realize the powered area changed.
             if (this.Config.PowerSystemEnabled
                 && entity is StardewValley.Object powerSourceCandidate
-                && (this.Config.PowerSourceNames.Contains(powerSourceCandidate.QualifiedItemId) || this.Config.PowerSourceNames.Contains(powerSourceCandidate.Name)))
+                && (this.Config.PowerSourceNames.Contains(powerSourceCandidate.QualifiedItemId) || this.Config.PowerSourceNames.Contains(powerSourceCandidate.Name)
+                    || this.Config.LocalPowerSourceNames.Contains(powerSourceCandidate.QualifiedItemId) || this.Config.LocalPowerSourceNames.Contains(powerSourceCandidate.Name)))
             {
                 shouldReload = true;
                 break;
@@ -571,6 +574,18 @@ internal class ModEntry : Mod
             // gets assigned promptly instead of sitting on the vanilla look until some unrelated
             // nearby change happens to trigger a rescan.
             if (isAdded && entity is Flooring placedFloor && this.Config.ConnectorPoweredTextureIds.ContainsKey(placedFloor.whichFloor.Value))
+            {
+                shouldReload = true;
+                break;
+            }
+
+            // MOD: added — placing a sign that has a registered Alternative Textures valid/invalid
+            // look always forces a rescan too, for the same reason as the connector case above: signs
+            // aren't machines, containers, or connectors, so they're never recognized as an
+            // automatable entity by the "ignore unknown entity" check just below, and would otherwise
+            // keep whatever texture it last had (or the content pack's default) until some unrelated
+            // nearby change happened to trigger a rescan.
+            if (isAdded && entity is StardewValley.Object placedSign && this.Config.SignTextureIds.ContainsKey(placedSign.QualifiedItemId))
             {
                 shouldReload = true;
                 break;
