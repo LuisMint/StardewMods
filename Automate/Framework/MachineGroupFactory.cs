@@ -65,6 +65,15 @@ internal class MachineGroupFactory
     /// <summary>MOD: added. Get the sign item names/IDs that act as a blacklist filter for a touching connector group.</summary>
     private readonly Func<HashSet<string>> GetBlacklistSignNames;
 
+    /// <summary>MOD: added. Get the sign item names/IDs that act as a CATEGORY whitelist filter for a touching connector group.</summary>
+    private readonly Func<HashSet<string>> GetWhitelistCategorySignNames;
+
+    /// <summary>MOD: added. Get the sign item names/IDs that act as a CATEGORY blacklist filter for a touching connector group.</summary>
+    private readonly Func<HashSet<string>> GetBlacklistCategorySignNames;
+
+    /// <summary>MOD: added. Get the configured custom categories, each mapping a category name to the item names/qualified IDs that belong to it — see <see cref="SignFilter.GetEffectiveCategory"/>.</summary>
+    private readonly Func<Dictionary<string, HashSet<string>>> GetCustomCategories;
+
     /// <summary>MOD: added. Encapsulates the power system, which (if enabled) restricts automation to tiles within range of a power source. See <see cref="PowerSystem"/> for details. Public so callers (e.g. for the overlay) can query powered tiles directly.</summary>
     public PowerSystem PowerSystem { get; }
 
@@ -84,16 +93,22 @@ internal class MachineGroupFactory
     /// <param name="getChestsEnabledByDefault">Get whether chests should be enabled by default if not set via <see cref="getChestOverride"/>.</param>
     /// <param name="getWhitelistSignNames">MOD: added. Get the sign item names/IDs that act as a whitelist filter for a touching connector group.</param>
     /// <param name="getBlacklistSignNames">MOD: added. Get the sign item names/IDs that act as a blacklist filter for a touching connector group.</param>
+    /// <param name="getWhitelistCategorySignNames">MOD: added. Get the sign item names/IDs that act as a CATEGORY whitelist filter for a touching connector group.</param>
+    /// <param name="getBlacklistCategorySignNames">MOD: added. Get the sign item names/IDs that act as a CATEGORY blacklist filter for a touching connector group.</param>
+    /// <param name="getCustomCategories">MOD: added. Get the configured custom categories, each mapping a category name to the item names/qualified IDs that belong to it.</param>
     /// <param name="powerSystem">MOD: added. Encapsulates the power system, which (if enabled) restricts automation to tiles within range of a power source.</param>
     /// <param name="buildStorage">Build a storage manager for the given containers.</param>
     /// <param name="monitor">Encapsulates monitoring and logging.</param>
-    public MachineGroupFactory(Func<string, ModConfigMachine?> getMachineOverride, Func<string, ModConfigStorage?> getChestOverride, Func<bool> getChestsEnabledByDefault, Func<HashSet<string>> getWhitelistSignNames, Func<HashSet<string>> getBlacklistSignNames, PowerSystem powerSystem, Func<IContainer[], StorageManager> buildStorage, IMonitor monitor)
+    public MachineGroupFactory(Func<string, ModConfigMachine?> getMachineOverride, Func<string, ModConfigStorage?> getChestOverride, Func<bool> getChestsEnabledByDefault, Func<HashSet<string>> getWhitelistSignNames, Func<HashSet<string>> getBlacklistSignNames, Func<HashSet<string>> getWhitelistCategorySignNames, Func<HashSet<string>> getBlacklistCategorySignNames, Func<Dictionary<string, HashSet<string>>> getCustomCategories, PowerSystem powerSystem, Func<IContainer[], StorageManager> buildStorage, IMonitor monitor)
     {
         this.GetMachineOverride = getMachineOverride;
         this.GetChestOverride = getChestOverride;
         this.GetChestsEnabledByDefault = getChestsEnabledByDefault;
         this.GetWhitelistSignNames = getWhitelistSignNames; // MOD: added
         this.GetBlacklistSignNames = getBlacklistSignNames; // MOD: added
+        this.GetWhitelistCategorySignNames = getWhitelistCategorySignNames; // MOD: added
+        this.GetBlacklistCategorySignNames = getBlacklistCategorySignNames; // MOD: added
+        this.GetCustomCategories = getCustomCategories; // MOD: added
         this.PowerSystem = powerSystem; // MOD: added
         this.BuildStorage = buildStorage;
         this.Monitor = monitor;
@@ -335,15 +350,26 @@ internal class MachineGroupFactory
         // on it later — otherwise a sign that was empty during the last full scan would be invisible
         // to change-detection entirely until another full scan happens to notice it.
         //
-        // A non-numeric blacklist sign is still fully overridden if a whitelist sign is present
-        // anywhere in the group, same as before this feature existed. A NUMERIC blacklist sign
-        // (see SignFilter's own remarks for the resolution rule) is no longer overridden that way —
-        // it combines with any whitelist signs instead, whether for the same item or a different one.
+        // A non-numeric item blacklist is overridden by ANY item-level whitelist present in the
+        // group — for any item, not just the same one a given blacklist sign targets. A category
+        // whitelist ALONE (no item-level whitelist in the group) does NOT override it, though — an
+        // item-level blacklist still excludes its own item even under an active category whitelist
+        // (see SignFilter's own remarks on item-level rules beating category-level ones). A category
+        // blacklist, being the least specific kind, IS still fully overridden by any whitelist
+        // anywhere in the group (item-level or category-level). A NUMERIC item blacklist sign (see
+        // SignFilter's own remarks for the resolution rule) is never overridden by a whitelist at
+        // all — it combines with any whitelist signs instead, whether for the same item or a
+        // different one.
+        //
         // Multiple signs of the same kind (both whitelist, or both blacklist) for the SAME item don't
         // combine: only the first one encountered (by this scan's tile order) counts, later ones are
-        // inert until it's removed.
+        // inert until it's removed. Category signs of the same kind DO combine across DIFFERENT
+        // categories, though (e.g. two whitelist category signs for two different categories both
+        // apply) — same as item-based signs already combine across different items. Only a second
+        // category sign for the exact SAME category would be redundant (a HashSet naturally collapses
+        // that, no special-casing needed).
         {
-            Dictionary<int, List<(Vector2 Tile, bool IsWhitelist, string ItemId, int? Number)>> signEntriesByRoot = new();
+            Dictionary<int, List<(Vector2 Tile, SignKind Kind, string ItemId, object? Category, int? Number)>> signEntriesByRoot = new();
 
             foreach (Vector2 tile in location.GetTiles())
             {
@@ -353,7 +379,7 @@ internal class MachineGroupFactory
                 if (poweredTiles != null && !poweredTiles.Contains(tile))
                     continue;
 
-                (bool IsWhitelist, string? HeldItemQualifiedId, int? Number)? signInfo = this.GetSignInfo(locationIndex, tile);
+                (SignKind Kind, string? HeldItemQualifiedId, object? Category, int? Number)? signInfo = this.GetSignInfo(locationIndex, tile);
                 if (signInfo == null)
                     continue;
 
@@ -379,26 +405,47 @@ internal class MachineGroupFactory
                     if (signInfo.Value.HeldItemQualifiedId == null)
                         continue;
 
-                    if (!signEntriesByRoot.TryGetValue(root, out List<(Vector2, bool, string, int?)>? list))
-                        signEntriesByRoot[root] = list = new List<(Vector2, bool, string, int?)>();
-                    list.Add((tile, signInfo.Value.IsWhitelist, signInfo.Value.HeldItemQualifiedId, signInfo.Value.Number));
+                    // MOD: added — a category sign holding an item with no meaningful effective
+                    // category (see SignFilter.GetEffectiveCategory — e.g. most tools) contributes
+                    // nothing either, same as an empty sign, since a "no category" filter would be
+                    // meaninglessly broad. Category is already null here whenever that's the case.
+                    bool isCategoryKind = signInfo.Value.Kind is SignKind.WhitelistCategory or SignKind.BlacklistCategory;
+                    if (isCategoryKind && signInfo.Value.Category == null)
+                        continue;
+
+                    if (!signEntriesByRoot.TryGetValue(root, out List<(Vector2, SignKind, string, object?, int?)>? list))
+                        signEntriesByRoot[root] = list = new List<(Vector2, SignKind, string, object?, int?)>();
+                    list.Add((tile, signInfo.Value.Kind, signInfo.Value.HeldItemQualifiedId, signInfo.Value.Category, signInfo.Value.Number));
                 }
             }
 
-            foreach ((int root, List<(Vector2 Tile, bool IsWhitelist, string ItemId, int? Number)> entries) in signEntriesByRoot)
+            foreach ((int root, List<(Vector2 Tile, SignKind Kind, string ItemId, object? Category, int? Number)> entries) in signEntriesByRoot)
             {
-                // MOD: dedup by (IsWhitelist, ItemId), keeping only the first occurrence in scan
-                // order — a second whitelist (or blacklist) sign for the same item is inert.
-                HashSet<(bool IsWhitelist, string ItemId)> seenSignKeys = new();
+                // MOD: added — tiles of signs that lost a same-kind/same-item(-or-category) dedup
+                // below, always left unmarked by the marking loop further down regardless of any
+                // override rule — a duplicate sign contributes nothing at all, whether or not its
+                // (already-applied) counterpart would otherwise be overridden.
+                HashSet<Vector2> duplicateSignTiles = new();
+
+                // --- item-level conditions (whitelist/blacklist for a specific item) ---
+                // MOD: dedup by (Kind, ItemId), keeping only the first occurrence in scan order — a
+                // second whitelist (or blacklist) sign for the same item is inert.
+                HashSet<(SignKind Kind, string ItemId)> seenItemSignKeys = new();
                 Dictionary<string, SignItemCondition> conditions = new();
                 HashSet<string> nonNumericBlacklistItems = new();
 
-                foreach ((Vector2 _, bool isWhitelist, string itemId, int? number) in entries)
+                foreach ((Vector2 tile, SignKind kind, string itemId, object? _, int? number) in entries)
                 {
-                    if (!seenSignKeys.Add((isWhitelist, itemId)))
-                        continue; // duplicate sign of the same kind for the same item — first one already applied
+                    if (kind is not (SignKind.WhitelistItem or SignKind.BlacklistItem))
+                        continue;
 
-                    if (isWhitelist)
+                    if (!seenItemSignKeys.Add((kind, itemId)))
+                    {
+                        duplicateSignTiles.Add(tile);
+                        continue; // duplicate sign of the same kind for the same item — first one already applied
+                    }
+
+                    if (kind == SignKind.WhitelistItem)
                     {
                         conditions[itemId] = conditions.TryGetValue(itemId, out SignItemCondition existing)
                             ? existing with { HasWhitelist = true, WhitelistNumber = number }
@@ -416,18 +463,68 @@ internal class MachineGroupFactory
                     }
                 }
 
-                bool groupHasWhitelist = conditions.Values.Any(c => c.HasWhitelist);
-                GetOrCreateBuilder(root).SetItemFilter(new SignFilter(conditions, nonNumericBlacklistItems, groupHasWhitelist));
-
-                // MOD: mark tiles whose sign actually contributes to the resolved filter. A
-                // non-numeric blacklist sign overridden by a whitelist sign elsewhere in the same
-                // group is left unmarked entirely, so its tile shows its normal color instead of a
-                // stale black highlight that no longer reflects what's actually being enforced.
-                // Numeric blacklist signs stay marked even under a whitelist, since they're active.
-                foreach ((Vector2 signTile, bool isWhitelistSign, string _, int? number) in entries)
+                // --- category-level conditions (MOD: added) — multiple category signs of the SAME
+                // kind combine as long as they're for DIFFERENT categories (e.g. two whitelist
+                // category signs, one "Lootboxes" and one "Weapon", both apply), same as multiple
+                // item-based signs for different items already do. A second sign of the same kind for
+                // the exact same category, though, is a plain duplicate — dedup by (Kind, Category)
+                // the same way item-level signs dedup by (Kind, ItemId).
+                HashSet<object> whitelistedCategories = new();
+                HashSet<object> blacklistedCategories = new();
+                HashSet<(SignKind Kind, object Category)> seenCategorySignKeys = new();
+                foreach ((Vector2 tile, SignKind kind, string _, object? category, int? _) in entries)
                 {
-                    if (!isWhitelistSign && groupHasWhitelist && !number.HasValue)
-                        continue; // non-numeric blacklist sign lost to a whitelist sign elsewhere in the group — leave unmarked
+                    if (category == null || kind is not (SignKind.WhitelistCategory or SignKind.BlacklistCategory))
+                        continue;
+
+                    if (!seenCategorySignKeys.Add((kind, category)))
+                    {
+                        duplicateSignTiles.Add(tile);
+                        continue; // duplicate sign of the same kind for the same category — first one already applied
+                    }
+
+                    if (kind == SignKind.WhitelistCategory)
+                        whitelistedCategories.Add(category);
+                    else
+                        blacklistedCategories.Add(category);
+                }
+
+                bool groupHasWhitelist = conditions.Values.Any(c => c.HasWhitelist);
+                bool groupHasAnyWhitelist = groupHasWhitelist || whitelistedCategories.Count > 0; // MOD: added — category whitelist counts too
+                GetOrCreateBuilder(root).SetItemFilter(new SignFilter(conditions, nonNumericBlacklistItems, groupHasWhitelist, this.GetCustomCategories(), whitelistedCategories, blacklistedCategories));
+
+                // MOD: mark tiles whose sign actually contributes to the resolved filter, so its tile
+                // shows its normal color instead of a stale black highlight that no longer reflects
+                // what's actually being enforced. A duplicate sign (see duplicateSignTiles above) is
+                // always left unmarked first. Otherwise, what counts as "overridden" differs by sign
+                // level:
+                // - A non-numeric ITEM blacklist is overridden by ANY item-level whitelist in the
+                //   group, for any item — an item-level whitelist sign always wins over a non-numeric
+                //   item-level blacklist sign, full stop, regardless of which item either one is for.
+                //   A category whitelist ALONE (no item-level whitelist present) does NOT override it,
+                //   though — see SignFilter's own remarks on item-level rules beating category-level
+                //   ones for why an item blacklist still excludes its item under a category whitelist.
+                // - A CATEGORY blacklist is overridden by ANY active whitelist in the group (item-level
+                //   or category-level), since a category-level rule is the least specific and always
+                //   loses to a whitelist at either level.
+                // - A numeric item blacklist sign always stays marked, since it's still active
+                //   (see SignFilter's remarks).
+                foreach ((Vector2 signTile, SignKind kind, string itemId, object? _, int? number) in entries)
+                {
+                    if (duplicateSignTiles.Contains(signTile))
+                        continue;
+
+                    bool isWhitelistSign = kind is SignKind.WhitelistItem or SignKind.WhitelistCategory;
+
+                    bool overridden = kind switch
+                    {
+                        SignKind.BlacklistItem when !number.HasValue => groupHasWhitelist,
+                        SignKind.BlacklistCategory => groupHasAnyWhitelist,
+                        _ => false
+                    };
+
+                    if (overridden)
+                        continue;
 
                     GetOrCreateBuilder(root).MarkSignTile(signTile, isWhitelistSign);
                 }
@@ -625,22 +722,30 @@ internal class MachineGroupFactory
     }
 
     /// <summary>
-    /// MOD: added. Get sign detection info for a tile, if a configured whitelist/blacklist sign is
-    /// there — regardless of whether it currently has an item displayed on it. Returns <c>null</c>
-    /// if there's no such sign on the tile at all. <c>HeldItemQualifiedId</c> is <c>null</c> if the
-    /// sign is empty (nothing displayed on it); callers should treat that case as "detected but not
-    /// currently filtering anything" rather than "not detected." <c>Number</c> is the sign's numeric
-    /// condition (see <see cref="Patches.SignFilterPatches"/> for how it's set by repeatedly clicking
-    /// the same item onto the sign), or <c>null</c> if it's a plain type-only filter.
+    /// MOD: added. Get sign detection info for a tile, if a configured whitelist/blacklist sign
+    /// (item-based or category-based) is there — regardless of whether it currently has an item
+    /// displayed on it. Returns <c>null</c> if there's no such sign on the tile at all.
+    /// <c>HeldItemQualifiedId</c> is <c>null</c> if the sign is empty (nothing displayed on it);
+    /// callers should treat that case as "detected but not currently filtering anything" rather than
+    /// "not detected." <c>Number</c> is the sign's numeric condition (see
+    /// <see cref="Patches.SignFilterPatches"/> for how it's set by repeatedly clicking the same item
+    /// onto the sign) — always <c>null</c> for a category sign, since those have no numeric condition.
+    /// <c>Category</c> is only set for a category sign, and only when the displayed item resolves to
+    /// an effective category at all (see <see cref="SignFilter.GetEffectiveCategory"/> — a custom
+    /// category takes priority over the item's own vanilla category; an item with neither, e.g. most
+    /// tools, is treated the same as an empty sign, since a "no category" filter would be meaninglessly
+    /// broad).
     /// </summary>
     /// <param name="locationIndex">An indexed view of the location.</param>
     /// <param name="tile">The tile to check.</param>
-    private (bool IsWhitelist, string? HeldItemQualifiedId, int? Number)? GetSignInfo(LocationFloodFillIndex locationIndex, Vector2 tile)
+    private (SignKind Kind, string? HeldItemQualifiedId, object? Category, int? Number)? GetSignInfo(LocationFloodFillIndex locationIndex, Vector2 tile)
     {
         HashSet<string> whitelistSigns = this.GetWhitelistSignNames();
         HashSet<string> blacklistSigns = this.GetBlacklistSignNames();
+        HashSet<string> whitelistCategorySigns = this.GetWhitelistCategorySignNames();
+        HashSet<string> blacklistCategorySigns = this.GetBlacklistCategorySignNames();
 
-        if (whitelistSigns.Count == 0 && blacklistSigns.Count == 0)
+        if (whitelistSigns.Count == 0 && blacklistSigns.Count == 0 && whitelistCategorySigns.Count == 0 && blacklistCategorySigns.Count == 0)
             return null; // feature not configured at all — skip the scan entirely
 
         foreach (object target in locationIndex.GetEntities(tile))
@@ -648,10 +753,8 @@ internal class MachineGroupFactory
             if (target is not SObject signObj)
                 continue;
 
-            bool isWhitelist = whitelistSigns.Contains(signObj.QualifiedItemId) || whitelistSigns.Contains(signObj.Name);
-            bool isBlacklist = !isWhitelist && (blacklistSigns.Contains(signObj.QualifiedItemId) || blacklistSigns.Contains(signObj.Name));
-
-            if (!isWhitelist && !isBlacklist)
+            SignKind? kind = MachineGroupFactory.GetSignKind(signObj, whitelistSigns, blacklistSigns, whitelistCategorySigns, blacklistCategorySigns);
+            if (kind == null)
                 continue;
 
             // The item displayed on a sign is read via the private `displayItem` field (not
@@ -662,7 +765,11 @@ internal class MachineGroupFactory
             if (displayItemField?.GetValue(signObj) is NetRef<StardewValley.Item> displayItemRef)
                 heldItem = displayItemRef.Value;
 
-            return (isWhitelist, heldItem?.QualifiedItemId, MachineGroupFactory.GetSignNumber(signObj, heldItem));
+            bool isCategoryKind = kind is SignKind.WhitelistCategory or SignKind.BlacklistCategory;
+            object? category = isCategoryKind && heldItem != null ? SignFilter.GetEffectiveCategory(heldItem.QualifiedItemId, this.GetCustomCategories()) : null;
+            int? number = isCategoryKind ? null : MachineGroupFactory.GetSignNumber(signObj, heldItem);
+
+            return (kind.Value, heldItem?.QualifiedItemId, category, number);
         }
 
         return null;
@@ -685,8 +792,10 @@ internal class MachineGroupFactory
     {
         HashSet<string> whitelistSigns = this.GetWhitelistSignNames();
         HashSet<string> blacklistSigns = this.GetBlacklistSignNames();
+        HashSet<string> whitelistCategorySigns = this.GetWhitelistCategorySignNames();
+        HashSet<string> blacklistCategorySigns = this.GetBlacklistCategorySignNames();
 
-        if (whitelistSigns.Count == 0 && blacklistSigns.Count == 0)
+        if (whitelistSigns.Count == 0 && blacklistSigns.Count == 0 && whitelistCategorySigns.Count == 0 && blacklistCategorySigns.Count == 0)
             return null;
 
         // MOD: fixed — check both netObjects AND overlayObjects, matching the two sources
@@ -702,14 +811,54 @@ internal class MachineGroupFactory
         if (signObj == null)
             return null;
 
-        bool isWhitelist = whitelistSigns.Contains(signObj.QualifiedItemId) || whitelistSigns.Contains(signObj.Name);
-        bool isBlacklist = !isWhitelist && (blacklistSigns.Contains(signObj.QualifiedItemId) || blacklistSigns.Contains(signObj.Name));
-        if (!isWhitelist && !isBlacklist)
+        SignKind? kind = MachineGroupFactory.GetSignKind(signObj, whitelistSigns, blacklistSigns, whitelistCategorySigns, blacklistCategorySigns);
+        if (kind == null)
             return null;
 
         System.Reflection.FieldInfo? displayItemField = MachineGroupFactory.GetSignDisplayItemField(signObj.GetType());
         if (displayItemField?.GetValue(signObj) is NetRef<StardewValley.Item> displayItemRef && displayItemRef.Value is Item heldItem)
-            return (heldItem.QualifiedItemId, MachineGroupFactory.GetSignNumber(signObj, heldItem));
+        {
+            bool isCategoryKind = kind is SignKind.WhitelistCategory or SignKind.BlacklistCategory;
+            return (heldItem.QualifiedItemId, isCategoryKind ? null : MachineGroupFactory.GetSignNumber(signObj, heldItem));
+        }
+
+        return null;
+    }
+
+    /// <summary>MOD: added. The kind of whitelist/blacklist filter a sign acts as.</summary>
+    private enum SignKind
+    {
+        /// <summary>Whitelists the exact item displayed on the sign (see <see cref="ModConfig.WhitelistSignNames"/>).</summary>
+        WhitelistItem,
+
+        /// <summary>Blacklists the exact item displayed on the sign (see <see cref="ModConfig.BlacklistSignNames"/>).</summary>
+        BlacklistItem,
+
+        /// <summary>Whitelists every item sharing the displayed item's category (see <see cref="ModConfig.WhitelistCategorySignNames"/>).</summary>
+        WhitelistCategory,
+
+        /// <summary>Blacklists every item sharing the displayed item's category (see <see cref="ModConfig.BlacklistCategorySignNames"/>).</summary>
+        BlacklistCategory
+    }
+
+    /// <summary>MOD: added. Get which kind of filter sign an object is configured as, if any.</summary>
+    /// <param name="signObj">The sign object to check.</param>
+    /// <param name="whitelistSigns">The configured item-level whitelist sign names/IDs.</param>
+    /// <param name="blacklistSigns">The configured item-level blacklist sign names/IDs.</param>
+    /// <param name="whitelistCategorySigns">The configured category-level whitelist sign names/IDs.</param>
+    /// <param name="blacklistCategorySigns">The configured category-level blacklist sign names/IDs.</param>
+    private static SignKind? GetSignKind(SObject signObj, HashSet<string> whitelistSigns, HashSet<string> blacklistSigns, HashSet<string> whitelistCategorySigns, HashSet<string> blacklistCategorySigns)
+    {
+        bool Matches(HashSet<string> names) => names.Contains(signObj.QualifiedItemId) || names.Contains(signObj.Name);
+
+        if (Matches(whitelistSigns))
+            return SignKind.WhitelistItem;
+        if (Matches(blacklistSigns))
+            return SignKind.BlacklistItem;
+        if (Matches(whitelistCategorySigns))
+            return SignKind.WhitelistCategory;
+        if (Matches(blacklistCategorySigns))
+            return SignKind.BlacklistCategory;
 
         return null;
     }

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 using System.Runtime.Serialization;
 using Newtonsoft.Json;
 using Pathoschild.Stardew.Common;
@@ -63,6 +64,43 @@ internal class ModConfig
     /// </summary>
     [JsonProperty("BlacklistSignNames")]
     public HashSet<string> BlacklistSignNames { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// MOD: added. The sign item(s) that act as a WHITELIST filter based on the CATEGORY (e.g.
+    /// "Cooking", "Minerals", or a configured <see cref="CustomCategories"/> entry) of whatever item is
+    /// displayed on them, rather than the specific item — only items sharing that category can move
+    /// through a touching connector group's storage. Unlike <see cref="WhitelistSignNames"/>, a
+    /// category sign has no numeric condition. Multiple whitelist category signs in the same group
+    /// combine (e.g. two signs for two different categories both apply), same as the item-based signs
+    /// already do for different items. This can be the internal name or qualified item ID, same format
+    /// as <see cref="Connectors"/>. Category whitelist signs take priority over category blacklist
+    /// signs if both are present on the same group, same as the item-based signs.
+    /// </summary>
+    [JsonProperty("WhitelistCategorySignNames")]
+    public HashSet<string> WhitelistCategorySignNames { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// MOD: added. The sign item(s) that act as a BLACKLIST filter based on the CATEGORY of whatever
+    /// item is displayed on them, rather than the specific item — items sharing that category are
+    /// blocked from moving through a touching connector group's storage. See
+    /// <see cref="WhitelistCategorySignNames"/>'s remarks for how this differs from the item-based
+    /// blacklist signs.
+    /// </summary>
+    [JsonProperty("BlacklistCategorySignNames")]
+    public HashSet<string> BlacklistCategorySignNames { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// MOD: added. Custom category groupings for the category whitelist/blacklist signs, keyed by a
+    /// category name of your choosing (e.g. "Lootboxes") to the item names/qualified IDs (same format
+    /// as <see cref="Connectors"/>) that belong to it. A custom category takes priority over an item's
+    /// own vanilla category when a category sign reads it or when filtering decides whether an item
+    /// matches — e.g. a "Lootboxes" category could group every geode, the Golden Coconut, and both
+    /// Mystery Boxes together even though none of them share a vanilla category (geodes are normally
+    /// lumped in with gems/minerals, the coconut and mystery boxes have their own separate categories).
+    /// See <see cref="SignFilter.GetEffectiveCategory"/> for the exact resolution rule.
+    /// </summary>
+    [JsonProperty("CustomCategories")]
+    public Dictionary<string, HashSet<string>> CustomCategories { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// MOD: added. Whether the "power system" is enabled. When true, automation only works within
@@ -201,6 +239,21 @@ internal class ModConfig
 
         this.BlacklistSignNames = this.BlacklistSignNames.ToNonNullCaseInsensitive();
         this.BlacklistSignNames.RemoveWhere(string.IsNullOrWhiteSpace);
+
+        this.WhitelistCategorySignNames = this.WhitelistCategorySignNames.ToNonNullCaseInsensitive();
+        this.WhitelistCategorySignNames.RemoveWhere(string.IsNullOrWhiteSpace);
+
+        this.BlacklistCategorySignNames = this.BlacklistCategorySignNames.ToNonNullCaseInsensitive();
+        this.BlacklistCategorySignNames.RemoveWhere(string.IsNullOrWhiteSpace);
+
+        // MOD: added — normalize both the category-name keys AND each category's own member set.
+        this.CustomCategories = this.CustomCategories.ToNonNullCaseInsensitive();
+        foreach (string categoryName in this.CustomCategories.Keys.ToArray())
+        {
+            HashSet<string> members = this.CustomCategories[categoryName].ToNonNullCaseInsensitive();
+            members.RemoveWhere(string.IsNullOrWhiteSpace);
+            this.CustomCategories[categoryName] = members;
+        }
 
         // MOD: added — normalize the power source set the same way, and guard against a nonsensical range.
         this.PowerSourceNames = this.PowerSourceNames.ToNonNullCaseInsensitive();

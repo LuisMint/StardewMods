@@ -49,6 +49,36 @@
                     "CustomFields": null
                 },
 
+                "{{ModId}}_WhitelistCategorySign": {
+                    "Name": "{{ModId}}_WhitelistCategorySign",
+                    "DisplayName": "Whitelist Category Sign",
+                    "Description": "Place an item on this sign to let only that item's CATEGORY pass through a touching connector group.",
+                    "Price": 25,
+                    "Fragility": 0,
+                    "CanBePlacedOutdoors": true,
+                    "CanBePlacedIndoors": true,
+                    "IsLamp": false,
+                    "Texture": "Mods/{{ModId}}/WhitelistCategorySign",
+                    "SpriteIndex": 0,
+                    "ContextTags": ["sign_item"],
+                    "CustomFields": null
+                },
+
+                "{{ModId}}_BlacklistCategorySign": {
+                    "Name": "{{ModId}}_BlacklistCategorySign",
+                    "DisplayName": "Blacklist Category Sign",
+                    "Description": "Place an item on this sign to block that item's CATEGORY from passing through a touching connector group.",
+                    "Price": 25,
+                    "Fragility": 0,
+                    "CanBePlacedOutdoors": true,
+                    "CanBePlacedIndoors": true,
+                    "IsLamp": false,
+                    "Texture": "Mods/{{ModId}}/BlacklistCategorySign",
+                    "SpriteIndex": 0,
+                    "ContextTags": ["sign_item"],
+                    "CustomFields": null
+                },
+
                 "{{ModId}}_PoweredChest": {
                     "Name": "{{ModId}}_PoweredChest",
                     "DisplayName": "Powered Chest",

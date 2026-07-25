@@ -119,6 +119,18 @@ internal class ModEntry : Mod
         );
         SignFilterPatches.Apply(harmony);
 
+        CategorySignPatches.Initialize(
+            getWhitelistCategorySignNames: () => this.Config.WhitelistCategorySignNames,
+            getBlacklistCategorySignNames: () => this.Config.BlacklistCategorySignNames,
+            getCustomCategories: () => this.Config.CustomCategories
+        );
+        CategorySignPatches.Apply(harmony);
+
+        SignColliderPatches.Initialize(
+            getSignTextureIds: () => this.Config.SignTextureIds
+        );
+        SignColliderPatches.Apply(harmony);
+
         PoweredChestPatches.Apply(harmony);
 
         // hook events

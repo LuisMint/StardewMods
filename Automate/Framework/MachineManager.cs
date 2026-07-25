@@ -127,6 +127,9 @@ internal class MachineManager
             getChestsEnabledByDefault: () => this.Config().ChestsEnabledByDefault,
             getWhitelistSignNames: () => this.Config().WhitelistSignNames, // MOD: added
             getBlacklistSignNames: () => this.Config().BlacklistSignNames, // MOD: added
+            getWhitelistCategorySignNames: () => this.Config().WhitelistCategorySignNames, // MOD: added
+            getBlacklistCategorySignNames: () => this.Config().BlacklistCategorySignNames, // MOD: added
+            getCustomCategories: () => this.Config().CustomCategories, // MOD: added
             powerSystem: powerSystem, // MOD: added
             buildStorage: this.BuildStorage,
             monitor: monitor

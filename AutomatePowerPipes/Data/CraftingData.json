@@ -10,6 +10,8 @@
                 "{{ModId}}_PowerCoil": "388 5/Field/{{ModId}}_PowerCoil 1/false/default/",
                 "{{ModId}}_WhitelistSign": "388 5/Field/{{ModId}}_WhitelistSign 1/false/default/",
                 "{{ModId}}_BlacklistSign": "390 5/Field/{{ModId}}_BlacklistSign 1/false/default/",
+                "{{ModId}}_WhitelistCategorySign": "388 5/Field/{{ModId}}_WhitelistCategorySign 1/false/default/",
+                "{{ModId}}_BlacklistCategorySign": "390 5/Field/{{ModId}}_BlacklistCategorySign 1/false/default/",
                 "{{ModId}}_PoweredChest": "388 50/Field/{{ModId}}_PoweredChest 1/false/default/"
             }
         }
