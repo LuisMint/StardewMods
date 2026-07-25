@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace Pathoschild.Stardew.Automate.Framework;
@@ -101,10 +102,10 @@ internal class SignFilter
             return this.IsItemTypeAllowed(itemId) ? requested : 0;
 
         int reserve = condition.HasNumericBlacklist ? condition.BlacklistNumber ?? 0 : 0;
-        int result = System.Math.Min(requested, System.Math.Max(0, currentCount - reserve));
+        int result = Math.Min(requested, Math.Max(0, currentCount - reserve));
 
         if (condition.HasWhitelist && condition.WhitelistNumber.HasValue)
-            result = System.Math.Min(result, condition.WhitelistNumber.Value);
+            result = Math.Min(result, condition.WhitelistNumber.Value);
 
         return result;
     }
@@ -124,7 +125,7 @@ internal class SignFilter
         if (condition.HasWhitelist)
         {
             int cap = condition.WhitelistNumber ?? int.MaxValue;
-            return System.Math.Min(requested, System.Math.Max(0, cap - currentCount));
+            return Math.Min(requested, Math.Max(0, cap - currentCount));
         }
 
         // MOD: fixed — a numeric-blacklist-only condition no longer restricts storage at all. The

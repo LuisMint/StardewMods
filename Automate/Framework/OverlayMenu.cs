@@ -25,9 +25,6 @@ internal class OverlayMenu : BaseOverlay
     /// <summary>The machine data for the current location.</summary>
     private readonly MachineDataForLocation? MachineData;
 
-    /// <summary>The machine group for machines connected to Junimo chests.</summary>
-    private readonly JunimoMachineGroup JunimoGroup;
-
     /// <summary>MOD: added. The color used to highlight a tile (machine or chest) that belongs to more than one active machine group at once (e.g. a chest or machine shared between two separate path networks).</summary>
     private static readonly Color MultiGroupColor = Color.Purple;
 
@@ -70,14 +67,12 @@ internal class OverlayMenu : BaseOverlay
     /// <param name="inputHelper">An API for checking and changing input state.</param>
     /// <param name="reflection">Simplifies access to private code.</param>
     /// <param name="locationKey">The unique key for the current location.</param>
-    /// <param name="machineData">The machine groups to display.</param>
-    /// <param name="junimoGroup">The machine group for machines connected to Junimo chests.</param>
-    public OverlayMenu(IModEvents events, IInputHelper inputHelper, IReflectionHelper reflection, string locationKey, MachineDataForLocation? machineData, JunimoMachineGroup junimoGroup)
+    /// <param name="machineData">The machine groups to display — its lookups already fold in any Junimo-touching local group with its own real automation (see <see cref="MachineDataForLocation"/>'s own remarks), so a Junimo chest is drawn through the exact same logic as any other chest below, with no special-casing needed.</param>
+    public OverlayMenu(IModEvents events, IInputHelper inputHelper, IReflectionHelper reflection, string locationKey, MachineDataForLocation? machineData)
         : base(events, inputHelper, reflection)
     {
         this.LocationKey = locationKey;
         this.MachineData = machineData;
-        this.JunimoGroup = junimoGroup;
     }
 
 
@@ -90,8 +85,6 @@ internal class OverlayMenu : BaseOverlay
     {
         if (!Context.IsPlayerFree)
             return;
-
-        IReadOnlySet<Vector2> junimoChestTiles = this.JunimoGroup.GetTiles(this.LocationKey);
 
         // MOD: added — collect border info per tile during the background pass, so ALL borders can
         // be drawn in a separate pass afterward. Previously each tile's border was drawn immediately
@@ -114,14 +107,7 @@ internal class OverlayMenu : BaseOverlay
             Color? color = null;
             bool isMultiGroup = false; // MOD: added
             Color? connectorRoleColor = null; // MOD: added
-            if (junimoChestTiles.Contains(tile))
-            {
-                color = this.JunimoGroup.HasInternalAutomation
-                    ? Color.Green * OverlayMenu.NormalFillOpacity
-                    : OverlayMenu.DisabledColor * OverlayMenu.NormalFillOpacity;
-                group = this.JunimoGroup;
-            }
-            else if (this.MachineData is not null)
+            if (this.MachineData is not null)
             {
                 if (this.MachineData.ActiveTiles.TryGetValue(tile, out group))
                 {
@@ -209,7 +195,15 @@ internal class OverlayMenu : BaseOverlay
                 else if (connectorRoleColor.HasValue)
                     borderColor = connectorRoleColor.Value;
                 else
-                    borderColor = group.HasInternalAutomation ? Color.Green : OverlayMenu.DisabledColor;
+                    // MOD: uses HasLocalInternalAutomation rather than HasInternalAutomation — for a
+                    // Junimo-touching group, HasInternalAutomation is unconditionally true (it's the
+                    // farm-wide "should this be processed at all" signal), which drew a green border
+                    // around a Junimo chest with no local automation even though its FILL (driven by
+                    // MachineDataForLocation's own HasLocalInternalAutomation-based bucketing, a few
+                    // lines up) already correctly showed it as disabled. See MachineGroup's own
+                    // remarks for why HasLocalInternalAutomation is identical to HasInternalAutomation
+                    // for a non-Junimo group, so this doesn't change anything for the common case.
+                    borderColor = group.HasLocalInternalAutomation ? Color.Green : OverlayMenu.DisabledColor;
 
                 borderQueue.Add((tile, group, borderColor));
             }

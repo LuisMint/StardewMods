@@ -11,7 +11,7 @@ namespace Pathoschild.Stardew.Automate.Framework.Patches;
 /// <summary>
 /// MOD: added. Harmony patches giving whitelist/blacklist signs (see <see cref="ModConfig.WhitelistSignNames"/>/<see cref="ModConfig.BlacklistSignNames"/>)
 /// a numeric condition: clicking the SAME item onto a sign repeatedly (instead of a different one)
-/// bumps a counter shown as a stack-style number in the sign's bottom-right corner, up to 999.
+/// bumps a counter shown as a stack-style number in the sign's top-right corner, up to 999.
 ///
 /// The counter's VALUE is stored directly in the displayed item's own <see cref="Item.Stack"/> (1-999,
 /// so it can reuse vanilla's own digit-drawing helper), but WHETHER a number is showing at all is

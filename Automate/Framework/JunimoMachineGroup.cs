@@ -4,6 +4,7 @@ using System.Collections.Immutable;
 using System.Linq;
 using Microsoft.Xna.Framework;
 using Pathoschild.Stardew.Common;
+using Pathoschild.Stardew.Common.Utilities;
 using StardewModdingAPI;
 
 namespace Pathoschild.Stardew.Automate.Framework;
@@ -90,7 +91,10 @@ internal class JunimoMachineGroup : MachineGroup
     /// <summary>Rebuild the aggregate group for changes to the underlying machine groups.</summary>
     public void Rebuild()
     {
-        this.Containers = this.GetUniqueContainers(this.MachineGroups.SelectMany(p => p.Containers));
+        // MOD: changed from the base GetUniqueContainers to a role-aware dedup — see
+        // GetUniqueJunimoContainers' own remarks for why plain identity-based dedup silently broke
+        // per-touchpoint connector roles for a shared Junimo inventory.
+        this.Containers = this.GetUniqueJunimoContainers();
         this.Machines = this.SortMachines(this.MachineGroups.SelectMany(p => p.Machines)).ToArray();
         this.Tiles = null;
 
@@ -105,28 +109,6 @@ internal class JunimoMachineGroup : MachineGroup
         return this.Tiles.TryGetValue(locationKey, out IReadOnlySet<Vector2>? tiles)
             ? tiles
             : ImmutableHashSet<Vector2>.Empty;
-    }
-
-    /// <inheritdoc />
-    /// MOD: added. Junimo chests aren't reached through paths, so there's no connector role concept
-    /// for this aggregate group — always empty.
-    public override IReadOnlyDictionary<Vector2, ConnectorRole> GetConnectorRoles(string locationKey)
-    {
-        return ImmutableDictionary<Vector2, ConnectorRole>.Empty;
-    }
-
-    /// <inheritdoc />
-    /// MOD: added. Junimo chests aren't reached through paths, so there's no sign marker concept for this aggregate group — always empty.
-    public override IReadOnlyDictionary<Vector2, bool> GetSignMarkers(string locationKey)
-    {
-        return ImmutableDictionary<Vector2, bool>.Empty;
-    }
-
-    /// <inheritdoc />
-    /// MOD: added. Same reasoning as GetSignMarkers — always empty for this aggregate group.
-    public override IReadOnlySet<Vector2> GetSignCandidateTiles(string locationKey)
-    {
-        return ImmutableHashSet<Vector2>.Empty;
     }
 
     /// <summary>Get whether the tile area intersects this machine group.</summary>
@@ -186,5 +168,71 @@ internal class JunimoMachineGroup : MachineGroup
         }
 
         return tiles;
+    }
+
+    /// <summary>
+    /// MOD: added. Dedupe containers sharing the same underlying inventory (as every Junimo chest on
+    /// the farm does, since they all read/write ONE shared inventory) — but unlike the base
+    /// <see cref="MachineGroup.GetUniqueContainers"/>, keep a separate entry for each DISTINCT
+    /// connector role a touchpoint was reached through, instead of collapsing them all down to
+    /// whichever one happened to be enumerated first.
+    ///
+    /// A shared Junimo inventory can legitimately be reached through several different LOCAL pipes
+    /// across different locations/groups (e.g. one pull-only in one location, a different push-only
+    /// in another) — plain identity-based dedup silently discarded all but one of those roles,
+    /// breaking whichever touchpoints didn't "win." Since every surviving entry still ultimately
+    /// reads/writes the exact same real inventory, this doesn't risk double-counting ITEMS — but it's
+    /// a deliberate, accepted trade-off that a machine's ingredient-sufficiency check (which sums
+    /// quantities across containers without deduping by identity — see <see cref="StackAccumulator"/>)
+    /// could double-count that item type if the same Junimo inventory is ALSO reached unrestricted
+    /// (Both) at the same time as a restricted touchpoint elsewhere. Deemed narrow enough to accept in
+    /// exchange for each local touchpoint's own role actually working as configured.
+    ///
+    /// Each surviving Junimo-chest entry is also wrapped in <see cref="JunimoTouchpointContainer"/>,
+    /// tagged with its origin sub-group's tiles — otherwise, once several touchpoints for the same
+    /// shared inventory coexist here, a Powered Chest anywhere in the aggregate could "borrow" a role
+    /// that actually belongs to a completely different Powered Chest's own local connection (see that
+    /// class's own remarks for a concrete example). Iterates per-group (rather than one flattened
+    /// <c>SelectMany</c>) specifically so each container can be tagged with the group it came from.
+    /// </summary>
+    private IContainer[] GetUniqueJunimoContainers()
+    {
+        Dictionary<object, HashSet<(bool AllowStorage, bool AllowTaking)>> seenRolesByInventory = new(new ObjectReferenceComparer<object>());
+        List<IContainer> result = [];
+
+        foreach (IMachineGroup group in this.MachineGroups)
+        {
+            if (group.LocationKey is null)
+                continue;
+
+            IReadOnlySet<Vector2> groupTiles = group.GetTiles(group.LocationKey);
+
+            foreach (IContainer container in group.Containers)
+            {
+                bool allowStorage = true;
+                bool allowTaking = true;
+                if (container is IConnectionRoleRestriction restriction)
+                {
+                    allowStorage = restriction.AllowStorageThroughThisConnection;
+                    allowTaking = restriction.AllowTakingThroughThisConnection;
+                }
+
+                if (!seenRolesByInventory.TryGetValue(container.InventoryReferenceId, out HashSet<(bool, bool)>? seenRoles))
+                    seenRolesByInventory[container.InventoryReferenceId] = seenRoles = [];
+
+                if (!seenRoles.Add((allowStorage, allowTaking)))
+                    continue; // exact duplicate (same inventory, same role) — an equivalent entry already survived
+
+                // MOD: only Junimo chests need origin tagging — a regular (non-shared) container that
+                // got swept into this aggregate because it shares a local group with a Junimo chest
+                // has a unique InventoryReferenceId of its own, so there's no cross-group ambiguity to
+                // resolve for it.
+                result.Add(container.IsJunimoChest
+                    ? new JunimoTouchpointContainer(container, groupTiles)
+                    : container);
+            }
+        }
+
+        return [.. result];
     }
 }

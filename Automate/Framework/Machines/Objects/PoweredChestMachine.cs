@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Microsoft.Xna.Framework;
 using Pathoschild.Stardew.Automate.Framework.Storage;
+using Pathoschild.Stardew.Common;
 using StardewValley;
 using StardewValley.Inventories;
 using StardewValley.Mods;
@@ -120,7 +121,7 @@ internal class PoweredChestMachine : BaseMachine, IContainer, IChestLikeMachine
 
         foreach (IContainer container in input.OutputContainers)
         {
-            if (this.ShouldSkip(container) || !PoweredChestMachine.IsPullOnly(container))
+            if (this.ShouldSkip(container) || !PoweredChestMachine.IsPullOnly(container) || !this.IsOwnLocalTouchpoint(container))
                 continue;
 
             foreach (ITrackedStack stack in container.ToArray())
@@ -137,7 +138,7 @@ internal class PoweredChestMachine : BaseMachine, IContainer, IChestLikeMachine
 
         foreach (IContainer container in input.InputContainers)
         {
-            if (this.ShouldSkip(container) || !PoweredChestMachine.IsPushOnly(container))
+            if (this.ShouldSkip(container) || !PoweredChestMachine.IsPushOnly(container) || !this.IsOwnLocalTouchpoint(container))
                 continue;
 
             foreach (ITrackedStack stack in selfContainer.ToArray())
@@ -201,4 +202,24 @@ internal class PoweredChestMachine : BaseMachine, IContainer, IChestLikeMachine
     /// <param name="container">The container to check.</param>
     private static bool IsPushOnly(IContainer container) =>
         container is IConnectionRoleRestriction restriction && restriction.AllowStorageThroughThisConnection && !restriction.AllowTakingThroughThisConnection;
+
+    /// <summary>
+    /// MOD: added. Get whether a candidate container's role restriction actually belongs to THIS
+    /// chest's own local connection, as opposed to an unrelated group's connection to the same
+    /// shared Junimo inventory. Every Junimo chest on the farm shares one real inventory, and several
+    /// differently-restricted local touchpoints to it can coexist in the farm-wide Junimo aggregate
+    /// (see <see cref="JunimoTouchpointContainer"/>'s own remarks) — without this check, a Powered
+    /// Chest connected to one Junimo chest via an unrestricted Pull&amp;Push pipe could "borrow" a
+    /// pull-only or push-only role that actually belongs to a completely different Powered Chest's
+    /// own connection to a different Junimo chest sharing the same inventory. Non-Junimo containers
+    /// always return true — the ambiguity only exists for the shared Junimo inventory, since a
+    /// regular chest's role restriction is never shared across unrelated groups in the first place.
+    /// </summary>
+    /// <param name="container">The container to check.</param>
+    private bool IsOwnLocalTouchpoint(IContainer container)
+    {
+        return
+            container is not JunimoTouchpointContainer touchpoint
+            || this.TileArea.GetTiles().Any(touchpoint.OriginGroupTiles.Contains);
+    }
 }

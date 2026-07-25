@@ -17,10 +17,10 @@ namespace Pathoschild.Stardew.Automate.Framework;
 /// overridden by another sign of the same kind winning the same group's resolution (e.g. a duplicate
 /// whitelist sign for the same item, or a non-numeric blacklist overridden by a whitelist elsewhere in
 /// the group). All of that is already resolved by <see cref="MachineGroupFactory"/>'s own sign
-/// detection into <see cref="MachineDataForLocation.SignMarkersByTile"/> — which only ever contains
-/// tiles from ACTIVE machine groups (see <see cref="MachineDataForLocation"/>'s own lazy accessors,
-/// all built from <c>ActiveMachineGroups</c> alone) — so a sign's presence in that lookup already
-/// means exactly "valid," with no extra validity logic needed here.
+/// detection into <see cref="MachineDataForLocation.SignMarkersByTile"/> — which folds in a
+/// Junimo-touching sign's group too, as long as that specific local group has its own real automation
+/// (see <see cref="MachineDataForLocation"/>'s own remarks) — so a sign's presence in that lookup
+/// already means exactly "valid," with no extra validity logic needed here.
 /// </summary>
 internal class SignTextureSync
 {

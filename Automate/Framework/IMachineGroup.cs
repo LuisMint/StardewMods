@@ -26,6 +26,18 @@ internal interface IMachineGroup
     /// <summary>Whether the group has the minimum requirements to enable internal automation (i.e., at least one chest and one machine).</summary>
     bool HasInternalAutomation { get; }
 
+    /// <summary>
+    /// MOD: added. The same check as <see cref="HasInternalAutomation"/>, but WITHOUT the automatic
+    /// "always true" shortcut a Junimo-touching group gets there (since a lone Junimo chest with no
+    /// machine nearby can still be functionally activated by another Junimo chest elsewhere on the
+    /// farm sharing the same inventory). This reports whether THIS SPECIFIC group has a real machine
+    /// and container of its own, regardless of any farm-wide Junimo sharing — meant for the overlay,
+    /// to distinguish "this specific touchpoint is doing something" from "this touchpoint is just
+    /// along for the shared-inventory ride." For a non-Junimo group this is identical to
+    /// <see cref="HasInternalAutomation"/>.
+    /// </summary>
+    bool HasLocalInternalAutomation { get; }
+
 
     /*********
     ** Methods

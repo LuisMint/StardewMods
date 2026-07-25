@@ -502,8 +502,7 @@ internal class ModEntry : Mod
             inputHelper: this.Helper.Input,
             reflection: this.Helper.Reflection,
             locationKey: this.MachineManager.Factory.GetLocationKey(Game1.currentLocation),
-            machineData: this.MachineManager.GetMachineDataFor(Game1.currentLocation),
-            junimoGroup: this.MachineManager.JunimoMachineGroup
+            machineData: this.MachineManager.GetMachineDataFor(Game1.currentLocation)
         );
     }
 

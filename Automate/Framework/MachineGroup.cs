@@ -88,19 +88,33 @@ internal class MachineGroup : IMachineGroup
     /// or container that isn't chest-like for a Powered Chest to interact with.
     /// </summary>
     /// <inheritdoc />
-    public virtual bool HasInternalAutomation
+    public virtual bool HasInternalAutomation => this.IsJunimoGroup || this.HasLocalInternalAutomation;
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// MOD: added — see the interface doc comment for why this needs to exist separately from
+    /// <see cref="HasInternalAutomation"/>. Fixed to no longer exclude Junimo chests from counting as
+    /// "a real container" the way another Powered Chest is excluded: a Junimo chest is mechanically
+    /// just a chest (see <see cref="IContainer.IsJunimoChest"/>'s own remarks — the ONLY thing special
+    /// about it is that it shares its inventory with every other Junimo chest), and a Powered Chest
+    /// genuinely DOES actively move items to/from one, exactly like it would a plain chest. The old
+    /// <c>!p.IsJunimoChest</c> exclusion here predates that — it was always vacuous for a genuinely
+    /// non-Junimo group (by definition, none of its containers ARE Junimo chests) and unreachable for
+    /// a Junimo-touching group via <see cref="HasInternalAutomation"/> (short-circuited by
+    /// <see cref="IsJunimoGroup"/> before ever getting here), so it only became "live" — and wrong —
+    /// once this property started being called directly, on a Junimo-touching group, by
+    /// <see cref="JunimoMachineGroup.GetLocallyActiveTiles"/>.
+    /// </remarks>
+    public bool HasLocalInternalAutomation
     {
         get
         {
-            if (this.IsJunimoGroup)
-                return true;
-
-            if (this.Machines.Any(m => !MachineGroup.IsChestLikeMachine(m)) && this.Containers.Any(p => !p.IsJunimoChest))
+            if (this.Machines.Any(m => !MachineGroup.IsChestLikeMachine(m)) && this.Containers.Length > 0)
                 return true;
 
             return
                 this.Machines.Any(MachineGroup.IsChestLikeMachine)
-                && this.Containers.Any(p => !p.IsJunimoChest && p.TypeId != PoweredChestMachine.QualifiedItemId);
+                && this.Containers.Any(p => p.TypeId != PoweredChestMachine.QualifiedItemId);
         }
     }
 

@@ -52,7 +52,7 @@ internal class PoweredFloorSync
 
     /// <summary>Sync every managed connector's displayed appearance in a location to match its current power and group state.</summary>
     /// <param name="location">The location to sync.</param>
-    /// <param name="data">The location's freshly-rebuilt machine data.</param>
+    /// <param name="data">The location's freshly-rebuilt machine data. Its <see cref="MachineDataForLocation.ActiveTiles"/> already folds in any Junimo-touching connector with its own local automation — see that record's own remarks.</param>
     public void Sync(GameLocation location, MachineDataForLocation data)
     {
         Dictionary<string, string> connectorTextureIds = this.GetConnectorTextureIds();

@@ -11,7 +11,21 @@ namespace Pathoschild.Stardew.Automate.Framework;
 /// <param name="ActiveMachineGroups">The machines to process.</param>
 /// <param name="DisabledMachineGroups">The disabled machine groups (e.g. machines not connected to a chest).</param>
 /// <param name="PoweredTiles">MOD: added. The set of tiles powered by a power source (see <see cref="PowerSystem"/>), or <c>null</c> if the power system is disabled (everything unrestricted). Unlike the other tile lookups, this isn't derived from the machine groups — it's a location-wide computation independent of them.</param>
-internal record MachineDataForLocation(string LocationKey, IReadOnlyCollection<IMachineGroup> ActiveMachineGroups, IReadOnlyCollection<IMachineGroup> DisabledMachineGroups, IReadOnlySet<Vector2>? PoweredTiles = null)
+/// <param name="JunimoGroupsInLocation">
+/// MOD: added. The local sub-groups in this location that touch a Junimo chest, if any — these are
+/// diverted into the separate <see cref="JunimoMachineGroup"/> aggregate for actual processing (see
+/// that class's own remarks for why), so they never appear in <paramref name="ActiveMachineGroups"/>/
+/// <paramref name="DisabledMachineGroups"/> even though they're completely ordinary local groups
+/// otherwise. Folded into the tile-lookup properties below (split into "active" or "disabled" by
+/// each sub-group's own <see cref="IMachineGroup.HasLocalInternalAutomation"/>) so a Junimo chest is
+/// visualized identically to any other chest — same multi-group highlighting, same connector-role
+/// and sign coloring, same disabled-red styling — with sharing an inventory farm-wide being the only
+/// thing that's actually special about it. Deliberately NOT merged into
+/// <paramref name="ActiveMachineGroups"/> itself, since that same collection is also used to build
+/// the real per-tick processing list — merging here would make each Junimo-touching machine get
+/// processed twice: once via its own local group, and once via the farm-wide aggregate.
+/// </param>
+internal record MachineDataForLocation(string LocationKey, IReadOnlyCollection<IMachineGroup> ActiveMachineGroups, IReadOnlyCollection<IMachineGroup> DisabledMachineGroups, IReadOnlySet<Vector2>? PoweredTiles = null, IReadOnlyCollection<IMachineGroup>? JunimoGroupsInLocation = null)
 {
     /*********
     ** Fields
@@ -19,23 +33,45 @@ internal record MachineDataForLocation(string LocationKey, IReadOnlyCollection<I
     /// <summary>The backing field for <see cref="OutdatedTiles"/>.</summary>
     private readonly Dictionary<Vector2, IAutomatable> OutdatedTilesImpl = [];
 
+    /// <summary>
+    /// MOD: added. <see cref="ActiveMachineGroups"/> plus any <see cref="JunimoGroupsInLocation"/>
+    /// sub-group that has its own real local automation — used ONLY by the tile-lookup properties
+    /// below (display/visualization purposes), never for the real per-tick processing list. See
+    /// <see cref="JunimoGroupsInLocation"/>'s own remarks for why this can't just be folded into
+    /// <see cref="ActiveMachineGroups"/> directly.
+    /// </summary>
+    private static IReadOnlyCollection<IMachineGroup> GetDisplayActiveGroups(IReadOnlyCollection<IMachineGroup> activeMachineGroups, IReadOnlyCollection<IMachineGroup>? junimoGroupsInLocation)
+    {
+        return junimoGroupsInLocation is { Count: > 0 }
+            ? [.. activeMachineGroups, .. junimoGroupsInLocation.Where(g => g.HasLocalInternalAutomation)]
+            : activeMachineGroups;
+    }
+
+    /// <summary>MOD: added. <see cref="DisabledMachineGroups"/> plus any <see cref="JunimoGroupsInLocation"/> sub-group that DOESN'T have its own real local automation — see <see cref="GetDisplayActiveGroups"/>'s remarks for why.</summary>
+    private static IReadOnlyCollection<IMachineGroup> GetDisplayDisabledGroups(IReadOnlyCollection<IMachineGroup> disabledMachineGroups, IReadOnlyCollection<IMachineGroup>? junimoGroupsInLocation)
+    {
+        return junimoGroupsInLocation is { Count: > 0 }
+            ? [.. disabledMachineGroups, .. junimoGroupsInLocation.Where(g => !g.HasLocalInternalAutomation)]
+            : disabledMachineGroups;
+    }
+
     /// <summary>The backing field for <see cref="ActiveTiles"/>.</summary>
-    private readonly Lazy<Dictionary<Vector2, IMachineGroup>> ActiveTilesImpl = new(() => GetTileLookup(LocationKey, ActiveMachineGroups));
+    private readonly Lazy<Dictionary<Vector2, IMachineGroup>> ActiveTilesImpl = new(() => GetTileLookup(LocationKey, GetDisplayActiveGroups(ActiveMachineGroups, JunimoGroupsInLocation)));
 
     /// <summary>The backing field for <see cref="DisabledTiles"/>.</summary>
-    private readonly Lazy<Dictionary<Vector2, IMachineGroup>> DisabledTilesImpl = new(() => GetTileLookup(LocationKey, DisabledMachineGroups));
+    private readonly Lazy<Dictionary<Vector2, IMachineGroup>> DisabledTilesImpl = new(() => GetTileLookup(LocationKey, GetDisplayDisabledGroups(DisabledMachineGroups, JunimoGroupsInLocation)));
 
     /// <summary>MOD: added. The backing field for <see cref="ActiveGroupsByTile"/>.</summary>
-    private readonly Lazy<Dictionary<Vector2, IMachineGroup[]>> ActiveGroupsByTileImpl = new(() => GetAllGroupsByTile(LocationKey, ActiveMachineGroups));
+    private readonly Lazy<Dictionary<Vector2, IMachineGroup[]>> ActiveGroupsByTileImpl = new(() => GetAllGroupsByTile(LocationKey, GetDisplayActiveGroups(ActiveMachineGroups, JunimoGroupsInLocation)));
 
     /// <summary>MOD: added. The backing field for <see cref="ConnectorRolesByTile"/>.</summary>
-    private readonly Lazy<Dictionary<Vector2, ConnectorRole>> ConnectorRolesByTileImpl = new(() => GetConnectorRoleLookup(LocationKey, ActiveMachineGroups));
+    private readonly Lazy<Dictionary<Vector2, ConnectorRole>> ConnectorRolesByTileImpl = new(() => GetConnectorRoleLookup(LocationKey, GetDisplayActiveGroups(ActiveMachineGroups, JunimoGroupsInLocation)));
 
     /// <summary>MOD: added. The backing field for <see cref="SignMarkersByTile"/>.</summary>
-    private readonly Lazy<Dictionary<Vector2, bool>> SignMarkersByTileImpl = new(() => GetSignMarkerLookup(LocationKey, ActiveMachineGroups));
+    private readonly Lazy<Dictionary<Vector2, bool>> SignMarkersByTileImpl = new(() => GetSignMarkerLookup(LocationKey, GetDisplayActiveGroups(ActiveMachineGroups, JunimoGroupsInLocation)));
 
     /// <summary>MOD: added. The backing field for <see cref="SignCandidateTiles"/>.</summary>
-    private readonly Lazy<HashSet<Vector2>> SignCandidateTilesImpl = new(() => GetSignCandidateTileLookup(LocationKey, ActiveMachineGroups));
+    private readonly Lazy<HashSet<Vector2>> SignCandidateTilesImpl = new(() => GetSignCandidateTileLookup(LocationKey, GetDisplayActiveGroups(ActiveMachineGroups, JunimoGroupsInLocation)));
 
 
     /*********

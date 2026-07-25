@@ -397,7 +397,11 @@ internal class MachineManager
             }
 
             // add groups
-            MachineDataForLocation locationData = new(locationKey, active, disabled, poweredTiles);
+            // MOD: passes `junimo` through too — MachineDataForLocation folds it into its
+            // display/visualization-only tile lookups (never the real processing list) so a
+            // Junimo-touching sign/connector/chest is visualized exactly like any other, instead of
+            // needing its own parallel set of checks. See that record's own remarks for why.
+            MachineDataForLocation locationData = new(locationKey, active, disabled, poweredTiles, junimo);
             this.MachineData[locationKey] = locationData;
             this.LocationsByKey[locationKey] = location; // MOD: added — keep the cache fresh for CheckForSignChanges
 
