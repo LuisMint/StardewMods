@@ -41,7 +41,7 @@ internal static class CategorySignPatches
     private static readonly Color WhitelistBackdropColor = new(235, 235, 235);
 
     /// <summary>MOD: added. The solid backdrop color drawn behind the icon in the HUD message when triggered from a blacklist category sign, matching that sign's dark overlay tint.</summary>
-    private static readonly Color BlacklistBackdropColor = new(85, 85, 85);
+    private static readonly Color BlacklistBackdropColor = new(45, 45, 45);
 
 
     /*********

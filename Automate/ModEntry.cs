@@ -41,6 +41,9 @@ internal class ModEntry : Mod
     /// <summary>Handles console commands from players.</summary>
     private CommandHandler CommandHandler = null!; // set in Entry
 
+    /// <summary>MOD: added. Plays a passive dust-puff ambient effect on placed Power Coils.</summary>
+    private readonly PowerCoilAmbientEffect PowerCoilAmbientEffect = new();
+
     /// <summary>Whether to automate machines for the current save.</summary>
     private bool EnableAutomation => this.Config.Enabled && Context.IsMainPlayer;
 
@@ -366,6 +369,19 @@ internal class ModEntry : Mod
             catch (Exception ex)
             {
                 this.HandleError(ex, "animating powered connectors");
+            }
+        }
+
+        // MOD: added — passive dust-puff ambient effect on placed Power Coils, purely cosmetic.
+        if (Context.IsWorldReady)
+        {
+            try
+            {
+                this.PowerCoilAmbientEffect.Tick();
+            }
+            catch (Exception ex)
+            {
+                this.HandleError(ex, "animating Power Coil ambient effect");
             }
         }
     }

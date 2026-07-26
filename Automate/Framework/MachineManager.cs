@@ -62,6 +62,27 @@ internal class MachineManager
     /// </summary>
     private readonly Dictionary<string, GameLocation> LocationsByKey = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>MOD: added. The tiles of every machine/container that was part of an active automation group as of the last rebuild, keyed by location key — used to detect newly-joined machines/containers so a "just connected" sparkle effect can be shown exactly once per join, not on every rebuild.</summary>
+    private readonly Dictionary<string, HashSet<Vector2>> PreviouslyActiveEntityTilesByLocation = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>MOD: added. The full tile footprint (entities + connectors) of every active automation group as of the last rebuild, keyed by location key — used to detect a group that stops being valid ENTIRELY (as opposed to just losing one member), so a "group broken" sound can be played exactly once for that event. See its use for how "the same group" is tracked across rebuilds despite <see cref="IMachineGroup"/> instances having no stable identity.</summary>
+    private readonly Dictionary<string, List<HashSet<Vector2>>> PreviouslyActiveGroupTileSetsByLocation = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>MOD: added. The join sparkle's tint for a tile whose connection is pull-only (<see cref="ConnectorRole.ChestInputOnly"/> — the chest acts as a source, items are taken FROM it).</summary>
+    private static readonly Color PullConnectionSparkleColor = Color.Red;
+
+    /// <summary>MOD: added. The join sparkle's tint for a tile whose connection is push-only (<see cref="ConnectorRole.ChestOutputOnly"/> — the chest acts as a destination, items are stored INTO it).</summary>
+    private static readonly Color PushConnectionSparkleColor = Color.CornflowerBlue;
+
+    /// <summary>MOD: added. The join sparkle's tint for a tile whose connection allows both taking and storing (<see cref="ConnectorRole.Both"/>).</summary>
+    private static readonly Color BothConnectionSparkleColor = Color.MediumSeaGreen;
+
+    /// <summary>MOD: added. The join sparkle's tint for a tile where the connection kind isn't a single clear answer — e.g. a newly-joined container that's now part of two or more groups with different connection kinds, or a solo group with no connector at all.</summary>
+    private static readonly Color AmbiguousConnectionSparkleColor = Color.White;
+
+    /// <summary>MOD: added. The per-frame duration for the "just connected" join sparkle, in milliseconds — vanilla's own geode-reveal sparkle uses 100ms; this is ~15% faster.</summary>
+    private const float JoinSparkleInterval = 100f * 0.85f;
+
 
     /*********
     ** Accessors
@@ -364,6 +385,17 @@ internal class MachineManager
             foreach ((string LocationKey, Vector2 Tile) key in this.LastKnownSignItems.Keys.Where(k => locationKeys.Contains(k.LocationKey)).ToArray())
                 this.LastKnownSignItems.Remove(key);
 
+            // MOD: added — drop stale "previously active" tile snapshots only for locations that are
+            // actually gone, NOT ones simply being rescanned — unlike the caches above, this one needs
+            // to survive a reload/rescan cycle so the "newly joined" diff below has something to
+            // compare against; wiping it on every rescan would make every active tile look "new" and
+            // spam the join sparkle constantly.
+            foreach (string locationKey in removedLocations.Select(this.Factory.GetLocationKey))
+            {
+                this.PreviouslyActiveEntityTilesByLocation.Remove(locationKey);
+                this.PreviouslyActiveGroupTileSetsByLocation.Remove(locationKey);
+            }
+
             if (this.JunimoMachineGroup.RemoveLocations(locationKeys))
             {
                 anyChanged = true;
@@ -398,6 +430,120 @@ internal class MachineManager
                 else
                     active.Add(group);
             }
+
+            // MOD: added — show a small sparkle flash (the same star used for the geode-cracking
+            // reward reveal) on any machine/container that's newly joined an active automation group
+            // since the last rebuild, as a lightweight "just connected" visual confirmation — plus the
+            // same sparkle across every connector/pipe tile in that specific group, so the whole
+            // network it just joined lights up too. Compares this rebuild's active machine/container
+            // tiles against the previous rebuild's, so it fires exactly once per join rather than
+            // every rescan. Each tile is tinted by its connection kind (see the *SparkleColor fields
+            // above) — a connector tile just uses its own role in this group; a newly-joined
+            // machine/container tile uses its group's role IF the group's connectors are all the same
+            // role, otherwise (or if the SAME tile ends up assigned conflicting colors — e.g. a
+            // container that's part of two or more groups of different kinds) it falls back to the
+            // ambiguous (white) color instead of guessing.
+            //
+            // MOD: added — includes any Junimo sub-group with its own real local automation, same as
+            // MachineDataForLocation.GetDisplayActiveGroups does for the overlay — a Junimo chest is
+            // otherwise sorted into `junimo`, not `active`, and would silently never trigger this at
+            // all (its tiles would never appear in the tracked snapshot, so it could neither be
+            // detected joining NOR leaving).
+            IEnumerable<IMachineGroup> sparkleEligibleGroups = active.Concat(junimo.Where(g => g.HasLocalInternalAutomation));
+            Dictionary<IMachineGroup, HashSet<Vector2>> entityTilesByGroup = new();
+            HashSet<Vector2> activeEntityTiles = new();
+            foreach (IMachineGroup group in sparkleEligibleGroups)
+            {
+                HashSet<Vector2> groupEntityTiles = new();
+                foreach (IMachine machine in group.Machines)
+                    groupEntityTiles.UnionWith(machine.TileArea.GetTiles());
+                foreach (IContainer container in group.Containers)
+                    groupEntityTiles.UnionWith(container.TileArea.GetTiles());
+
+                entityTilesByGroup[group] = groupEntityTiles;
+                activeEntityTiles.UnionWith(groupEntityTiles);
+            }
+            if (this.PreviouslyActiveEntityTilesByLocation.TryGetValue(locationKey, out HashSet<Vector2>? previousActiveEntityTiles))
+            {
+                Dictionary<Vector2, Color> sparkleColorByTile = new();
+                HashSet<Vector2> ambiguousSparkleTiles = new();
+                bool anyNewJoin = false;
+
+                void AssignSparkleColor(Vector2 tile, Color? color)
+                {
+                    if (ambiguousSparkleTiles.Contains(tile))
+                        return;
+
+                    if (color == null || (sparkleColorByTile.TryGetValue(tile, out Color existing) && existing != color))
+                    {
+                        ambiguousSparkleTiles.Add(tile);
+                        sparkleColorByTile.Remove(tile);
+                    }
+                    else
+                        sparkleColorByTile[tile] = color.Value;
+                }
+
+                foreach ((IMachineGroup group, HashSet<Vector2> groupEntityTiles) in entityTilesByGroup)
+                {
+                    IReadOnlyDictionary<Vector2, ConnectorRole> connectorRoles = group.GetConnectorRoles(locationKey);
+                    HashSet<ConnectorRole> distinctGroupRoles = new(connectorRoles.Values);
+                    Color? groupEntityColor = distinctGroupRoles.Count == 1 ? MachineManager.GetConnectionSparkleColor(distinctGroupRoles.First()) : null;
+
+                    bool groupHasNewJoin = false;
+                    foreach (Vector2 tile in groupEntityTiles)
+                    {
+                        if (previousActiveEntityTiles.Contains(tile))
+                            continue;
+
+                        groupHasNewJoin = true;
+                        AssignSparkleColor(tile, groupEntityColor);
+                    }
+
+                    if (groupHasNewJoin)
+                    {
+                        anyNewJoin = true;
+                        foreach ((Vector2 connectorTile, ConnectorRole role) in connectorRoles)
+                            AssignSparkleColor(connectorTile, MachineManager.GetConnectionSparkleColor(role));
+                    }
+                }
+
+                foreach (Vector2 tile in sparkleColorByTile.Keys.Concat(ambiguousSparkleTiles))
+                {
+                    Color color = ambiguousSparkleTiles.Contains(tile) ? MachineManager.AmbiguousConnectionSparkleColor : sparkleColorByTile[tile];
+                    TemporaryAnimatedSprite sparkle = new("TileSheets\\animations", new Rectangle(0, 640, 64, 64), 100f, 8, 0, tile * Game1.tileSize, flicker: false, flipped: false)
+                    {
+                        color = color,
+                        interval = MachineManager.JoinSparkleInterval
+                    };
+                    Game1.Multiplayer.broadcastSprites(location, sparkle);
+                }
+
+                // MOD: added — play a sound once per location per rebuild when at least one group
+                // gained a new member (a connection was made / a group formed).
+                if (anyNewJoin)
+                    location.playSound("dialogueCharacterClose");
+            }
+            this.PreviouslyActiveEntityTilesByLocation[locationKey] = activeEntityTiles;
+
+            // MOD: added — play a sound when a previously-valid group stops being valid ENTIRELY (not
+            // just shrinking — losing one member from an otherwise-still-active group doesn't count).
+            // Since IMachineGroup instances are rebuilt fresh every rescan (no stable identity across
+            // rebuilds), "the same group" is tracked by tile-set overlap instead: a previously-active
+            // group's full footprint (entities + connectors, via GetTiles) is considered "still alive"
+            // as long as it overlaps at least one currently-active group's footprint; if it has zero
+            // overlap with every currently-active group, that group broke completely.
+            List<HashSet<Vector2>> currentActiveGroupTileSets = sparkleEligibleGroups
+                .Select(group => new HashSet<Vector2>(group.GetTiles(locationKey)))
+                .ToList();
+            if (this.PreviouslyActiveGroupTileSetsByLocation.TryGetValue(locationKey, out List<HashSet<Vector2>>? previousActiveGroupTileSets))
+            {
+                bool anyGroupCompletelyBroken = previousActiveGroupTileSets.Any(previousGroupTiles =>
+                    !currentActiveGroupTileSets.Any(currentGroupTiles => currentGroupTiles.Overlaps(previousGroupTiles)));
+
+                if (anyGroupCompletelyBroken)
+                    location.playSound("cancel");
+            }
+            this.PreviouslyActiveGroupTileSetsByLocation[locationKey] = currentActiveGroupTileSets;
 
             // add groups
             // MOD: passes `junimo` through too — MachineDataForLocation folds it into its
@@ -454,4 +600,17 @@ internal class MachineManager
         if (junimoGroupChanged)
             this.JunimoMachineGroup.Rebuild();
     }
+
+    /// <summary>MOD: added. Get the join sparkle's tint for a given connection role — see the *SparkleColor fields for what each one means.</summary>
+    /// <param name="role">The connector role to get a color for.</param>
+    private static Color GetConnectionSparkleColor(ConnectorRole role)
+    {
+        return role switch
+        {
+            ConnectorRole.ChestInputOnly => MachineManager.PullConnectionSparkleColor,
+            ConnectorRole.ChestOutputOnly => MachineManager.PushConnectionSparkleColor,
+            _ => MachineManager.BothConnectionSparkleColor
+        };
+    }
+
 }

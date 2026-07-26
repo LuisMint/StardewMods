@@ -115,6 +115,7 @@ internal static class PoweredChestPatches
         };
         location.objects.Add(tile, chest);
         location.playSound("axe");
+        location.playSound("grunt");
 
         // MOD: the constructor overload used above doesn't chain through the one base Object
         // constructor that calls initializeLightSource, so it needs an explicit initial call here —

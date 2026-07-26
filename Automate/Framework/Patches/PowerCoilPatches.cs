@@ -4,6 +4,7 @@ using HarmonyLib;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using StardewValley;
+using StardewValley.Audio;
 using StardewValley.ItemTypeDefinitions;
 using StardewValley.Menus;
 using SObject = StardewValley.Object;
@@ -21,7 +22,7 @@ internal static class PowerCoilPatches
     ** Fields
     *********/
     /// <summary>The qualified item ID of the object these patches apply to.</summary>
-    private const string TargetQualifiedItemId = "(BC)luisMint.AutomatePowerPipes_PowerCoil";
+    internal const string TargetQualifiedItemId = "(BC)luisMint.AutomatePowerPipes_PowerCoil";
 
     /// <summary>The asset name of the dedicated, purpose-built crafting-menu icon (loaded by the AutomatePowerPipes content pack), as opposed to the taller world sprite used everywhere else.</summary>
     private const string CraftIconAssetName = "Mods/luisMint.AutomatePowerPipes/PowerCoilCraftIcon";
@@ -98,6 +99,17 @@ internal static class PowerCoilPatches
         harmony.Patch(
             original: AccessTools.Method(typeof(CraftingPage), "layoutRecipes"),
             postfix: new HarmonyMethod(typeof(PowerCoilPatches), nameof(LayoutRecipes_Postfix))
+        );
+
+        harmony.Patch(
+            original: AccessTools.Method(typeof(SObject), nameof(SObject.placementAction), [typeof(GameLocation), typeof(int), typeof(int), typeof(Farmer)]),
+            prefix: new HarmonyMethod(typeof(PowerCoilPatches), nameof(PlacementAction_Prefix)),
+            postfix: new HarmonyMethod(typeof(PowerCoilPatches), nameof(PlacementAction_Postfix))
+        );
+
+        harmony.Patch(
+            original: AccessTools.Method(typeof(GameLocation), nameof(GameLocation.playSound), [typeof(string), typeof(Vector2?), typeof(int?), typeof(SoundContext)]),
+            prefix: new HarmonyMethod(typeof(PowerCoilPatches), nameof(PlaySound_Prefix))
         );
     }
 
@@ -351,5 +363,52 @@ internal static class PowerCoilPatches
                 component.baseScale = 4f; // MOD: standard scale — this texture is already a normal 16x32 icon, no normalizing needed
             }
         }
+    }
+
+    /// <summary>
+    /// MOD: added. Flag that <see cref="SObject.placementAction"/> is currently placing a Power Coil,
+    /// so <see cref="PlaySound_Prefix"/> knows to redirect vanilla's own generic BigCraftable
+    /// placement sound ("woodyStep") to the same sound used for placing a normal chest ("axe")
+    /// instead — see that method's remarks for why a direct sound swap needs this indirection rather
+    /// than just overriding the sound after the fact.
+    /// </summary>
+    private static bool IsPlacingPowerCoil;
+
+    /// <summary>Set the <see cref="IsPlacingPowerCoil"/> flag before vanilla's own placement logic runs.</summary>
+    /// <param name="__instance">The item being placed.</param>
+    private static void PlacementAction_Prefix(SObject __instance)
+    {
+        PowerCoilPatches.IsPlacingPowerCoil = __instance.QualifiedItemId == PowerCoilPatches.TargetQualifiedItemId;
+    }
+
+    /// <summary>Clear the <see cref="IsPlacingPowerCoil"/> flag, and play an additional placement sound for the Power Coil.</summary>
+    /// <param name="__instance">The item being placed.</param>
+    /// <param name="location">The location it was placed in.</param>
+    /// <param name="__result">Whether vanilla's own placement logic succeeded.</param>
+    private static void PlacementAction_Postfix(SObject __instance, GameLocation location, bool __result)
+    {
+        PowerCoilPatches.IsPlacingPowerCoil = false;
+
+        if (!__result || __instance.QualifiedItemId != PowerCoilPatches.TargetQualifiedItemId)
+            return;
+
+        location.playSound("grunt");
+    }
+
+    /// <summary>
+    /// MOD: added. Redirect vanilla's own generic BigCraftable placement sound to the one used for
+    /// placing a normal chest, while a Power Coil is being placed (see <see cref="IsPlacingPowerCoil"/>).
+    /// The "woodyStep" sound is hardcoded deep inside <see cref="SObject.placementAction"/>'s generic
+    /// fallback branch (the one a plain "Type: Crafting" BigCraftable like the Power Coil falls into,
+    /// since it isn't one of vanilla's own special-cased item IDs) — there's no clean way to override
+    /// just that one call without reimplementing the whole surrounding method, so this intercepts the
+    /// sound itself instead, scoped narrowly to the brief window <see cref="IsPlacingPowerCoil"/> is
+    /// set for.
+    /// </summary>
+    /// <param name="audioName">The cue name to play — reassigning this parameter changes what vanilla's own method actually plays, since Harmony treats a prefix parameter with the same name as the original as a by-reference override.</param>
+    private static void PlaySound_Prefix(ref string audioName)
+    {
+        if (PowerCoilPatches.IsPlacingPowerCoil && audioName == "woodyStep")
+            audioName = "axe";
     }
 }
