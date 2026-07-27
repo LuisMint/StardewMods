@@ -4,7 +4,7 @@ using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using Microsoft.Xna.Framework;
-using Pathoschild.Stardew.Automate.Framework.Machines.Objects;
+using Pathoschild.Stardew.Automate.Framework.Storage;
 using Pathoschild.Stardew.Common;
 using Pathoschild.Stardew.Common.Utilities;
 using StardewModdingAPI;
@@ -49,6 +49,9 @@ internal class MachineGroup : IMachineGroup
     /// <summary>MOD: added. Every tile where a configured whitelist/blacklist sign object exists, regardless of whether it currently holds an item — broader than <see cref="SignMarkers"/>, used so periodic polling can watch a sign even while it's empty.</summary>
     private readonly HashSet<Vector2> SignCandidateTiles;
 
+    /// <summary>MOD: added. The tiles of every machine that's currently "power-starved" (a machine type configured to require power, whose own tile isn't within power range as of this rebuild) — see <see cref="MachineGroupBuilder.PowerStarvedTiles"/> for why this is tracked by tile rather than machine reference.</summary>
+    private readonly HashSet<Vector2> PowerStarvedTiles;
+
     /****
     ** Pooled instances
     ** (These just minimize object allocations, and aren't used to store state between ticks.)
@@ -80,12 +83,16 @@ internal class MachineGroup : IMachineGroup
     public bool IsJunimoGroup { get; protected set; }
 
     /// <summary>
-    /// MOD: changed. A group with only "chest-like" machines (see <see cref="IChestLikeMachine"/> —
-    /// e.g. the Powered Chest, which is both a machine and its own container) isn't really automating
-    /// anything: such a machine explicitly ignores other chest-like machines to avoid an infinite
-    /// loop, so a lone Powered Chest — or two Powered Chests only connected to each other — can never
-    /// actually move an item. The group only counts as active once it also has at least one machine
-    /// or container that isn't chest-like for a Powered Chest to interact with.
+    /// MOD: changed. A group with only "chest-like" machines (see <see cref="IChestLikeMachine"/> — an
+    /// active mover that's also its own chest; currently only the Powered Chest, since chest-backed
+    /// hybrids like the Hopper are purely passive storage now, not chest-like machines at all) isn't
+    /// necessarily automating anything: each chest-like machine defers to any OTHER chest-like machine
+    /// of equal or better priority (see <see cref="Storage.ContainerExtensions.ShouldDeferToAsActiveMover"/>)
+    /// to avoid two active movers fighting over the same connection, so e.g. two Powered Chests only
+    /// connected to each other — or one chest-like machine alone — can never actually move an item. The
+    /// comparison is generic by tier rather than hardcoded to Powered Chest specifically, so it already
+    /// extends correctly to any future active-mover machine of a different tier. See
+    /// <see cref="HasLocalInternalAutomation"/> for the precise rule.
     /// </summary>
     /// <inheritdoc />
     public virtual bool HasInternalAutomation => this.IsJunimoGroup || this.HasLocalInternalAutomation;
@@ -94,35 +101,94 @@ internal class MachineGroup : IMachineGroup
     /// <remarks>
     /// MOD: added — see the interface doc comment for why this needs to exist separately from
     /// <see cref="HasInternalAutomation"/>. Fixed to no longer exclude Junimo chests from counting as
-    /// "a real container" the way another Powered Chest is excluded: a Junimo chest is mechanically
-    /// just a chest (see <see cref="IContainer.IsJunimoChest"/>'s own remarks — the ONLY thing special
-    /// about it is that it shares its inventory with every other Junimo chest), and a Powered Chest
-    /// genuinely DOES actively move items to/from one, exactly like it would a plain chest. The old
-    /// <c>!p.IsJunimoChest</c> exclusion here predates that — it was always vacuous for a genuinely
-    /// non-Junimo group (by definition, none of its containers ARE Junimo chests) and unreachable for
-    /// a Junimo-touching group via <see cref="HasInternalAutomation"/> (short-circuited by
-    /// <see cref="IsJunimoGroup"/> before ever getting here), so it only became "live" — and wrong —
-    /// once this property started being called directly, on a Junimo-touching group, by
-    /// <see cref="JunimoMachineGroup.GetLocallyActiveTiles"/>.
+    /// "a real container" the way another chest-like machine's own storage is excluded: a Junimo chest
+    /// is mechanically just a chest (see <see cref="IContainer.IsJunimoChest"/>'s own remarks — the
+    /// ONLY thing special about it is that it shares its inventory with every other Junimo chest), and
+    /// a chest-like machine genuinely DOES actively move items to/from one, exactly like it would a
+    /// plain chest. The old <c>!p.IsJunimoChest</c> exclusion here predates that — it was always
+    /// vacuous for a genuinely non-Junimo group (by definition, none of its containers ARE Junimo
+    /// chests) and unreachable for a Junimo-touching group via <see cref="HasInternalAutomation"/>
+    /// (short-circuited by <see cref="IsJunimoGroup"/> before ever getting here), so it only became
+    /// "live" — and wrong — once this property started being called directly, on a Junimo-touching
+    /// group, by <see cref="JunimoMachineGroup.GetLocallyActiveTiles"/>.
+    ///
+    /// MOD: the last branch below compares priority tiers generically (see
+    /// <see cref="Storage.ContainerExtensions.ShouldDeferToAsActiveMover"/>) rather than hardcoding
+    /// "Powered Chest is the only chest-like machine" — currently that's the only chest-like machine
+    /// there is (chest-backed hybrids are plain containers now, not active movers — see
+    /// <see cref="IChestLikeMachine"/>'s own remarks), but this stays correct without changes if a
+    /// future active-mover machine of a different tier is ever added.
+    ///
+    /// MOD: added — also accounts for <see cref="ModConfig.ChestsCanAutomate"/>/<see cref="ModConfig.ChestHybridsCanAutomate"/>/
+    /// <see cref="ModConfig.PoweredChestsCanAutomate"/> (see <see cref="StorageManager.IsContainerCategoryEnabled"/>):
+    /// a disabled category can't be reached by the standard machine cycle at all (so it no longer
+    /// counts toward "there's a container here" for a regular machine), and a disabled chest-like
+    /// machine never initiates its own movement (so it doesn't count as an active mover either) — but
+    /// it can still be TARGETED by a different, still-enabled active mover of better priority (e.g. an
+    /// enabled Powered Chest can still reach into a disabled Hopper's storage), since that target's own
+    /// category only gates whether IT initiates movement, not whether it can be acted upon.
     /// </remarks>
     public bool HasLocalInternalAutomation
     {
         get
         {
-            if (this.Machines.Any(m => !MachineGroup.IsChestLikeMachine(m)) && this.Containers.Length > 0)
+            IMachine[] chestLikeMachines = this.Machines.Where(MachineGroup.IsChestLikeMachine).ToArray();
+
+            // a non-chest-like machine (e.g. a Furnace) can automate as long as SOME container in the
+            // group is currently reachable by the standard machine cycle — a disabled category isn't.
+            if (chestLikeMachines.Length < this.Machines.Length && this.Containers.Any(this.StorageManager.IsContainerCategoryEnabled))
                 return true;
 
-            return
-                this.Machines.Any(MachineGroup.IsChestLikeMachine)
-                && this.Containers.Any(p => p.TypeId != PoweredChestMachine.QualifiedItemId);
+            // a disabled chest-like machine never initiates its own movement, so it can't be the one
+            // making the group active — but it can still be reached by a different, enabled one below.
+            IContainer[] chestLikeOwnContainers = chestLikeMachines
+                .Select(MachineGroup.GetChestLikeOwnContainer)
+                .Where(container => container != null)
+                .Select(container => container!)
+                .ToArray();
+            IContainer[] enabledActiveMovers = chestLikeOwnContainers.Where(this.StorageManager.IsContainerCategoryEnabled).ToArray();
+            if (enabledActiveMovers.Length == 0)
+                return false;
+
+            // a real (non-self-owned) container is always reachable by every ENABLED chest-like
+            // machine here — none of them exclude a container just for being a plain chest, regardless
+            // of that container's own category; they only defer to ANOTHER active mover of
+            // equal-or-better priority (handled below).
+            HashSet<object> ownChestLikeInventoryIds = new(chestLikeOwnContainers.Select(container => container.InventoryReferenceId));
+            if (this.Containers.Any(p => !ownChestLikeInventoryIds.Contains(p.InventoryReferenceId)))
+                return true;
+
+            // otherwise, the only containers present are the chest-like machines' own storage —
+            // reachable by each other only if an enabled mover has some OTHER chest-like machine (any
+            // category, enabled or not — it's just a target here) with a STRICTLY worse priority
+            // (higher tier number) than its own, since an active mover defers to anything of
+            // equal-or-better priority (see ContainerExtensions.ShouldDeferToAsActiveMover).
+            return enabledActiveMovers.Any(mover => chestLikeOwnContainers.Any(target =>
+                !target.InventoryReferenceId.Equals(mover.InventoryReferenceId)
+                && target.GetContainerPriorityTier() > mover.GetContainerPriorityTier()));
         }
+    }
+
+    /// <summary>MOD: added. Unwrap a <see cref="MachineWrapper"/> to the real machine instance it wraps, if needed.</summary>
+    /// <param name="machine">The machine to unwrap.</param>
+    private static IMachine Unwrap(IMachine machine)
+    {
+        return machine is MachineWrapper wrapper ? wrapper.Machine : machine;
     }
 
     /// <summary>Get whether a machine is "chest-like" (see <see cref="IChestLikeMachine"/>), unwrapping a <see cref="MachineWrapper"/> if needed.</summary>
     /// <param name="machine">The machine to check.</param>
     private static bool IsChestLikeMachine(IMachine machine)
     {
-        return machine is IChestLikeMachine || (machine is MachineWrapper wrapper && wrapper.Machine is IChestLikeMachine);
+        return MachineGroup.Unwrap(machine) is IChestLikeMachine;
+    }
+
+    /// <summary>MOD: added. Get a chest-like machine's own self-registered storage (unwrapping a <see cref="MachineWrapper"/> if needed), or <c>null</c> if the machine isn't chest-like or doesn't also implement <see cref="IContainer"/>.</summary>
+    /// <param name="machine">The machine to check.</param>
+    private static IContainer? GetChestLikeOwnContainer(IMachine machine)
+    {
+        IMachine actual = MachineGroup.Unwrap(machine);
+        return actual is IChestLikeMachine && actual is IContainer container ? container : null;
     }
 
 
@@ -139,7 +205,8 @@ internal class MachineGroup : IMachineGroup
     /// <param name="connectorRoles">MOD: added. The connector role for each connector tile covered by this group, if any.</param>
     /// <param name="signMarkers">MOD: added. Debug markers for tiles where a configured sign was detected, regardless of whether it currently holds an item.</param>
     /// <param name="signCandidateTiles">MOD: added. Every tile where a configured whitelist/blacklist sign object exists, regardless of whether it currently holds an item.</param>
-    public MachineGroup(string? locationKey, IEnumerable<IMachine> machines, IEnumerable<IContainer> containers, IEnumerable<Vector2> tiles, Func<IContainer[], StorageManager> buildStorage, IMonitor monitor, IReadOnlyDictionary<Vector2, ConnectorRole>? connectorRoles = null, IReadOnlyDictionary<Vector2, bool>? signMarkers = null, IReadOnlySet<Vector2>? signCandidateTiles = null)
+    /// <param name="powerStarvedTiles">MOD: added. The tiles of every machine that's currently power-starved (see <see cref="PowerStarvedTiles"/>).</param>
+    public MachineGroup(string? locationKey, IEnumerable<IMachine> machines, IEnumerable<IContainer> containers, IEnumerable<Vector2> tiles, Func<IContainer[], StorageManager> buildStorage, IMonitor monitor, IReadOnlyDictionary<Vector2, ConnectorRole>? connectorRoles = null, IReadOnlyDictionary<Vector2, bool>? signMarkers = null, IReadOnlySet<Vector2>? signCandidateTiles = null, IReadOnlySet<Vector2>? powerStarvedTiles = null)
     {
         this.LocationKey = locationKey;
         this.Machines = machines.ToArray();
@@ -149,6 +216,7 @@ internal class MachineGroup : IMachineGroup
         this.ConnectorRoles = connectorRoles != null ? new Dictionary<Vector2, ConnectorRole>(connectorRoles) : []; // MOD: added
         this.SignMarkers = signMarkers != null ? new Dictionary<Vector2, bool>(signMarkers) : []; // MOD: added
         this.SignCandidateTiles = signCandidateTiles != null ? new HashSet<Vector2>(signCandidateTiles) : []; // MOD: added
+        this.PowerStarvedTiles = powerStarvedTiles != null ? new HashSet<Vector2>(powerStarvedTiles) : []; // MOD: added
 
         this.IsJunimoGroup = this.Containers.Any(p => p.IsJunimoChest);
 
@@ -164,6 +232,15 @@ internal class MachineGroup : IMachineGroup
     {
         return this.LocationKey == locationKey
             ? this.Tiles
+            : ImmutableHashSet<Vector2>.Empty;
+    }
+
+    /// <inheritdoc />
+    /// MOD: added.
+    public virtual IReadOnlySet<Vector2> GetPowerStarvedTiles(string locationKey)
+    {
+        return this.LocationKey == locationKey
+            ? this.PowerStarvedTiles
             : ImmutableHashSet<Vector2>.Empty;
     }
 
@@ -296,6 +373,17 @@ internal class MachineGroup : IMachineGroup
         foreach (IMachine machine in inputReady)
         {
             if (ignoreMachines.Contains(machine.MachineTypeID))
+                continue;
+
+            // MOD: added — skip a "power-required" machine (see PowerRequiredMachineSystem) entirely
+            // while its own tile is out of power range — the same idea as vanilla's "missing coal"
+            // message for a Furnace, just for power instead of a secondary ingredient. The reminder
+            // message itself is handled separately (see PowerRequiredMachineSystem.ProcessStarvedMachineCallouts)
+            // rather than here — this used to throttle its own "Machine needs power" message per
+            // machine INSTANCE, but MachineGroup instances get rebuilt on every rescan (no stable
+            // identity across rebuilds), which reset that throttle far more often than intended,
+            // showing the message way more frequently than the throttle was meant to allow.
+            if (this.PowerStarvedTiles.Count > 0 && machine.TileArea.GetTiles().Any(this.PowerStarvedTiles.Contains))
                 continue;
 
             try

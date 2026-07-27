@@ -5,6 +5,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Pathoschild.Stardew.Automate.Framework.Machines.Objects;
 using StardewValley;
+using StardewValley.Audio;
 using StardewValley.Extensions;
 using StardewValley.ItemTypeDefinitions;
 using StardewValley.Locations;
@@ -53,6 +54,16 @@ internal static class PoweredChestPatches
     /// <summary>Reflected access to <see cref="Chest"/>'s private <c>currentLidFrame</c> field, needed to replicate its lid-open overlay draw call (there's no public equivalent — <c>getLastLidFrame()</c> returns a different, static value, not the live animated frame).</summary>
     private static readonly FieldInfo CurrentLidFrameField = AccessTools.Field(typeof(Chest), "currentLidFrame");
 
+    /// <summary>
+    /// MOD: added. Flag that <see cref="SObject.performToolAction"/> is currently breaking a Powered
+    /// Chest, so <see cref="PlaySound_Prefix"/> knows to redirect vanilla's own generic BigCraftable
+    /// "broken by a tool" sound ("hammer") to "axe" instead — see that method's remarks for why a
+    /// direct sound swap needs this indirection rather than just overriding the sound after the fact.
+    /// <see cref="Chest.performToolAction"/> calls <c>base.performToolAction</c> for a player chest, so
+    /// patching the base <see cref="SObject"/> method still catches it.
+    /// </summary>
+    private static bool IsBreakingPoweredChest;
+
 
     /*********
     ** Public methods
@@ -79,6 +90,17 @@ internal static class PoweredChestPatches
         harmony.Patch(
             original: AccessTools.Method(typeof(Chest), nameof(Chest.updateWhenCurrentLocation)),
             postfix: new HarmonyMethod(typeof(PoweredChestPatches), nameof(UpdateWhenCurrentLocation_Postfix))
+        );
+
+        harmony.Patch(
+            original: AccessTools.Method(typeof(SObject), nameof(SObject.performToolAction)),
+            prefix: new HarmonyMethod(typeof(PoweredChestPatches), nameof(PerformToolAction_Prefix)),
+            postfix: new HarmonyMethod(typeof(PoweredChestPatches), nameof(PerformToolAction_Postfix))
+        );
+
+        harmony.Patch(
+            original: AccessTools.Method(typeof(SoundsHelper), nameof(SoundsHelper.PlayAll)),
+            prefix: new HarmonyMethod(typeof(PoweredChestPatches), nameof(PlaySound_Prefix))
         );
     }
 
@@ -214,5 +236,35 @@ internal static class PoweredChestPatches
 
         if (location != null && lightSource != null && __instance.IsOn && !location.hasLightSource(lightSource.Id))
             location.sharedLights.AddLight(lightSource.Clone());
+    }
+
+    /// <summary>Set the <see cref="IsBreakingPoweredChest"/> flag before vanilla's own tool-hit logic runs.</summary>
+    /// <param name="__instance">The item being hit by a tool.</param>
+    private static void PerformToolAction_Prefix(SObject __instance)
+    {
+        PoweredChestPatches.IsBreakingPoweredChest = __instance.QualifiedItemId == PoweredChestMachine.QualifiedItemId;
+    }
+
+    /// <summary>Clear the <see cref="IsBreakingPoweredChest"/> flag after vanilla's own tool-hit logic runs.</summary>
+    private static void PerformToolAction_Postfix()
+    {
+        PoweredChestPatches.IsBreakingPoweredChest = false;
+    }
+
+    /// <summary>
+    /// MOD: added. Redirect vanilla's own generic BigCraftable "broken by a tool" sound ("hammer") to
+    /// the one used for a normal chest ("axe"), while a Powered Chest is being broken (see
+    /// <see cref="IsBreakingPoweredChest"/>). That sound is hardcoded deep inside
+    /// <see cref="SObject.performToolAction"/>'s generic fallback branch, with no clean way to override
+    /// just that one call without reimplementing the whole surrounding method — so this intercepts the
+    /// sound itself instead, at the one shared choke point both <see cref="GameLocation.playSound"/>
+    /// and <see cref="SObject.playNearbySoundAll"/> funnel through, scoped narrowly to the brief window
+    /// <see cref="IsBreakingPoweredChest"/> is set for.
+    /// </summary>
+    /// <param name="cueName">The cue name to play — reassigning this parameter changes what vanilla's own method actually plays, since Harmony treats a prefix parameter with the same name as the original as a by-reference override.</param>
+    private static void PlaySound_Prefix(ref string cueName)
+    {
+        if (PoweredChestPatches.IsBreakingPoweredChest && cueName == "hammer")
+            cueName = "axe";
     }
 }

@@ -42,6 +42,21 @@ internal static class PowerCoilPatches
     private const float PulsePhaseOffset = MathF.PI;
 
     /// <summary>
+    /// MOD: added. How far the horizontal (width-only) shake pulse grows/shrinks the sprite at its
+    /// peak, in the same pre-4x-zoom units as <see cref="GetScale_Postfix"/>'s main pulse (the main
+    /// pulse's own width term maxes out at 16 * <see cref="PulseAmplitude"/> = 0.8, so this is kept
+    /// noticeably smaller to stay subtle, per request, while still being clearly a separate, faster
+    /// wobble).
+    /// </summary>
+    private const float ShakeAmplitude = 0.35f;
+
+    /// <summary>MOD: added. How fast the horizontal shake pulse cycles, in radians per second — deliberately much faster than <see cref="PulseSpeed"/>, so it reads as a distinct higher-frequency vibration layered on top of the slower breathing pulse (matching the vanilla Lightning Rod's own "just struck" shake, which is a similar fast wobble).</summary>
+    private const float ShakeSpeed = 16f;
+
+    /// <summary>A fixed phase offset for the shake, purely so it doesn't happen to start perfectly in sync with the main pulse.</summary>
+    private const float ShakePhaseOffset = MathF.PI / 2f;
+
+    /// <summary>
     /// The light's radius. A radius of 10 rendered as a large dark void instead of a bigger light —
     /// the game's light renderer apparently doesn't handle an extreme radius gracefully — so this
     /// started from the same value vanilla itself uses for a lamp-type BigCraftable (3), then reduced
@@ -108,7 +123,13 @@ internal static class PowerCoilPatches
         );
 
         harmony.Patch(
-            original: AccessTools.Method(typeof(GameLocation), nameof(GameLocation.playSound), [typeof(string), typeof(Vector2?), typeof(int?), typeof(SoundContext)]),
+            original: AccessTools.Method(typeof(SObject), nameof(SObject.performToolAction)),
+            prefix: new HarmonyMethod(typeof(PowerCoilPatches), nameof(PerformToolAction_Prefix)),
+            postfix: new HarmonyMethod(typeof(PowerCoilPatches), nameof(PerformToolAction_Postfix))
+        );
+
+        harmony.Patch(
+            original: AccessTools.Method(typeof(SoundsHelper), nameof(SoundsHelper.PlayAll)),
             prefix: new HarmonyMethod(typeof(PowerCoilPatches), nameof(PlaySound_Prefix))
         );
     }
@@ -128,13 +149,18 @@ internal static class PowerCoilPatches
         double elapsedSeconds = Game1.currentGameTime?.TotalGameTime.TotalSeconds ?? 0;
         float pulse = (float)Math.Sin(elapsedSeconds * PowerCoilPatches.PulseSpeed + PowerCoilPatches.PulsePhaseOffset) * PowerCoilPatches.PulseAmplitude;
 
+        // MOD: added — a second, higher-frequency scale pulse layered on top of the main one, but
+        // only affecting the WIDTH (horizontal) component, not height — a subtle, fast "vibration"
+        // riding on top of the slower breathing pulse, rather than a separate position-based shake.
+        float shakePulse = (float)Math.Sin(elapsedSeconds * PowerCoilPatches.ShakeSpeed + PowerCoilPatches.ShakePhaseOffset) * PowerCoilPatches.ShakeAmplitude;
+
         // MOD: reverse-engineered from how Object.draw() consumes this value for a bigCraftable — it
         // multiplies the result by 4 (the game's zoom factor) and adds it directly to the drawn
         // width, but adds only HALF of the Y component to the drawn height (an old asymmetry in the
         // vanilla "wobble" effect this method was originally built for). Scaling X and Y differently
         // here compensates for that, so the sprite grows/shrinks by the same relative amount in both
         // directions instead of stretching unevenly.
-        __result = new Vector2(16f * pulse, 64f * pulse);
+        __result = new Vector2(16f * pulse + shakePulse, 64f * pulse);
     }
 
     /// <summary>
@@ -374,6 +400,14 @@ internal static class PowerCoilPatches
     /// </summary>
     private static bool IsPlacingPowerCoil;
 
+    /// <summary>
+    /// MOD: added. Flag that <see cref="SObject.performToolAction"/> is currently breaking a Power
+    /// Coil, so <see cref="PlaySound_Prefix"/> knows to redirect vanilla's own generic BigCraftable
+    /// "broken by a tool" sound ("hammer") to "axe" instead, for the same reason as
+    /// <see cref="IsPlacingPowerCoil"/>.
+    /// </summary>
+    private static bool IsBreakingPowerCoil;
+
     /// <summary>Set the <see cref="IsPlacingPowerCoil"/> flag before vanilla's own placement logic runs.</summary>
     /// <param name="__instance">The item being placed.</param>
     private static void PlacementAction_Prefix(SObject __instance)
@@ -395,20 +429,38 @@ internal static class PowerCoilPatches
         location.playSound("grunt");
     }
 
-    /// <summary>
-    /// MOD: added. Redirect vanilla's own generic BigCraftable placement sound to the one used for
-    /// placing a normal chest, while a Power Coil is being placed (see <see cref="IsPlacingPowerCoil"/>).
-    /// The "woodyStep" sound is hardcoded deep inside <see cref="SObject.placementAction"/>'s generic
-    /// fallback branch (the one a plain "Type: Crafting" BigCraftable like the Power Coil falls into,
-    /// since it isn't one of vanilla's own special-cased item IDs) — there's no clean way to override
-    /// just that one call without reimplementing the whole surrounding method, so this intercepts the
-    /// sound itself instead, scoped narrowly to the brief window <see cref="IsPlacingPowerCoil"/> is
-    /// set for.
-    /// </summary>
-    /// <param name="audioName">The cue name to play — reassigning this parameter changes what vanilla's own method actually plays, since Harmony treats a prefix parameter with the same name as the original as a by-reference override.</param>
-    private static void PlaySound_Prefix(ref string audioName)
+    /// <summary>Set the <see cref="IsBreakingPowerCoil"/> flag before vanilla's own tool-hit logic runs.</summary>
+    /// <param name="__instance">The item being hit by a tool.</param>
+    private static void PerformToolAction_Prefix(SObject __instance)
     {
-        if (PowerCoilPatches.IsPlacingPowerCoil && audioName == "woodyStep")
-            audioName = "axe";
+        PowerCoilPatches.IsBreakingPowerCoil = __instance.QualifiedItemId == PowerCoilPatches.TargetQualifiedItemId;
+    }
+
+    /// <summary>Clear the <see cref="IsBreakingPowerCoil"/> flag after vanilla's own tool-hit logic runs.</summary>
+    private static void PerformToolAction_Postfix()
+    {
+        PowerCoilPatches.IsBreakingPowerCoil = false;
+    }
+
+    /// <summary>
+    /// MOD: added. Redirect vanilla's own generic BigCraftable placement/breaking sounds to the one
+    /// used for a normal chest ("axe"), while a Power Coil is being placed or broken (see
+    /// <see cref="IsPlacingPowerCoil"/>/<see cref="IsBreakingPowerCoil"/>). Both "woodyStep" (placing)
+    /// and "hammer" (breaking) are hardcoded deep inside their respective vanilla methods' generic
+    /// fallback branches (the ones a plain "Type: Crafting" BigCraftable like the Power Coil falls
+    /// into, since it isn't one of vanilla's own special-cased item IDs) — there's no clean way to
+    /// override just those calls without reimplementing the whole surrounding methods, so this
+    /// intercepts the sound itself instead, at the one shared choke point both paths funnel through
+    /// (<see cref="GameLocation.playSound"/> and <see cref="SObject.playNearbySoundAll"/> both call
+    /// this same method internally), scoped narrowly to the brief windows the two flags above are set
+    /// for.
+    /// </summary>
+    /// <param name="cueName">The cue name to play — reassigning this parameter changes what vanilla's own method actually plays, since Harmony treats a prefix parameter with the same name as the original as a by-reference override.</param>
+    private static void PlaySound_Prefix(ref string cueName)
+    {
+        if (PowerCoilPatches.IsPlacingPowerCoil && cueName == "woodyStep")
+            cueName = "axe";
+        else if (PowerCoilPatches.IsBreakingPowerCoil && cueName == "hammer")
+            cueName = "axe";
     }
 }

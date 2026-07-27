@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Microsoft.Xna.Framework;
 using Pathoschild.Stardew.Automate.Framework.Models;
+using Pathoschild.Stardew.Automate.Framework.Storage;
 using Pathoschild.Stardew.Common;
 using StardewModdingAPI;
 using StardewValley;
@@ -126,6 +127,15 @@ internal class MachineManager
             getLocalSourceNames: () => this.Config().LocalPowerSourceNames // MOD: added
         );
 
+        // MOD: added — same self-contained-class pattern as PowerSystem above, but for the
+        // "power-required machines" balance mechanic; see PowerRequiredMachineSystem.cs for details.
+        PowerRequiredMachineSystem powerRequiredMachineSystem = new(
+            getEnabled: () => this.Config().PowerRequiredMachinesEnabled,
+            getMachineTypeNames: () => this.Config().PowerRequiredMachineNames,
+            getGlobalCalloutsEnabled: () => this.Config().ConnectedMachineLocationPowerCallouts, // MOD: added
+            getLocationByKey: this.GetLocationByKey // MOD: added
+        );
+
         // MOD: added — swaps a connector's displayed appearance between its unpowered and "powered"
         // variant based on power range. See PoweredFloorSync.cs for details.
         this.PoweredFloorSync = new PoweredFloorSync(getConnectorTextureIds: () => this.Config().ConnectorPoweredTextureIds);
@@ -152,6 +162,7 @@ internal class MachineManager
             getBlacklistCategorySignNames: () => this.Config().BlacklistCategorySignNames, // MOD: added
             getCustomCategories: () => this.Config().CustomCategories, // MOD: added
             powerSystem: powerSystem, // MOD: added
+            powerRequiredMachineSystem: powerRequiredMachineSystem, // MOD: added
             buildStorage: this.BuildStorage,
             monitor: monitor
         );
@@ -236,6 +247,13 @@ internal class MachineManager
         string locationKey = this.Factory.GetLocationKey(location);
 
         return this.MachineData.GetValueOrDefault(locationKey);
+    }
+
+    /// <summary>MOD: added. Get the location instance for a location key, if it's currently tracked. Used by <see cref="PowerRequiredMachineSystem.ProcessStarvedMachineCallouts"/> to resolve a friendly display name for its location-specific reminder message.</summary>
+    /// <param name="locationKey">The location key, as formatted by <see cref="MachineGroupFactory.GetLocationKey"/>.</param>
+    public GameLocation? GetLocationByKey(string locationKey)
+    {
+        return this.LocationsByKey.GetValueOrDefault(locationKey);
     }
 
     /****
@@ -356,7 +374,34 @@ internal class MachineManager
     /// <param name="containers">The storage containers.</param>
     private StorageManager BuildStorage(IContainer[] containers)
     {
-        return new StorageManager(containers);
+        return new StorageManager(containers, isCategoryEnabled: this.IsContainerCategoryEnabled);
+    }
+
+    /// <summary>
+    /// MOD: added. Get whether a container's priority-tier category (see <see cref="IHasContainerPriority"/>)
+    /// currently allows it to be pushed into/pulled from by the STANDARD machine automation cycle (a
+    /// Furnace's output/input, etc. — see <see cref="StorageManager.TryPush"/>/<see cref="StorageManager.GetItems"/>),
+    /// and (via <see cref="StorageManager.IsContainerCategoryEnabled"/>) whether a group made up only
+    /// of chest-like machines counts as "actually automating anything" at all (see
+    /// <see cref="MachineGroup.HasLocalInternalAutomation"/>). A normal chest, a Powered Chest, and a
+    /// chest-backed hybrid can each be toggled off independently (see <see cref="ModConfig.ChestsCanAutomate"/>/
+    /// <see cref="ModConfig.ChestHybridsCanAutomate"/>/<see cref="ModConfig.PoweredChestsCanAutomate"/>).
+    /// This deliberately does NOT affect <see cref="StorageManager.AllContainers"/> — a Powered Chest's
+    /// own active pull/push through its piped connectors (see <see cref="Machines.Objects.PoweredChestMachine.SetInput"/>)
+    /// reads that directly and isn't restricted by another container's category here; it's gated by its
+    /// OWN category instead. So disabling normal chests, say, only stops a Furnace from pushing
+    /// into/pulling from one directly — a Powered Chest can still reach into that same chest.
+    /// </summary>
+    /// <param name="container">The container to check.</param>
+    private bool IsContainerCategoryEnabled(IContainer container)
+    {
+        ModConfig config = this.Config();
+        return container.GetContainerPriorityTier() switch
+        {
+            ContainerPriorityTiers.PoweredChest => config.PoweredChestsCanAutomate,
+            ContainerPriorityTiers.ChestHybrid => config.ChestHybridsCanAutomate,
+            _ => config.ChestsCanAutomate
+        };
     }
 
     /// <summary>Reload the machines in a given location.</summary>

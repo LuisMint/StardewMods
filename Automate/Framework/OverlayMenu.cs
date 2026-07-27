@@ -58,6 +58,9 @@ internal class OverlayMenu : BaseOverlay
     /// <summary>MOD: added. The fill opacity for the white/black sign-detection debug marker.</summary>
     private const float SignMarkerFillOpacity = 0.65f;
 
+    /// <summary>MOD: added. The size of the white/black sign-detection debug marker, as a fraction of the full tile size — drawn smaller (and centered) than the tile so the connector-role color underneath stays visible around its edges too, not just through its own translucency.</summary>
+    private const float SignMarkerSizeScale = 0.65f;
+
 
     /*********
     ** Public methods
@@ -107,6 +110,7 @@ internal class OverlayMenu : BaseOverlay
             Color? color = null;
             bool isMultiGroup = false; // MOD: added
             Color? connectorRoleColor = null; // MOD: added
+            bool? isWhitelistSignMarker = null; // MOD: added
             if (this.MachineData is not null)
             {
                 if (this.MachineData.ActiveTiles.TryGetValue(tile, out group))
@@ -134,13 +138,16 @@ internal class OverlayMenu : BaseOverlay
                             color = connectorRoleColor.Value * OverlayMenu.ConnectorRoleFillOpacity;
                     }
 
-                    // MOD: added — debug marker: override just the FILL color (never the border) for
-                    // a tile where a configured whitelist/blacklist sign was detected, regardless of
-                    // connector role or whether the sign currently holds an item. White = whitelist
-                    // sign detected, black = blacklist sign detected. This exists purely so it's
-                    // visually obvious whether sign detection is matching at all.
+                    // MOD: added — debug marker for a tile where a configured whitelist/blacklist sign
+                    // was detected, regardless of connector role or whether the sign currently holds an
+                    // item. White = whitelist sign detected, black = blacklist sign detected. This
+                    // exists purely so it's visually obvious whether sign detection is matching at all.
+                    // MOD: changed — drawn as a separate translucent layer ON TOP of the tile's own
+                    // fill (see the draw call below) rather than replacing `color` outright, so the
+                    // connector-role color underneath (green/orange/blue) stays visible instead of
+                    // being fully hidden behind a solid black/white square.
                     if (this.MachineData.SignMarkersByTile.TryGetValue(tile, out bool isWhitelistSign))
-                        color = (isWhitelistSign ? Color.White : Color.Black) * OverlayMenu.SignMarkerFillOpacity;
+                        isWhitelistSignMarker = isWhitelistSign;
                 }
                 else if (this.MachineData.DisabledTiles.TryGetValue(tile, out group) || this.MachineData.OutdatedTiles.ContainsKey(tile))
                 {
@@ -185,6 +192,22 @@ internal class OverlayMenu : BaseOverlay
             // draw the solid full-tile multi-group highlight now (still part of the background pass)
             if (isMultiGroup)
                 spriteBatch.DrawLine(screenX, screenY, new Vector2(tileSize, tileSize), OverlayMenu.MultiGroupColor * OverlayMenu.MultiGroupFillOpacity);
+
+            // MOD: added — draw the sign-detection marker as a translucent layer on top of the tile's
+            // own fill (instead of replacing it) so the connector-role color underneath stays visible,
+            // and shrunk to a centered square smaller than the full tile so that color shows around its
+            // edges too, not just through its own translucency.
+            if (isWhitelistSignMarker.HasValue)
+            {
+                float signMarkerSize = tileSize * OverlayMenu.SignMarkerSizeScale;
+                float signMarkerOffset = (tileSize - signMarkerSize) / 2f;
+                spriteBatch.DrawLine(
+                    screenX + signMarkerOffset,
+                    screenY + signMarkerOffset,
+                    new Vector2(signMarkerSize, signMarkerSize),
+                    (isWhitelistSignMarker.Value ? Color.White : Color.Black) * OverlayMenu.SignMarkerFillOpacity
+                );
+            }
 
             // MOD: queue the border instead of drawing it immediately — see comment above borderQueue
             if (group != null)

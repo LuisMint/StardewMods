@@ -60,4 +60,8 @@ internal interface IMachineGroup
     /// <summary>MOD: added. Get every tile where a configured whitelist/blacklist sign object exists, regardless of whether it currently holds an item. Broader than <see cref="GetSignMarkers"/> — meant for periodic polling to detect when a previously-empty sign gets an item placed on it.</summary>
     /// <param name="locationKey">The location key for which to get tiles.</param>
     IReadOnlySet<Vector2> GetSignCandidateTiles(string locationKey);
+
+    /// <summary>MOD: added. Get the tiles of every machine in this group that's currently "power-starved" (see <see cref="PowerRequiredMachineSystem"/>) — used to drive the wake-up/reminder callouts in <see cref="PowerRequiredMachineSystem.ProcessStarvedMachineCallouts"/>.</summary>
+    /// <param name="locationKey">The location key for which to get tiles.</param>
+    IReadOnlySet<Vector2> GetPowerStarvedTiles(string locationKey);
 }

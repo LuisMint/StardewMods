@@ -30,10 +30,7 @@ namespace Pathoschild.Stardew.Automate.Framework
         /// <summary>Get the unqualified item IDs for big craftable items to treat as a chest which only allows retrieving items by default.</summary>
         public static string[] GetTakeOnlyChestItemIds()
         {
-            return
-            [
-                "275" // hopper
-            ];
+            return [];
         }
     }
 }

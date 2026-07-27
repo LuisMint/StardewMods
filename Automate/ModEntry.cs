@@ -104,8 +104,7 @@ internal class ModEntry : Mod
             defaultFactory: new AutomationFactory(
                 config: () => this.Config,
                 monitor: this.Monitor,
-                reflection: this.Helper.Reflection,
-                isBetterJunimosLoaded: helper.ModRegistry.IsLoaded("hawkfalcon.BetterJunimos")
+                reflection: this.Helper.Reflection
             ),
             monitor: this.Monitor
         );
@@ -136,9 +135,21 @@ internal class ModEntry : Mod
 
         PoweredChestPatches.Apply(harmony);
 
+        PowerRequiredMachinePatches.Initialize(
+            getSystem: () => this.MachineManager.Factory.PowerRequiredMachineSystem,
+            getPoweredTiles: location => this.MachineManager.GetMachineDataFor(location)?.PoweredTiles
+        );
+        PowerRequiredMachinePatches.Apply(harmony);
+
+        PowerRangePreviewPatches.Initialize(
+            getRangeDistance: () => this.Config.PowerRangeDistance
+        );
+        PowerRangePreviewPatches.Apply(harmony);
+
         // hook events
         helper.Events.Content.AssetRequested += this.OnAssetRequested;
         helper.Events.GameLoop.SaveLoaded += this.OnSaveLoaded;
+        helper.Events.GameLoop.DayEnding += this.OnDayEnding;
         helper.Events.GameLoop.DayStarted += this.OnDayStarted;
         helper.Events.GameLoop.UpdateTicked += this.OnUpdateTicked;
         helper.Events.Input.ButtonsChanged += this.OnButtonsChanged;
@@ -220,6 +231,23 @@ internal class ModEntry : Mod
             else
                 this.Monitor.Log("You disabled Automate in the mod settings, so it won't do anything.", LogLevel.Info);
         }
+    }
+
+    /// <inheritdoc cref="IGameLoopEvents.DayEnding" />
+    private void OnDayEnding(object? sender, DayEndingEventArgs e)
+    {
+        // MOD: added — reset the power-required-machines wake-up failure message flags before the
+        // overnight machine/animal updates run, so a fresh failure tonight can queue the message again
+        // even if it already fired on a previous night.
+        PowerRequiredMachinePatches.ResetNightlyFailureMessages();
+
+        // MOD: added — sync every power-required machine's held-chest starved tag across all locations
+        // right before the overnight update runs. This is the fix for the Auto-Grabber specifically:
+        // it has no Data/Machines entry, so ShouldTimePassForMachine (the periodic sync during normal
+        // play) never actually runs for it at all, and DayUpdate's own per-object sync could still race
+        // against FarmAnimal's overnight produce collection depending on processing order — this pass
+        // guarantees every tag is correct before anything overnight touches it.
+        PowerRequiredMachinePatches.SyncHeldChestTagsBeforeOvernightUpdate(CommonHelper.GetLocations());
     }
 
     /// <inheritdoc cref="IGameLoopEvents.DayStarted" />
@@ -347,8 +375,14 @@ internal class ModEntry : Mod
                 {
                     this.AutomateCountdown = this.Config.AutomationInterval;
 
-                    foreach (IMachineGroup group in this.MachineManager.GetActiveMachineGroups())
+                    IMachineGroup[] activeGroups = this.MachineManager.GetActiveMachineGroups().ToArray();
+                    foreach (IMachineGroup group in activeGroups)
                         group.Automate();
+
+                    // MOD: added — separate from each group's own Automate() call above, since the
+                    // power-required-machines wake-up callouts need cross-rebuild tracking by location
+                    // (see PowerRequiredMachineSystem.ProcessStarvedMachineCallouts's own remarks).
+                    this.MachineManager.Factory.PowerRequiredMachineSystem.ProcessStarvedMachineCallouts(activeGroups);
                 }
             }
             catch (Exception ex)

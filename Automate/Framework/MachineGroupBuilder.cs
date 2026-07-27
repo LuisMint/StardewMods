@@ -40,6 +40,9 @@ internal class MachineGroupBuilder
     /// <summary>MOD: added. Every tile where a configured whitelist/blacklist sign object exists, regardless of whether it currently holds an item — broader than <see cref="SignMarkers"/>, used so periodic polling can watch a sign even while it's empty.</summary>
     private readonly HashSet<Vector2> SignCandidateTiles = [];
 
+    /// <summary>MOD: added. The tiles of every machine that's currently "power-starved" (a machine type configured to require power, whose own tile isn't within power range as of this rebuild) — tracked by tile rather than machine reference, since <see cref="Build"/> wraps each machine in a new <see cref="MachineWrapper"/> instance that wouldn't match the original reference.</summary>
+    private readonly HashSet<Vector2> PowerStarvedTiles = [];
+
     /// <summary>Sort machines by priority.</summary>
     private readonly Func<IEnumerable<IMachine>, IEnumerable<IMachine>> SortMachines;
 
@@ -64,16 +67,14 @@ internal class MachineGroupBuilder
 
     /// <summary>Add a machine to the group.</summary>
     /// <param name="machine">The machine to add.</param>
-    public void Add(IMachine machine)
+    /// <param name="isPowerStarved">MOD: added. Whether this machine is a "power-required" type whose own tile isn't currently within power range — see <see cref="PowerStarvedTiles"/>.</param>
+    public void Add(IMachine machine, bool isPowerStarved = false)
     {
-        // MOD: added — a machine with its own private storage (e.g. a Mini-Shipping Bin's own 3x3
-        // inventory) never otherwise passes through Add(IContainer), so it needs the group's item
-        // filter applied directly. See IHasFilterableStorage's own remarks for why.
-        if (this.ItemFilter != null && machine is IHasFilterableStorage filterable)
-            filterable.ApplySignFilter(this.ItemFilter);
-
         this.Machines.Add(machine);
         this.Add(machine.TileArea);
+
+        if (isPowerStarved)
+            this.PowerStarvedTiles.UnionWith(machine.TileArea.GetTiles());
     }
 
     /// <summary>Add a container to the group.</summary>
@@ -142,6 +143,6 @@ internal class MachineGroupBuilder
     public IMachineGroup Build()
     {
         var machines = this.SortMachines(this.Machines.Select(p => new MachineWrapper(p)));
-        return new MachineGroup(this.LocationKey, machines, this.Containers, this.Tiles, this.BuildStorage, this.Monitor, this.ConnectorRoles, this.SignMarkers, this.SignCandidateTiles); // MOD: added connectorRoles + signMarkers + signCandidateTiles args
+        return new MachineGroup(this.LocationKey, machines, this.Containers, this.Tiles, this.BuildStorage, this.Monitor, this.ConnectorRoles, this.SignMarkers, this.SignCandidateTiles, this.PowerStarvedTiles); // MOD: added connectorRoles + signMarkers + signCandidateTiles + powerStarvedTiles args
     }
 }

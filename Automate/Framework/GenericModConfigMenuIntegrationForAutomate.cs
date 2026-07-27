@@ -107,42 +107,6 @@ internal class GenericModConfigMenuIntegrationForAutomate : IGenericModConfigMen
             set: (config, value) => this.SetCustomConnectors(config, value.Split(',').Select(p => p.Trim()))
         );
 
-        // Junimo huts
-        menu.AddSectionTitle(I18n.Config_Title_JunimoHuts);
-        this.AddJunimoHutBehaviorDropdown(
-            menu,
-            name: I18n.Config_JunimoHutGems_Name,
-            tooltip: I18n.Config_JunimoHutGems_Desc,
-            get: config => config.JunimoHutBehaviorForGems,
-            set: (config, value) => config.JunimoHutBehaviorForGems = value
-        );
-        this.AddJunimoHutBehaviorDropdown(
-            menu,
-            name: I18n.Config_JunimoHutFertilizer_Name,
-            tooltip: I18n.Config_JunimoHutFertilizer_Desc,
-            get: config => config.JunimoHutBehaviorForFertilizer,
-            set: (config, value) => config.JunimoHutBehaviorForFertilizer = value
-        );
-        this.AddJunimoHutBehaviorDropdown(
-            menu,
-            name: I18n.Config_JunimoHutSeeds_Name,
-            tooltip: I18n.Config_JunimoHutSeeds_Desc,
-            get: config => config.JunimoHutBehaviorForSeeds,
-            set: (config, value) => config.JunimoHutBehaviorForSeeds = value
-        );
-        menu.AddTextbox(
-            name: I18n.Config_JunimoHutMoveItemsIntoHut_Name,
-            tooltip: () => I18n.Config_JunimoHutMoveItemsIntoHut_Desc(gemFieldName: I18n.Config_JunimoHutGems_Name()),
-            get: config => this.GetJunimoHutItemIdsString(config, JunimoHutBehavior.MoveIntoHut),
-            set: (config, value) => this.SetJunimoHutItemIds(config, value, JunimoHutBehavior.MoveIntoHut)
-        );
-        menu.AddTextbox(
-            name: I18n.Config_JunimoHutIgnoreItems_Name,
-            tooltip: () => I18n.Config_JunimoHutIgnoreItems_Desc(gemFieldName: I18n.Config_JunimoHutGems_Name()),
-            get: config => this.GetJunimoHutItemIdsString(config, JunimoHutBehavior.Ignore),
-            set: (config, value) => this.SetJunimoHutItemIds(config, value, JunimoHutBehavior.Ignore)
-        );
-
         // storage settings
         menu.AddSectionTitle(I18n.Config_Title_ChestSettings);
         menu.AddDropdown(
@@ -237,69 +201,6 @@ internal class GenericModConfigMenuIntegrationForAutomate : IGenericModConfigMen
     /*********
     ** Private methods
     *********/
-    /****
-    ** Junimo huts
-    ****/
-    /// <summary>Add a dropdown to configure Junimo hut behavior for an item type.</summary>
-    /// <param name="menu">The config menu to extend.</param>
-    /// <param name="name">The label text to show in the form.</param>
-    /// <param name="tooltip">The tooltip text shown when the cursor hovers on the field.</param>
-    /// <param name="get">Get the current value from the mod config.</param>
-    /// <param name="set">Set a new value in the mod config.</param>
-    private void AddJunimoHutBehaviorDropdown(GenericModConfigMenuIntegration<ModConfig> menu, Func<string> name, Func<string> tooltip, Func<ModConfig, JunimoHutBehavior> get, Action<ModConfig, JunimoHutBehavior> set)
-    {
-        menu.AddDropdown(
-            name: name,
-            tooltip: tooltip,
-            get: config => get(config).ToString(),
-            set: (config, value) => set(config, Enum.Parse<JunimoHutBehavior>(value)),
-            allowedValues: Enum.GetNames<JunimoHutBehavior>(),
-            formatAllowedValue: value => value switch
-            {
-                nameof(JunimoHutBehavior.AutoDetect) => I18n.Config_JunimoHuts_AutoDetect(),
-                nameof(JunimoHutBehavior.Ignore) => I18n.Config_JunimoHuts_Ignore(),
-                nameof(JunimoHutBehavior.MoveIntoChests) => I18n.Config_JunimoHuts_MoveIntoChests(),
-                nameof(JunimoHutBehavior.MoveIntoHut) => I18n.Config_JunimoHuts_MoveIntoHuts(),
-                _ => "???" // should never happen
-            }
-        );
-    }
-
-    /// <summary>Get the string representation of a list of Junimo hut behavior item IDs.</summary>
-    /// <param name="config">The mod settings to read.</param>
-    /// <param name="behavior">The behavior for which to list item IDs.</param>
-    private string GetJunimoHutItemIdsString(ModConfig config, JunimoHutBehavior behavior)
-    {
-        List<string> itemIds = [];
-
-        foreach ((string itemId, JunimoHutBehavior itemBehavior) in config.JunimoHutBehaviors)
-        {
-            if (itemBehavior == behavior)
-                itemIds.Add(itemId);
-        }
-
-        return string.Join(", ", itemIds);
-    }
-
-    /// <summary>Set Junimo hut behaviors for the given item IDs.</summary>
-    /// <param name="config">The mod settings to modify.</param>
-    /// <param name="rawItemIds">The raw item IDs as a comma-delimited string.</param>
-    /// <param name="behavior">The behavior to set for listed item IDs.</param>
-    private void SetJunimoHutItemIds(ModConfig config, string rawItemIds, JunimoHutBehavior behavior)
-    {
-        // parse item IDs
-        HashSet<string> itemIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        itemIds.AddRange(rawItemIds.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries));
-
-        // set behaviors
-        config.JunimoHutBehaviors.RemoveWhere(p => p.Value == behavior);
-        foreach (string itemId in itemIds)
-        {
-            string qualifiedItemId = ItemRegistry.QualifyItemId(itemId) ?? ItemRegistry.ManuallyQualifyItemId(itemId, ItemRegistry.type_object);
-            config.JunimoHutBehaviors[qualifiedItemId] = behavior;
-        }
-    }
-
     /****
     ** Connectors
     ****/
@@ -462,13 +363,17 @@ internal class GenericModConfigMenuIntegrationForAutomate : IGenericModConfigMen
 
         // other building machines
         machineIds[BaseMachine.GetDefaultMachineId<FishPondMachine>()] = () => GameI18n.GetBuildingName("Fish Pond");
-        machineIds[BaseMachine.GetDefaultMachineId<JunimoHutMachine>()] = () => GameI18n.GetBuildingName("Junimo Hut");
+        // MOD: removed the JunimoHutMachine entry — it's a plain IContainer now (see that class's own
+        // remarks), not an IMachine, so a "machine settings" override would never actually be consulted
+        // for it anymore. Its own registration can still be gated via the normal per-chest-type
+        // ChestOverrides instead (though it's not currently exposed in the chest-settings GMCM section
+        // either, since it's not tagged with AutomateConstants.StorageTag).
 
         // other object machines
-        machineIds[BaseMachine.GetDefaultMachineId<AutoGrabberMachine>()] = () => this.GetMachineNameFromItemId("(BC)165");
         machineIds[BaseMachine.GetDefaultMachineId<CrabPotMachine>()] = () => this.GetMachineNameFromItemId("(O)710");
         machineIds[BaseMachine.GetDefaultMachineId<FeedHopperMachine>()] = () => this.GetMachineNameFromItemId("(BC)99");
-        machineIds[BaseMachine.GetDefaultMachineId<MiniShippingBinMachine>()] = () => this.GetMachineNameFromItemId("(BC)248");
+        // MOD: removed the AutoGrabberMachine and MiniShippingBinMachine entries for the same reason as
+        // JunimoHutMachine above — both are plain IContainers now, not IMachines.
 
         // other terrain feature machines
         machineIds[BaseMachine.GetDefaultMachineId<BushMachine>()] = I18n.Config_Machines_Bush;

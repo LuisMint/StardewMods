@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using Microsoft.Xna.Framework;
+using Pathoschild.Stardew.Automate.Framework.Storage;
 using StardewValley;
 using StardewValley.Inventories;
 using StardewValley.Mods;
@@ -29,7 +30,7 @@ internal interface IConnectionRoleRestriction
 /// same physical chest can be wrapped differently for different groups it belongs to — e.g. acting
 /// as input-only through one path network and output-only through a separate one.
 /// </summary>
-internal class RoleRestrictedContainer : IContainer, IConnectionRoleRestriction
+internal class RoleRestrictedContainer : IContainer, IConnectionRoleRestriction, IHasContainerPriority
 {
     /*********
     ** Fields
@@ -46,6 +47,16 @@ internal class RoleRestrictedContainer : IContainer, IConnectionRoleRestriction
 
     /// <inheritdoc />
     public bool AllowTakingThroughThisConnection { get; }
+
+    /// <summary>
+    /// MOD: added. Forwards to the wrapped container's own priority tier (see <see cref="IHasContainerPriority"/>),
+    /// defaulting to <see cref="ContainerPriorityTiers.Normal"/> if it doesn't have one — without this,
+    /// wrapping a prioritized container (e.g. a chest-backed hybrid) in this class would silently lose
+    /// its tier, since <see cref="StorageManager.SetContainers"/> checks for <see cref="IHasContainerPriority"/>
+    /// via a type test on the OUTERMOST container only.
+    /// </summary>
+    /// <inheritdoc />
+    public int ContainerPriorityTier => this.Inner.GetContainerPriorityTier();
 
     /// <inheritdoc cref="IAutomatable.Location" />
     public GameLocation Location => this.Inner.Location;

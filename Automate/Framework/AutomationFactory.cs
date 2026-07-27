@@ -33,9 +33,6 @@ internal class AutomationFactory : IAutomationFactory
     /// <summary>Simplifies access to private code.</summary>
     private readonly IReflectionHelper Reflection;
 
-    /// <summary>Whether the Better Junimos mod is installed.</summary>
-    private readonly bool IsBetterJunimosLoaded;
-
 
     /*********
     ** Public methods
@@ -44,13 +41,11 @@ internal class AutomationFactory : IAutomationFactory
     /// <param name="config">The mod configuration.</param>
     /// <param name="monitor">Encapsulates monitoring and logging.</param>
     /// <param name="reflection">Simplifies access to private code.</param>
-    /// <param name="isBetterJunimosLoaded">Whether the Better Junimos mod is installed.</param>
-    public AutomationFactory(Func<ModConfig> config, IMonitor monitor, IReflectionHelper reflection, bool isBetterJunimosLoaded)
+    public AutomationFactory(Func<ModConfig> config, IMonitor monitor, IReflectionHelper reflection)
     {
         this.Config = config;
         this.Monitor = monitor;
         this.Reflection = reflection;
-        this.IsBetterJunimosLoaded = isBetterJunimosLoaded;
     }
 
     /// <summary>Get a machine, container, or connector instance for a given object.</summary>
@@ -67,7 +62,14 @@ internal class AutomationFactory : IAutomationFactory
             // PoweredChestMachine's own remarks for why it needs its own dedicated entity type rather
             // than falling into the generic ChestContainer case below.
             if (chest.QualifiedItemId == PoweredChestMachine.QualifiedItemId)
-                return new PoweredChestMachine(chest, location, tile);
+                return new PoweredChestMachine(chest, location, tile, () => this.Config().PoweredChestsCanAutomate);
+
+            // MOD: added — the vanilla Hopper needs its own dedicated entity type for the same reason
+            // as the Mini-Shipping Bin: a plain tagged ChestContainer isn't otherwise distinguishable
+            // from any other chest for override/identity purposes. Its SpecialChestType is AutoLoader
+            // (see below), so it must be intercepted here, before that switch.
+            if (chest.QualifiedItemId == HopperMachine.QualifiedItemId)
+                return new HopperMachine(chest, location);
 
             switch (chest.SpecialChestType)
             {
@@ -89,7 +91,7 @@ internal class AutomationFactory : IAutomationFactory
         switch (obj.QualifiedItemId)
         {
             case "(BC)165":
-                return new AutoGrabberMachine(obj, location, tile);
+                return new AutoGrabberMachine(obj, location);
 
             case "(BC)99":
                 return new FeedHopperMachine(location, tile);
@@ -168,24 +170,17 @@ internal class AutomationFactory : IAutomationFactory
             case FishPond pond:
                 return new FishPondMachine(pond, location);
 
+            // MOD: changed — no longer resolves any per-item-type config (see JunimoHutMachine's own
+            // remarks for why): it's now a chest-backed hybrid like the others in this fork, so what
+            // moves in/out is controlled entirely by how it's physically piped and whitelist/blacklist
+            // signs, the same as every other hybrid.
+            //
+            // MOD: added — a hut under construction isn't registered as a container at all (previously
+            // this was handled via GetState() returning Disabled, but a purely passive IContainer has
+            // no per-tick state to report) — its output chest isn't meaningfully usable yet anyway, so
+            // there's nothing lost by leaving it out of the group entirely until construction finishes.
             case JunimoHut hut:
-                {
-                    ModConfig config = this.Config();
-
-                    JunimoHutBehavior gemBehavior = config.JunimoHutBehaviorForGems;
-                    if (gemBehavior is JunimoHutBehavior.AutoDetect)
-                        gemBehavior = JunimoHutBehavior.Ignore;
-
-                    JunimoHutBehavior fertilizerBehavior = config.JunimoHutBehaviorForFertilizer;
-                    if (fertilizerBehavior is JunimoHutBehavior.AutoDetect)
-                        fertilizerBehavior = this.IsBetterJunimosLoaded ? JunimoHutBehavior.Ignore : JunimoHutBehavior.MoveIntoChests;
-
-                    JunimoHutBehavior seedBehavior = config.JunimoHutBehaviorForSeeds;
-                    if (seedBehavior is JunimoHutBehavior.AutoDetect)
-                        seedBehavior = this.IsBetterJunimosLoaded ? JunimoHutBehavior.Ignore : JunimoHutBehavior.MoveIntoChests;
-
-                    return new JunimoHutMachine(hut, location, gemBehavior, fertilizerBehavior, seedBehavior, config.JunimoHutBehaviors);
-                }
+                return hut.isUnderConstruction() ? null : new JunimoHutMachine(hut, location);
 
             case ShippingBin bin:
                 return new ShippingBinMachine(bin, location);

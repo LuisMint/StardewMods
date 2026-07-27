@@ -77,6 +77,9 @@ internal class MachineGroupFactory
     /// <summary>MOD: added. Encapsulates the power system, which (if enabled) restricts automation to tiles within range of a power source. See <see cref="PowerSystem"/> for details. Public so callers (e.g. for the overlay) can query powered tiles directly.</summary>
     public PowerSystem PowerSystem { get; }
 
+    /// <summary>MOD: added. Encapsulates the "power-required machines" balance mechanic. See <see cref="PowerRequiredMachineSystem"/> for details. Public so callers (e.g. <see cref="Patches.PowerRequiredMachinePatches"/>) can reuse the same resolution logic instead of duplicating it.</summary>
+    public PowerRequiredMachineSystem PowerRequiredMachineSystem { get; }
+
     /// <summary>Build a storage manager for the given containers.</summary>
     private readonly Func<IContainer[], StorageManager> BuildStorage;
 
@@ -97,9 +100,10 @@ internal class MachineGroupFactory
     /// <param name="getBlacklistCategorySignNames">MOD: added. Get the sign item names/IDs that act as a CATEGORY blacklist filter for a touching connector group.</param>
     /// <param name="getCustomCategories">MOD: added. Get the configured custom categories, each mapping a category name to the item names/qualified IDs that belong to it.</param>
     /// <param name="powerSystem">MOD: added. Encapsulates the power system, which (if enabled) restricts automation to tiles within range of a power source.</param>
+    /// <param name="powerRequiredMachineSystem">MOD: added. Encapsulates the "power-required machines" balance mechanic.</param>
     /// <param name="buildStorage">Build a storage manager for the given containers.</param>
     /// <param name="monitor">Encapsulates monitoring and logging.</param>
-    public MachineGroupFactory(Func<string, ModConfigMachine?> getMachineOverride, Func<string, ModConfigStorage?> getChestOverride, Func<bool> getChestsEnabledByDefault, Func<HashSet<string>> getWhitelistSignNames, Func<HashSet<string>> getBlacklistSignNames, Func<HashSet<string>> getWhitelistCategorySignNames, Func<HashSet<string>> getBlacklistCategorySignNames, Func<Dictionary<string, HashSet<string>>> getCustomCategories, PowerSystem powerSystem, Func<IContainer[], StorageManager> buildStorage, IMonitor monitor)
+    public MachineGroupFactory(Func<string, ModConfigMachine?> getMachineOverride, Func<string, ModConfigStorage?> getChestOverride, Func<bool> getChestsEnabledByDefault, Func<HashSet<string>> getWhitelistSignNames, Func<HashSet<string>> getBlacklistSignNames, Func<HashSet<string>> getWhitelistCategorySignNames, Func<HashSet<string>> getBlacklistCategorySignNames, Func<Dictionary<string, HashSet<string>>> getCustomCategories, PowerSystem powerSystem, PowerRequiredMachineSystem powerRequiredMachineSystem, Func<IContainer[], StorageManager> buildStorage, IMonitor monitor)
     {
         this.GetMachineOverride = getMachineOverride;
         this.GetChestOverride = getChestOverride;
@@ -110,6 +114,7 @@ internal class MachineGroupFactory
         this.GetBlacklistCategorySignNames = getBlacklistCategorySignNames; // MOD: added
         this.GetCustomCategories = getCustomCategories; // MOD: added
         this.PowerSystem = powerSystem; // MOD: added
+        this.PowerRequiredMachineSystem = powerRequiredMachineSystem; // MOD: added
         this.BuildStorage = buildStorage;
         this.Monitor = monitor;
     }
@@ -569,13 +574,13 @@ internal class MachineGroupFactory
             if (touchedRoots.Count == 0)
             {
                 MachineGroupBuilder solo = new(this.GetLocationKey(location), this.SortMachines, this.BuildStorage, this.Monitor);
-                this.AddToBuilder(solo, nodes[i], ConnectorRole.Both);
+                this.AddToBuilder(solo, nodes[i], ConnectorRole.Both, poweredTiles);
                 soloBuilders.Add(solo);
             }
             else
             {
                 foreach (int root in touchedRoots)
-                    this.AddToBuilder(GetOrCreateBuilder(root), nodes[i], roleByRoot.GetValueOrDefault(root, ConnectorRole.Both)); // MOD: added role argument
+                    this.AddToBuilder(GetOrCreateBuilder(root), nodes[i], roleByRoot.GetValueOrDefault(root, ConnectorRole.Both), poweredTiles); // MOD: added role argument
             }
         }
 
@@ -596,14 +601,25 @@ internal class MachineGroupFactory
     /// <param name="builder">The builder to add to.</param>
     /// <param name="entity">The machine or container to add.</param>
     /// <param name="role">The connector role this entity was reached through (only meaningful for containers).</param>
-    private void AddToBuilder(MachineGroupBuilder builder, IAutomatable entity, ConnectorRole role)
+    /// <param name="poweredTiles">MOD: added. The already-computed powered tiles (see <see cref="PowerSystem"/>), or <c>null</c> if the power system is disabled — used to resolve whether a "power-required" machine (see <see cref="PowerRequiredMachineSystem"/>) is currently power-starved.</param>
+    private void AddToBuilder(MachineGroupBuilder builder, IAutomatable entity, ConnectorRole role, HashSet<Vector2>? poweredTiles)
     {
         // MOD: changed from a type-switch (which only ever takes its FIRST matching case) to two
         // independent checks, so an entity implementing BOTH interfaces (like PoweredChestMachine —
         // a chest that's also its own machine) gets added as both a machine AND a container, instead
         // of only ever being treated as a machine.
         if (entity is IMachine machine && this.GetMachineOverride(machine.MachineTypeID)?.Enabled != false)
-            builder.Add(machine);
+        {
+            // MOD: added — a "power-required" machine (see PowerRequiredMachineSystem) still joins the
+            // group normally, but is flagged as currently power-starved if its own tile isn't within
+            // power range as of this rebuild (placing/removing a power source triggers a rescan like
+            // any other world change, so this stays in sync without needing a live per-tick check) —
+            // MachineGroup.Automate() skips starved machines and shows a reminder message instead of
+            // processing them, the same way vanilla shows a message when a Furnace is missing coal.
+            bool isPowerStarved = this.PowerRequiredMachineSystem.IsPowerStarved(machine.MachineTypeID, machine.TileArea.GetTiles(), poweredTiles);
+
+            builder.Add(machine, isPowerStarved);
+        }
 
         if (entity is IContainer container && (container.StorageAllowed() || container.TakingItemsAllowed()))
         {

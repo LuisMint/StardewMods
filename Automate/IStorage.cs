@@ -16,6 +16,22 @@ public interface IStorage
     /// <summary>The storage containers that provide items, in priority order.</summary>
     IContainer[] OutputContainers { get; }
 
+    /// <summary>
+    /// MOD: added. Every container in the group the player hasn't explicitly disabled outright (see
+    /// <c>ContainerExtensions.StorageAllowed</c>/<c>TakingItemsAllowed</c>), WITHOUT the connector-role
+    /// narrowing <see cref="InputContainers"/>/<see cref="OutputContainers"/> apply. Meant for an active
+    /// mover (e.g. a Powered Chest) that needs to interpret a connector's role from its OWN perspective
+    /// — "Input Pipe is my pull source, Output Pipe is my push destination" — rather than the standard
+    /// machine cycle's perspective ("a storable-role container is a valid destination for MY output"),
+    /// which is the opposite direction for the exact same role. <see cref="InputContainers"/>/
+    /// <see cref="OutputContainers"/> pre-exclude a container based on that standard-cycle
+    /// interpretation, so an active mover reading them would never even see a container reached the
+    /// "wrong" way for its own purposes — this array exists so it can apply its own interpretation
+    /// instead, checking each candidate's role restriction and per-container preference directly. See
+    /// <c>ContainerExtensions.IsActiveMoverPullSource</c>/<c>IsActiveMoverPushDestination</c>.
+    /// </summary>
+    IContainer[] AllContainers { get; }
+
 
     /*********
     ** Public methods

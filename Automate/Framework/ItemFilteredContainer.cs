@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using Microsoft.Xna.Framework;
+using Pathoschild.Stardew.Automate.Framework.Storage;
 using StardewValley;
 using StardewValley.Inventories;
 using StardewValley.Mods;
@@ -21,7 +22,7 @@ namespace Pathoschild.Stardew.Automate.Framework;
 /// see <see cref="FilteredInventory"/>'s own remarks for why. Everything else is delegated straight to
 /// the wrapped container unchanged.
 /// </summary>
-internal class ItemFilteredContainer : IContainer, IConnectionRoleRestriction
+internal class ItemFilteredContainer : IContainer, IConnectionRoleRestriction, IHasContainerPriority
 {
     /*********
     ** Fields
@@ -76,6 +77,10 @@ internal class ItemFilteredContainer : IContainer, IConnectionRoleRestriction
 
     /// <inheritdoc cref="AllowStorageThroughThisConnection" />
     public bool AllowTakingThroughThisConnection => this.Inner is not IConnectionRoleRestriction restriction || restriction.AllowTakingThroughThisConnection;
+
+    /// <summary>MOD: added. Forwards to the wrapped container's own priority tier (see <see cref="IHasContainerPriority"/>), for the same reason <see cref="AllowStorageThroughThisConnection"/> forwards its own role restriction — see that property's own remarks.</summary>
+    /// <inheritdoc />
+    public int ContainerPriorityTier => this.Inner.GetContainerPriorityTier();
 
 
     /*********

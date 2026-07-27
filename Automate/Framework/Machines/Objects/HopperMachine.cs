@@ -9,28 +9,27 @@ using StardewValley.Objects;
 
 namespace Pathoschild.Stardew.Automate.Framework.Machines.Objects;
 
-/// <summary>A mini-shipping bin, usable as plain storage by other machines in its group.</summary>
-/// <remarks>
-/// MOD: changed. Purely passive now — no active pull/push logic of its own, so it's a plain
-/// <see cref="IContainer"/>, not also an <see cref="IMachine"/>. Automate can pull whatever's currently
-/// sitting in the bin back out, the same as any normal chest, right up until it actually ships
-/// overnight. Only shippable items can ever get in to begin with (see the <c>canBeShipped</c> filter
-/// passed to <see cref="Storage"/>'s constructor), so nothing extra is needed on the output side to keep
-/// that restriction — anything already in the bin is shippable by definition, and the filter is
-/// enforced by <see cref="ChestHybridStorage.Store"/> directly, so it applies no matter which machine is
-/// pushing into it.
+/// <summary>
+/// MOD: added. The vanilla Hopper: usable as plain storage by other machines in its group, e.g. a
+/// Furnace piped to a Hopper can pull ore from it (or store its output into it), the same as it would
+/// from a plain chest. Its own vanilla behavior (collecting from a nearby Fish Pond, and feeding
+/// whatever it holds to a machine placed directly below it) is untouched; this class only governs
+/// Automate's own interaction with it.
 ///
-/// See also <see cref="ShippingBinMachine"/> (the full-size shipping bin) — that one is NOT made
-/// bidirectional the same way, because it isn't chest-backed at all: it drops items straight into the
-/// farm's own live overnight shipping queue rather than an internal inventory, so there's nothing to
-/// wrap and pull back out of using this same technique.
-/// </remarks>
-internal class MiniShippingBinMachine : IContainer, IHasContainerPriority
+/// MOD: changed. Purely passive now — no active pull/push logic of its own, so it's a plain
+/// <see cref="IContainer"/>, not also an <see cref="IMachine"/>. See <see cref="ChestHybridStorage"/>'s
+/// own remarks for why this needs its own dedicated entity type rather than falling into the generic
+/// tagged <see cref="Storage.ChestContainer"/> case (which is how most vanilla storages are handled).
+/// </summary>
+internal class HopperMachine : IContainer, IHasContainerPriority
 {
     /*********
     ** Fields
     *********/
-    /// <summary>The mini-shipping bin's own storage.</summary>
+    /// <summary>The qualified item ID of the vanilla Hopper.</summary>
+    public const string QualifiedItemId = "(BC)275";
+
+    /// <summary>The hopper's own storage.</summary>
     private readonly ChestHybridStorage Storage;
 
 
@@ -72,11 +71,11 @@ internal class MiniShippingBinMachine : IContainer, IHasContainerPriority
     ** Public methods
     *********/
     /// <summary>Construct an instance.</summary>
-    /// <param name="miniBin">The mini-shipping bin.</param>
+    /// <param name="hopper">The underlying hopper.</param>
     /// <param name="location">The location which contains the machine.</param>
-    public MiniShippingBinMachine(Chest miniBin, GameLocation location)
+    public HopperMachine(Chest hopper, GameLocation location)
     {
-        this.Storage = new ChestHybridStorage(location, () => miniBin.TileLocation, () => miniBin, canAccept: item => item.canBeShipped());
+        this.Storage = new ChestHybridStorage(location, () => hopper.TileLocation, () => hopper);
     }
 
     /// <inheritdoc />
@@ -98,7 +97,7 @@ internal class MiniShippingBinMachine : IContainer, IHasContainerPriority
     IEnumerator IEnumerable.GetEnumerator() => this.GetEnumerator();
 
     /// <inheritdoc />
-    public override bool Equals(object? obj) => obj is MiniShippingBinMachine other ? this.Storage.Equals(other.Storage) : this.Storage.Equals(obj);
+    public override bool Equals(object? obj) => obj is HopperMachine other ? this.Storage.Equals(other.Storage) : this.Storage.Equals(obj);
 
     /// <inheritdoc />
     public override int GetHashCode() => this.Storage.GetHashCode();
