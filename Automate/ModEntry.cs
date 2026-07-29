@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.IO;
 using System.Linq;
 using HarmonyLib;
 using Microsoft.Xna.Framework;
@@ -76,6 +77,15 @@ internal class ModEntry : Mod
         I18n.Init(helper.Translation);
         CommonHelper.RemoveObsoleteFiles(this, "Automate.pdb"); // removed in 1.28.4
 
+        // MOD: added — Content Patcher's Data/AudioChanges resolves a cue's FilePaths through
+        // {{InternalAssetKey}} to a path under Content/SMAPI/<mod id>/..., but the game's own audio code
+        // (AudioCueModificationManager.ApplyCueModification) opens that path with a raw File.Open call
+        // instead of going through SMAPI's content pipeline — so unlike textures/data (which SMAPI can
+        // serve virtually), nothing ever actually copies the real file to that location, and the game
+        // crashes trying to open a directory that was never created. Mirroring the file there ourselves
+        // once at launch works around it without needing any changes to the content pack's own JSON.
+        this.MirrorPowerSiloAudioFiles();
+
         // read data file
         const string dataPath = "assets/data.json";
         try
@@ -146,6 +156,43 @@ internal class ModEntry : Mod
         );
         PowerRangePreviewPatches.Apply(harmony);
 
+        PowerSiloPatches.Initialize(
+            getSourceNames: () => this.Config.PowerSourceNames,
+            getSolarPanelNames: () => this.Config.PowerSiloSolarPanelNames, // MOD: added
+            getLocalSourceNames: () => this.Config.LocalPowerSourceNames, // MOD: added — so a Powered Chest's own placement/removal is recognized as solar-connectivity-relevant too
+            powerSiloSystem: this.MachineManager.Factory.PowerSiloSystem
+        );
+        PowerSiloPatches.Apply(harmony);
+
+        // MOD: added — the "Mark/Hide Power Coils" world-map overlay, toggled from PowerSiloMenu.
+        PowerCoilMapMarkerPatches.Initialize(
+            getSourceNames: () => this.Config.PowerSourceNames
+        );
+        PowerCoilMapMarkerPatches.Apply(harmony);
+
+        // MOD: added — the same toggle's on-screen compass arrows, pointing toward off-screen Power
+        // Coils in the player's current location (not a Harmony patch — drawn from RenderedHud below).
+        PowerCoilCompass.Initialize(
+            getSourceNames: () => this.Config.PowerSourceNames
+        );
+
+        // MOD: added — the Power Silo's animated "cap" that rises with each tier reached (see
+        // PowerSiloCapPatches's own remarks). Tick() advances the animation and is called every game
+        // tick below; Reset() clears it on day start.
+        PowerSiloCapPatches.Initialize(
+            getSiloBuildingNames: () => this.Config.PowerSiloBuildingNames,
+            getTiers: () => this.Config.PowerSiloTiers,
+            powerSiloSystem: this.MachineManager.Factory.PowerSiloSystem
+        );
+        PowerSiloCapPatches.Apply(harmony);
+
+        // MOD: added — registers the Power Silo's feed/status interaction via GameLocation.RegisterTileAction,
+        // not a Harmony patch (see PowerSiloInteraction's own remarks for why).
+        new PowerSiloInteraction(
+            powerSiloSystem: this.MachineManager.Factory.PowerSiloSystem,
+            getTiers: () => this.Config.PowerSiloTiers
+        ).Register();
+
         // hook events
         helper.Events.Content.AssetRequested += this.OnAssetRequested;
         helper.Events.GameLoop.SaveLoaded += this.OnSaveLoaded;
@@ -160,6 +207,7 @@ internal class ModEntry : Mod
         helper.Events.World.ObjectListChanged += this.OnObjectListChanged;
         helper.Events.World.TerrainFeatureListChanged += this.OnTerrainFeatureListChanged;
         helper.Events.World.LargeTerrainFeatureListChanged += this.OnLargeTerrainFeatureListChanged;
+        helper.Events.Display.RenderedWorld += this.OnRenderedWorld;
 
         // hook commands
         this.CommandHandler.RegisterWith(helper.ConsoleCommands);
@@ -168,6 +216,48 @@ internal class ModEntry : Mod
         this.Monitor.VerboseLog($"Initialized with automation every {this.Config.AutomationInterval} ticks.");
         if (this.Config.WarnForMissingBridgeMod)
             this.ReportMissingBridgeMods(this.Data.SuggestedIntegrations);
+    }
+
+    /// <summary>
+    /// MOD: added. Copy every audio file from the AutomatePowerPipes content pack's <c>Pipes</c> folder
+    /// into the exact <c>Content/SMAPI/&lt;mod id&gt;/Pipes</c> location that <c>{{InternalAssetKey}}</c>
+    /// resolves a <c>Data/AudioChanges</c> cue's <c>FilePaths</c> to — see this method's call site for why
+    /// that's otherwise never created on its own. A no-op if the content pack isn't installed.
+    /// </summary>
+    private void MirrorPowerSiloAudioFiles()
+    {
+        try
+        {
+            // MOD: IModInfo doesn't expose a content pack's install folder (only IContentPack does, which
+            // is only available to a mod that owns the content pack) — so this assumes the standard
+            // "Mods/AutomatePowerPipes" folder name instead, same as this codebase already hardcodes that
+            // content pack's mod ID elsewhere (e.g. PowerSiloMenu's asset name constants).
+            IModInfo? contentPack = this.Helper.ModRegistry.Get("luisMint.AutomatePowerPipes");
+            if (contentPack is null)
+                return;
+
+            string sourceDir = Path.Combine(Constants.GamePath, "Mods", "AutomatePowerPipes", "Pipes");
+            if (!Directory.Exists(sourceDir))
+                return;
+
+            string targetDir = Path.Combine(Constants.GamePath, "Content", "SMAPI", contentPack.Manifest.UniqueID.ToLowerInvariant(), "Pipes");
+            Directory.CreateDirectory(targetDir);
+
+            foreach (string sourceFile in Directory.EnumerateFiles(sourceDir, "*.*"))
+            {
+                string extension = Path.GetExtension(sourceFile);
+                if (extension is not (".wav" or ".ogg"))
+                    continue;
+
+                string targetFile = Path.Combine(targetDir, Path.GetFileName(sourceFile));
+                if (!File.Exists(targetFile) || File.GetLastWriteTimeUtc(sourceFile) > File.GetLastWriteTimeUtc(targetFile))
+                    File.Copy(sourceFile, targetFile, overwrite: true);
+            }
+        }
+        catch (Exception ex)
+        {
+            this.Monitor.Log($"Failed mirroring Power Silo audio files; custom sounds may not play.\n{ex}", LogLevel.Warn);
+        }
     }
 
     /// <inheritdoc />
@@ -258,6 +348,21 @@ internal class ModEntry : Mod
         {
             this.MachineManager.Reset();
             this.AutomateCountdown = 0;
+
+            // MOD: added — an unconditional refresh every new day, on top of the usual triggers (a
+            // coil placed/destroyed, a Solar Panel placed/destroyed, or a Silo built/destroyed/fed a new
+            // tier — see PowerSiloSystem's own remarks). Not strictly required for correctness, but a
+            // cheap, reassuring backstop in case any of those triggers is ever missed for some reason —
+            // e.g. a Power Coil or Powered Chest placed/removed near an EXISTING Solar Panel changes
+            // whether that panel counts as "connected" without the panel itself being touched, which
+            // isn't covered by PowerSiloPatches' own Solar Panel placement/destruction hooks. Solar
+            // count refreshes first since coil allowance depends on total capacity, which now depends
+            // on it too.
+            this.MachineManager.Factory.PowerSiloSystem.RefreshConnectedSolarPanelCount();
+            this.MachineManager.Factory.PowerSiloSystem.RefreshCoilAllowance();
+
+            // MOD: added — clears the Power Silo cap's cached animation state, mirroring MachineManager.Reset() above.
+            PowerSiloCapPatches.Reset();
         }
 
         // reset overlay
@@ -308,6 +413,25 @@ internal class ModEntry : Mod
     /// <inheritdoc cref="IWorldEvents.ObjectListChanged" />
     private void OnObjectListChanged(object? sender, ObjectListChangedEventArgs e)
     {
+        // MOD: added — Power Silo's solar-connectivity trigger deliberately runs here (see
+        // PowerSiloPatches.OnObjectListChanged's own remarks for why a Harmony postfix on
+        // placement/tool-action can't reliably detect a REMOVED coil/panel), independent of the
+        // automation-reload-tracking gate below — that gate is about Automate's own machine groups, a
+        // separate concern from Power Silo capacity, which shouldn't stop working just because
+        // automation itself is disabled. Still limited to the main player, since it mutates shared,
+        // save-wide power-grid state.
+        if (Context.IsMainPlayer)
+        {
+            try
+            {
+                PowerSiloPatches.OnObjectListChanged(e.Location, e.Added.Select(pair => pair.Value), e.Removed.Select(pair => pair.Value));
+            }
+            catch (Exception ex)
+            {
+                this.HandleError(ex, "updating Power Silo solar panel connectivity");
+            }
+        }
+
         if (!this.EnableAutomationChangeTracking || this.MachineManager.IsReloadQueued(e.Location))
             return;
 
@@ -417,6 +541,39 @@ internal class ModEntry : Mod
             {
                 this.HandleError(ex, "animating Power Coil ambient effect");
             }
+        }
+
+        // MOD: added — advances the Power Silo's animated cap height, purely cosmetic.
+        if (Context.IsWorldReady)
+        {
+            try
+            {
+                PowerSiloCapPatches.Tick();
+            }
+            catch (Exception ex)
+            {
+                this.HandleError(ex, "animating Power Silo cap");
+            }
+        }
+    }
+
+    /// <inheritdoc cref="IDisplayEvents.RenderedWorld" />
+    private void OnRenderedWorld(object? sender, RenderedWorldEventArgs e)
+    {
+        // MOD: added — draws the "Mark Power Coils" toggle's compass arrows; a no-op unless the toggle
+        // is actually on (see PowerCoilCompass's own remarks), kept in its own try/catch since it's
+        // purely cosmetic. MOD: fixed — this must be RenderedWorld, not RenderedHud: the arrow's
+        // position is computed from Game1.viewport (world/zoom-relative coordinates, matching
+        // OverlayMenu's own tile-to-screen math), but RenderedHud's sprite batch is in a DIFFERENT,
+        // UI-scale-relative coordinate space — the two only happened to look close to right at 100%
+        // pixel zoom, and drifted apart at any other zoom level.
+        try
+        {
+            PowerCoilCompass.Draw(e.SpriteBatch);
+        }
+        catch (Exception ex)
+        {
+            this.HandleError(ex, "drawing Power Coil compass arrows");
         }
     }
 

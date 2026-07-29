@@ -42,6 +42,20 @@ internal class MachineManager
     private readonly HashSet<GameLocation> ReloadQueue = new(new GameLocationNameComparer());
 
     /// <summary>
+    /// MOD: added. The total power silo capacity (see <see cref="PowerSiloSystem.GetTotalCapacity"/>)
+    /// as of the last <see cref="ReloadMachinesIn"/> call — cheap to compute (no coil scan), so it's
+    /// checked every pass purely to detect a change (a Silo built, destroyed, or fed to a new tier).
+    /// When it changes, <see cref="PowerSiloSystem.RefreshCoilAllowance"/> (the expensive coil scan) is
+    /// triggered, and every location is queued for reload too — not just the one(s) already being
+    /// reloaded this pass — since the cap is global and can affect coils in locations that otherwise
+    /// have nothing else prompting a rescan.
+    /// </summary>
+    private int? PreviousTotalCapacity;
+
+    /// <summary>MOD: added. Whether <see cref="PreviousTotalCapacity"/> changed during the last <see cref="ReloadMachinesIn"/> call — checked by <see cref="ReloadQueuedLocations"/> after it clears the reload queue, so every location can be queued for the NEXT pass without the newly-queued entries being immediately wiped by that same clear.</summary>
+    private bool PowerSiloCapacityChangedLastPass;
+
+    /// <summary>
     /// MOD: added. The last-known displayed item ID and numeric condition for each tracked
     /// whitelist/blacklist sign, keyed by (location key, tile). Used to detect when a sign's content
     /// (or just its numeric condition) changes so the location can be rescanned automatically,
@@ -136,6 +150,33 @@ internal class MachineManager
             getLocationByKey: this.GetLocationByKey // MOD: added
         );
 
+        // MOD: added — same self-contained-class pattern as PowerSystem above, but for the "power silo
+        // capacity" mechanic; see PowerSiloSystem.cs for details.
+        PowerSiloSystem powerSiloSystem = new(
+            getEnabled: () => this.Config().PowerSiloSystemEnabled,
+            getSiloBuildingNames: () => this.Config().PowerSiloBuildingNames,
+            getTiers: () => this.Config().PowerSiloTiers,
+            getBaseCapacity: () => this.Config().PowerSiloBaseCapacity,
+            getSourceNames: () => this.Config().PowerSourceNames,
+            getSolarPanelNames: () => this.Config().PowerSiloSolarPanelNames, // MOD: added
+            // MOD: added — fixed (twice over). First fix: `GetMachineDataFor` only has an entry for a
+            // location once it's actually been scanned, so reading `?.PoweredTiles` off it could return
+            // null (treated as "power system disabled, everything powered") for a location that just
+            // hadn't been scanned yet, not because the power system was actually off. Second, deeper fix:
+            // even a location WITH a cached entry only has it rebuilt by MachineManager's own deferred
+            // reload queue (see QueueReload/ReloadQueuedLocations), which runs once per tick in
+            // OnUpdateTicked — NOT synchronously the moment a Power Coil is placed/removed. Reading that
+            // cache right after a coil event (from PowerSiloPatches, via a Harmony postfix or
+            // ObjectListChanged, both of which can fire before that tick's reload runs) could return the
+            // power layout from BEFORE the coil actually changed, one whole event behind — which is what
+            // caused Solar Panels to never register a connectivity change on coil removal/placement.
+            // Computing fresh here — the same per-location scan MachineGroupFactory.GetMachineGroups
+            // already does for its own poweredTiles — sidesteps the cache (and its timing) entirely; it's
+            // only ever called from PowerSiloSystem's own event-driven refreshes, never per-tick, so the
+            // extra scan cost is fine.
+            getPoweredTilesForLocation: location => powerSystem.GetPoweredTiles(location, new LocationFloodFillIndex(location, this.Monitor))
+        );
+
         // MOD: added — swaps a connector's displayed appearance between its unpowered and "powered"
         // variant based on power range. See PoweredFloorSync.cs for details.
         this.PoweredFloorSync = new PoweredFloorSync(getConnectorTextureIds: () => this.Config().ConnectorPoweredTextureIds);
@@ -163,6 +204,7 @@ internal class MachineManager
             getCustomCategories: () => this.Config().CustomCategories, // MOD: added
             powerSystem: powerSystem, // MOD: added
             powerRequiredMachineSystem: powerRequiredMachineSystem, // MOD: added
+            powerSiloSystem: powerSiloSystem, // MOD: added
             buildStorage: this.BuildStorage,
             monitor: monitor
         );
@@ -318,6 +360,15 @@ internal class MachineManager
             this.ReloadMachinesIn(this.ReloadQueue, this.RemoveQueue);
             this.ReloadQueue.Clear();
             this.RemoveQueue.Clear();
+
+            // MOD: added — see PowerSiloCapacityChangedLastPass's remarks for why this has to happen
+            // here, after the clear above, rather than inside ReloadMachinesIn itself.
+            if (this.PowerSiloCapacityChangedLastPass)
+            {
+                this.PowerSiloCapacityChangedLastPass = false;
+                this.QueueReload(CommonHelper.GetLocations());
+            }
+
             return true;
         }
 
@@ -447,6 +498,19 @@ internal class MachineManager
                 junimoGroupChanged = true;
             }
         }
+
+        // MOD: added — the power silo cap is global (not per-location), so a change to it can't be
+        // detected inside the per-location loop below the way poweredTiles normally is. This is the
+        // CHEAP half (see PreviousTotalCapacity's remarks) — just a building scan, no coils — so it's
+        // fine to run every pass purely to detect a change. When it does change, the expensive coil
+        // scan (RefreshCoilAllowance) runs once here, and every location (not just the ones already
+        // queued this pass) is flagged for reload too, so a Silo tier-up/build/destroy correctly
+        // propagates to coils in every other location.
+        int totalCapacity = this.Factory.PowerSiloSystem.GetTotalCapacity();
+        this.PowerSiloCapacityChangedLastPass = this.PreviousTotalCapacity != totalCapacity;
+        this.PreviousTotalCapacity = totalCapacity;
+        if (this.PowerSiloCapacityChangedLastPass)
+            this.Factory.PowerSiloSystem.RefreshCoilAllowance();
 
         // add new groups
         foreach (GameLocation location in locations)

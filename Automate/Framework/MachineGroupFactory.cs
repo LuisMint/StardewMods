@@ -80,6 +80,9 @@ internal class MachineGroupFactory
     /// <summary>MOD: added. Encapsulates the "power-required machines" balance mechanic. See <see cref="PowerRequiredMachineSystem"/> for details. Public so callers (e.g. <see cref="Patches.PowerRequiredMachinePatches"/>) can reuse the same resolution logic instead of duplicating it.</summary>
     public PowerRequiredMachineSystem PowerRequiredMachineSystem { get; }
 
+    /// <summary>MOD: added. Encapsulates the "power silo capacity" mechanic, which (if enabled) caps how many Power Coils can be active across the whole save. See <see cref="PowerSiloSystem"/> for details. Public so callers (e.g. <see cref="Patches.PowerCoilPatches"/>) can query the currently-allowed coils directly.</summary>
+    public PowerSiloSystem PowerSiloSystem { get; }
+
     /// <summary>Build a storage manager for the given containers.</summary>
     private readonly Func<IContainer[], StorageManager> BuildStorage;
 
@@ -101,9 +104,10 @@ internal class MachineGroupFactory
     /// <param name="getCustomCategories">MOD: added. Get the configured custom categories, each mapping a category name to the item names/qualified IDs that belong to it.</param>
     /// <param name="powerSystem">MOD: added. Encapsulates the power system, which (if enabled) restricts automation to tiles within range of a power source.</param>
     /// <param name="powerRequiredMachineSystem">MOD: added. Encapsulates the "power-required machines" balance mechanic.</param>
+    /// <param name="powerSiloSystem">MOD: added. Encapsulates the "power silo capacity" mechanic.</param>
     /// <param name="buildStorage">Build a storage manager for the given containers.</param>
     /// <param name="monitor">Encapsulates monitoring and logging.</param>
-    public MachineGroupFactory(Func<string, ModConfigMachine?> getMachineOverride, Func<string, ModConfigStorage?> getChestOverride, Func<bool> getChestsEnabledByDefault, Func<HashSet<string>> getWhitelistSignNames, Func<HashSet<string>> getBlacklistSignNames, Func<HashSet<string>> getWhitelistCategorySignNames, Func<HashSet<string>> getBlacklistCategorySignNames, Func<Dictionary<string, HashSet<string>>> getCustomCategories, PowerSystem powerSystem, PowerRequiredMachineSystem powerRequiredMachineSystem, Func<IContainer[], StorageManager> buildStorage, IMonitor monitor)
+    public MachineGroupFactory(Func<string, ModConfigMachine?> getMachineOverride, Func<string, ModConfigStorage?> getChestOverride, Func<bool> getChestsEnabledByDefault, Func<HashSet<string>> getWhitelistSignNames, Func<HashSet<string>> getBlacklistSignNames, Func<HashSet<string>> getWhitelistCategorySignNames, Func<HashSet<string>> getBlacklistCategorySignNames, Func<Dictionary<string, HashSet<string>>> getCustomCategories, PowerSystem powerSystem, PowerRequiredMachineSystem powerRequiredMachineSystem, PowerSiloSystem powerSiloSystem, Func<IContainer[], StorageManager> buildStorage, IMonitor monitor)
     {
         this.GetMachineOverride = getMachineOverride;
         this.GetChestOverride = getChestOverride;
@@ -115,6 +119,7 @@ internal class MachineGroupFactory
         this.GetCustomCategories = getCustomCategories; // MOD: added
         this.PowerSystem = powerSystem; // MOD: added
         this.PowerRequiredMachineSystem = powerRequiredMachineSystem; // MOD: added
+        this.PowerSiloSystem = powerSiloSystem; // MOD: added
         this.BuildStorage = buildStorage;
         this.Monitor = monitor;
     }

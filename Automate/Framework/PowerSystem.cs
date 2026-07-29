@@ -88,7 +88,13 @@ internal class PowerSystem
                 if (target is not SObject sourceObj)
                     continue;
 
-                if (sourceNames.Contains(sourceObj.QualifiedItemId) || sourceNames.Contains(sourceObj.Name))
+                // MOD: added — a Power Coil beyond the power silo capacity (see PowerSiloSystem) is
+                // stamped "not powered" on its own modData by PowerSiloSystem.RefreshCoilAllowance,
+                // read directly here rather than recomputing anything — missing entirely (mechanic
+                // disabled, or before its first refresh) defaults to powered.
+                bool isCoilPowered = !sourceObj.modData.TryGetValue(PowerSiloSystem.CoilPoweredModDataKey, out string? poweredRaw) || poweredRaw != "false";
+
+                if ((sourceNames.Contains(sourceObj.QualifiedItemId) || sourceNames.Contains(sourceObj.Name)) && isCoilPowered)
                     this.AddPoweredArea(powered, tile, rangeDistance);
 
                 if (localSourceNames.Contains(sourceObj.QualifiedItemId) || localSourceNames.Contains(sourceObj.Name))

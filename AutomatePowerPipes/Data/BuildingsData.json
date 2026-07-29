@@ -1,0 +1,65 @@
+{
+    "Changes": [
+        {
+            "Action": "EditData",
+            "Target": "Data/Buildings",
+            "Entries": {
+                "{{ModId}}_PowerSilo": {
+                    "Name": "Power Silo",
+                    "Description": "Caps how many Power Coils can be active at once. Feed it items to grow its capacity further.",
+                    "Texture": "Mods/{{ModId}}/PowerSiloBody",
+                    "Skins": [],
+                    "DrawShadow": true,
+                    "UpgradeSignTile": {"X": -1, "Y": -1},
+                    "UpgradeSignHeight": 0,
+                    "Size": {"X": 4, "Y": 3},
+                    "FadeWhenBehind": true,
+                    "SourceRect": {"X": 0, "Y": 0, "Width": 64, "Height": 96},
+                    "SeasonOffset": {"X": 0, "Y": 0},
+                    "DrawOffset": {"X": 0, "Y": 0},
+                    "SortTileOffset": 0,
+                    "CollisionMap": "XXXX\nXXXX\nXXXX",
+                    "AdditionalPlacementTiles": null,
+                    "Builder": "Robin",
+                    "BuildCondition": null,
+                    "BuildDays": 2,
+                    "BuildCost": 2000,
+                    "BuildMaterials": [
+                        { "ItemId": "(O)334", "Amount": 25 },
+                        { "ItemId": "(O)787", "Amount": 5 }
+                    ],
+                    "BuildingToUpgrade": null,
+                    "MagicalConstruction": false,
+                    "BuildMenuDrawOffset": {"X": 0, "Y": 0},
+                    "HumanDoor": {"X": -1, "Y": -1},
+                    "AnimalDoor": {"X": -1, "Y": -1, "Width": 0, "Height": 0},
+                    "AnimalDoorOpenDuration": 0,
+                    "AnimalDoorOpenSound": null,
+                    "AnimalDoorCloseDuration": 0,
+                    "AnimalDoorCloseSound": null,
+                    "NonInstancedIndoorLocation": null,
+                    "IndoorMap": null,
+                    "IndoorMapType": null,
+                    "MaxOccupants": 0,
+                    "ValidOccupantTypes": [],
+                    "AllowAnimalPregnancy": false,
+                    "IndoorItemMoves": null,
+                    "IndoorItems": null,
+                    "AddMailOnBuild": null,
+                    "Metadata": {},
+                    "ModData": {},
+                    "HayCapacity": 0,
+                    "Chests": null,
+                    "DefaultAction": "luisMint.AutomatePowerPipes_PowerSiloInteract",
+                    "AdditionalTilePropertyRadius": 0,
+                    "AllowsFlooringUnderneath": true,
+                    "ActionTiles": [],
+                    "TileProperties": [],
+                    "ItemConversions": null,
+                    "DrawLayers": null,
+                    "CustomFields": null
+                }
+            }
+        }
+    ]
+}

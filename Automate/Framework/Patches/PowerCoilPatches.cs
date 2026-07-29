@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using HarmonyLib;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using Pathoschild.Stardew.Automate.Framework;
 using StardewValley;
 using StardewValley.Audio;
 using StardewValley.ItemTypeDefinitions;
@@ -24,8 +25,11 @@ internal static class PowerCoilPatches
     /// <summary>The qualified item ID of the object these patches apply to.</summary>
     internal const string TargetQualifiedItemId = "(BC)luisMint.AutomatePowerPipes_PowerCoil";
 
-    /// <summary>The asset name of the dedicated, purpose-built crafting-menu icon (loaded by the AutomatePowerPipes content pack), as opposed to the taller world sprite used everywhere else.</summary>
-    private const string CraftIconAssetName = "Mods/luisMint.AutomatePowerPipes/PowerCoilCraftIcon";
+    /// <summary>The asset name of the dedicated, purpose-built crafting-menu icon (loaded by the AutomatePowerPipes content pack), as opposed to the taller world sprite used everywhere else. MOD: made internal (not private) so <see cref="PowerCoilMapMarkerPatches"/> can reuse the same small icon for its world-map markers.</summary>
+    internal const string CraftIconAssetName = "Mods/luisMint.AutomatePowerPipes/PowerCoilCraftIcon";
+
+    /// <summary>MOD: added. The asset name of the unpowered variant of <see cref="CraftIconAssetName"/>, used by <see cref="PowerCoilMapMarkerPatches"/> to mark an over-capacity coil differently on the world map.</summary>
+    internal const string UnpoweredCraftIconAssetName = "Mods/luisMint.AutomatePowerPipes/PowerCoilCraftIcon_UnPowered";
 
     /// <summary>How far the sprite grows/shrinks at the peak of the pulse, as a fraction of its normal size (e.g. 0.05 = ±5%).</summary>
     private const float PulseAmplitude = 0.05f;
@@ -72,6 +76,14 @@ internal static class PowerCoilPatches
     /// The light's color.
     /// </summary>
     internal static readonly Color LightColor = new(10, 10, 10, 255);
+
+    /// <summary>
+    /// MOD: added. The asset name of the alternate texture drawn in place of the normal Power Coil
+    /// sprite when it's beyond the power silo capacity (see <see cref="PowerSiloSystem"/>) — a
+    /// separate sprite rather than a color tint, so it can carry its own art (e.g. no glowing coils)
+    /// instead of just a darkened version of the powered one.
+    /// </summary>
+    private const string UnpoweredAssetName = "Mods/luisMint.AutomatePowerPipes/PowerCoil_UnPowered";
 
 
     /*********
@@ -138,6 +150,23 @@ internal static class PowerCoilPatches
     /*********
     ** Private methods
     *********/
+    /// <summary>
+    /// MOD: added. Get whether a Power Coil is currently within the power silo capacity (see
+    /// <see cref="PowerSiloSystem"/>), by reading the modData flag <see cref="PowerSiloSystem.RefreshCoilAllowance"/>
+    /// stamps on it directly — an O(1) check with no coil scan, since that's only ever recomputed on an
+    /// actual trigger (a coil placed/destroyed, or the total capacity changing), not every frame. A
+    /// missing flag (the mechanic is disabled, or this coil hasn't been through a refresh yet) is
+    /// treated as powered.
+    ///
+    /// MOD: made internal (not private) so <see cref="PowerCoilAmbientEffect"/> can skip its sparkle
+    /// for an unpowered coil too, without duplicating this same modData check.
+    /// </summary>
+    /// <param name="coil">The Power Coil object instance.</param>
+    internal static bool IsPowered(SObject coil)
+    {
+        return !coil.modData.TryGetValue(PowerSiloSystem.CoilPoweredModDataKey, out string? raw) || raw != "false";
+    }
+
     /// <summary>Override the growth/shrink offset used when drawing the Power Coil, to produce a continuous size pulse.</summary>
     /// <param name="__instance">The object instance being drawn.</param>
     /// <param name="__result">The offset (in pre-4x-zoom pixels) to grow the sprite's drawn size by; mutated in place for the target item.</param>
@@ -145,6 +174,15 @@ internal static class PowerCoilPatches
     {
         if (__instance.QualifiedItemId != PowerCoilPatches.TargetQualifiedItemId)
             return;
+
+        // MOD: added — an over-capacity coil (see PowerSiloSystem) sits flat/still instead of
+        // pulsing, as part of reading visually as "not actually powered" alongside the alternate
+        // sprite in Draw_Prefix and the suppressed light in InitializeLightSource_Postfix.
+        if (!PowerCoilPatches.IsPowered(__instance))
+        {
+            __result = Vector2.Zero;
+            return;
+        }
 
         double elapsedSeconds = Game1.currentGameTime?.TotalGameTime.TotalSeconds ?? 0;
         float pulse = (float)Math.Sin(elapsedSeconds * PowerCoilPatches.PulseSpeed + PowerCoilPatches.PulsePhaseOffset) * PowerCoilPatches.PulseAmplitude;
@@ -177,6 +215,15 @@ internal static class PowerCoilPatches
     {
         if (__instance.QualifiedItemId != PowerCoilPatches.TargetQualifiedItemId)
             return;
+
+        // MOD: added — an over-capacity coil (see PowerSiloSystem) isn't actually providing power, so
+        // it shouldn't light up either — matches the suppressed pulse (GetScale_Postfix) and alternate
+        // sprite (Draw_Prefix) used for the same state.
+        if (!PowerCoilPatches.IsPowered(__instance))
+        {
+            __instance.lightSource = null;
+            return;
+        }
 
         // MOD: positioned at the sprite's base (the ground tile it's actually placed on) rather than
         // vanilla's "middle of a standard 2-tile sprite" anchor (tileLocation.Y*64-64) — that anchor
@@ -217,8 +264,13 @@ internal static class PowerCoilPatches
         if (__instance.QualifiedItemId != PowerCoilPatches.TargetQualifiedItemId)
             return true;
 
-        ParsedItemData data = ItemRegistry.GetDataOrErrorItem(__instance.QualifiedItemId);
-        Texture2D texture = data.GetTexture();
+        // MOD: added — draw the dedicated "unpowered" sprite in place of the normal one for an
+        // over-capacity coil (see PowerSiloSystem), rather than tinting the normal sprite — lets that
+        // texture carry its own art (e.g. no glow/lit cabling) instead of just a darkened copy.
+        bool isPowered = PowerCoilPatches.IsPowered(__instance);
+        Texture2D texture = isPowered
+            ? ItemRegistry.GetDataOrErrorItem(__instance.QualifiedItemId).GetTexture()
+            : Game1.content.Load<Texture2D>(PowerCoilPatches.UnpoweredAssetName);
         Rectangle sourceRect = new(0, 0, texture.Width, texture.Height);
 
         // MOD: same anchor math vanilla uses for a standard BigCraftable (see Object.draw), extended
@@ -245,8 +297,10 @@ internal static class PowerCoilPatches
         spriteBatch.Draw(texture, destination, sourceRect, Color.White * alpha, 0f, Vector2.Zero, SpriteEffects.None, layerDepth);
 
         // MOD: replicate vanilla's lamp glow decal, since we're skipping its own draw method entirely
-        // — shifted up by the same extra height so it still sits near the sprite's actual top.
-        if (__instance.isLamp.Value && Game1.isDarkOut(__instance.Location))
+        // — shifted up by the same extra height so it still sits near the sprite's actual top. Skipped
+        // entirely for an over-capacity coil, alongside its actual light source (see
+        // InitializeLightSource_Postfix) — it isn't really lit, so it shouldn't glow either.
+        if (isPowered && __instance.isLamp.Value && Game1.isDarkOut(__instance.Location))
         {
             spriteBatch.Draw(Game1.mouseCursors, topAnchor + new Vector2(-32f, -32f - extraBaseHeight), new Rectangle(88, 1779, 32, 32), Color.White * 0.75f, 0f, Vector2.Zero, 4f, SpriteEffects.None, Math.Max(0f, (float)((y + 1) * 64 - 20) / 10000f) + x / 1000000f);
         }
@@ -415,18 +469,15 @@ internal static class PowerCoilPatches
         PowerCoilPatches.IsPlacingPowerCoil = __instance.QualifiedItemId == PowerCoilPatches.TargetQualifiedItemId;
     }
 
-    /// <summary>Clear the <see cref="IsPlacingPowerCoil"/> flag, and play an additional placement sound for the Power Coil.</summary>
+    /// <summary>Clear the <see cref="IsPlacingPowerCoil"/> flag after vanilla's own placement logic runs.</summary>
     /// <param name="__instance">The item being placed.</param>
-    /// <param name="location">The location it was placed in.</param>
-    /// <param name="__result">Whether vanilla's own placement logic succeeded.</param>
-    private static void PlacementAction_Postfix(SObject __instance, GameLocation location, bool __result)
+    private static void PlacementAction_Postfix(SObject __instance)
     {
+        // MOD: changed — the additional placement sound (and now also a HUD message) moved to
+        // Patches.PowerSiloPatches.PlacementAction_Postfix, since which sound to play depends on
+        // whether the coil ends up powered — a power silo capacity concern, not a visual one — and
+        // that class already computes the fresh post-placement state right here anyway.
         PowerCoilPatches.IsPlacingPowerCoil = false;
-
-        if (!__result || __instance.QualifiedItemId != PowerCoilPatches.TargetQualifiedItemId)
-            return;
-
-        location.playSound("grunt");
     }
 
     /// <summary>Set the <see cref="IsBreakingPowerCoil"/> flag before vanilla's own tool-hit logic runs.</summary>

@@ -178,6 +178,65 @@ internal class ModConfig
     public bool ConnectedMachineLocationPowerCallouts { get; set; } = true;
 
     /// <summary>
+    /// MOD: added. Whether the "power silo capacity" mechanic is enabled — when true, the total
+    /// number of Power Coils that can be active across the whole save is capped by how many Power
+    /// Silos (see <see cref="PowerSiloBuildingNames"/>) exist and what tier each has reached (see
+    /// <see cref="PowerSiloTiers"/>); any coils beyond that cap simply don't provide power, oldest
+    /// placed first. A separate toggle from <see cref="PowerSystemEnabled"/> since this is a
+    /// deliberate, opinionated gameplay-balance choice (limiting how much power can exist at once)
+    /// rather than the base power system itself. See <see cref="PowerSiloSystem"/>.
+    /// </summary>
+    public bool PowerSiloSystemEnabled { get; set; } = true;
+
+    /// <summary>
+    /// MOD: added. The <c>buildingType</c> ID(s) that count as a Power Silo for the power-silo-capacity
+    /// mechanic (see <see cref="PowerSiloSystemEnabled"/>) — the Power Silo, by default.
+    /// </summary>
+    [JsonProperty("PowerSiloBuildingNames")]
+    public HashSet<string> PowerSiloBuildingNames { get; set; } = new(StringComparer.OrdinalIgnoreCase) { "luisMint.AutomatePowerPipes_PowerSilo" };
+
+    /// <summary>
+    /// MOD: added. The Power Coil capacity available across the whole save with no Power Silo built at
+    /// all — a small free allowance so early automation isn't hard-gated behind constructing one. Every
+    /// Power Silo adds on top of this (see <see cref="PowerSiloTiers"/>).
+    /// </summary>
+    public int PowerSiloBaseCapacity { get; set; } = 2;
+
+    /// <summary>
+    /// MOD: added. The in-game objects that count as a Solar Panel for the power silo's solar tier
+    /// bonus (see <see cref="PowerSiloTierConfig.GrantsSolarBonus"/>) — the vanilla Solar Panel, by
+    /// default. This can be the internal name or qualified item ID, same format as
+    /// <see cref="Connectors"/>.
+    /// </summary>
+    [JsonProperty("PowerSiloSolarPanelNames")]
+    public HashSet<string> PowerSiloSolarPanelNames { get; set; } = new(StringComparer.OrdinalIgnoreCase) { "(BC)231" };
+
+    /// <summary>
+    /// MOD: added. The ordered capacity tiers a Power Silo progresses through (see
+    /// <see cref="PowerSiloSystemEnabled"/>) — index 0 is a freshly-built Silo's starting tier. Each
+    /// entry's <see cref="PowerSiloTierConfig.RequiredItems"/> is what the Silo asks a player to
+    /// deliver to advance to the NEXT entry in the list — one or more item types, each tracked and
+    /// delivered independently (see <see cref="PowerSiloInteraction"/>), all of which must be fully
+    /// delivered before the tier advances. <see cref="PowerSiloTierConfig.CapacityGranted"/> is the
+    /// total capacity THAT SILO ALONE contributes once it has reached that entry (added on top of
+    /// <see cref="PowerSiloBaseCapacity"/> and every other Silo's own contribution — not additive
+    /// per-tier; each tier's value is the Silo's whole contribution at that tier). The second-to-last
+    /// entry asks for a Solar Panel to unlock the true last tier, which has no
+    /// <see cref="PowerSiloTierConfig.RequiredItems"/> (nothing more to deliver, ever) but instead
+    /// keeps growing via <see cref="PowerSiloTierConfig.GrantsSolarBonus"/> as more Solar Panels get
+    /// connected — see <see cref="PowerSiloSystem.GetConnectedSolarPanelCount"/>.
+    /// </summary>
+    public List<PowerSiloTierConfig> PowerSiloTiers { get; set; } =
+    [
+        new() { CapacityGranted = 2, RequiredItems = [new() { ItemId = "(O)334", Count = 10 }, new() { ItemId = "(O)78", Count = 5 }] }, // 10 Copper Bar AND 5 Cave Carrot unlocks the next
+        new() { CapacityGranted = 4, RequiredItems = [new() { ItemId = "(O)335", Count = 10 }, new() { ItemId = "(O)78", Count = 5 }] }, // 10 Iron Bar AND 5 Cave Carrot unlocks the next
+        new() { CapacityGranted = 6, RequiredItems = [new() { ItemId = "(O)334", Count = 10 }, new() { ItemId = "(O)787", Count = 1 }, new() { ItemId = "(O)78", Count = 5 }] }, // 10 Copper Bar, 1 Battery Pack, AND 5 Cave Carrot unlocks the next
+        new() { CapacityGranted = 8, RequiredItems = [new() { ItemId = "(O)909", Count = 5 }, new() { ItemId = "(O)78", Count = 5 }] }, // 5 Radioactive Bar AND 5 Cave Carrot unlocks the next
+        new() { CapacityGranted = 10, RequiredItems = [new() { ItemId = "(BC)231", Count = 1 }, new() { ItemId = "(O)78", Count = 5 }, new() { ItemId = "(O)909", Count = 3 }] }, // 1 Solar Panel, 5 Cave Carrot, AND 3 Radioactive Bar unlocks the solar tier
+        new() { CapacityGranted = 10, RequiredItems = null, GrantsSolarBonus = true } // the solar tier — nothing more to deliver, but keeps growing as more Solar Panels get connected (every 3 add 1 more)
+    ];
+
+    /// <summary>
     /// MOD: added. Maps a connector's <c>Data/FloorsAndPaths</c> ID to the Alternative Textures
     /// texture ID (in the form <c>{Owner}.{ModelName}</c>, e.g.
     /// <c>luisMint.ATAutomatePowerPipes.Flooring_luisMint.AutomatePowerPipes_PullPushPipe</c>)
@@ -332,6 +391,19 @@ internal class ModConfig
         // MOD: added — normalize the power-required machine set the same way.
         this.PowerRequiredMachineNames = this.PowerRequiredMachineNames.ToNonNullCaseInsensitive();
         this.PowerRequiredMachineNames.RemoveWhere(string.IsNullOrWhiteSpace);
+
+        // MOD: added — normalize the power silo building set the same way, and drop any tier entry
+        // that's missing entirely (a malformed/empty list element from hand-edited JSON).
+        this.PowerSiloBuildingNames = this.PowerSiloBuildingNames.ToNonNullCaseInsensitive();
+        this.PowerSiloBuildingNames.RemoveWhere(string.IsNullOrWhiteSpace);
+        if (this.PowerSiloBaseCapacity < 0)
+            this.PowerSiloBaseCapacity = 0;
+        this.PowerSiloSolarPanelNames = this.PowerSiloSolarPanelNames.ToNonNullCaseInsensitive();
+        this.PowerSiloSolarPanelNames.RemoveWhere(string.IsNullOrWhiteSpace);
+        this.PowerSiloTiers ??= [];
+        this.PowerSiloTiers.RemoveAll(tier => tier is null);
+        foreach (PowerSiloTierConfig tier in this.PowerSiloTiers)
+            tier.RequiredItems?.RemoveAll(item => item is null);
 
         // MOD: added — guard against a nonsensical animation speed/hold multiplier.
         if (this.PoweredFloorAnimationFps <= 0)

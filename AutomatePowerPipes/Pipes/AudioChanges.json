@@ -1,0 +1,17 @@
+{
+    "Changes": [
+        {
+            "Action": "EditData",
+            "Target": "Data/AudioChanges",
+            "Entries": {
+                "{{ModId}}_LowGrunt": {
+                    "ID": "{{ModId}}_LowGrunt",
+                    "FilePaths": [ "{{InternalAssetKey: Pipes/LowGrunt.wav}}" ],
+                    "Category": "Sound",
+                    "Looped": false,
+                    "StreamedVorbis": false
+                }
+            }
+        }
+    ]
+}

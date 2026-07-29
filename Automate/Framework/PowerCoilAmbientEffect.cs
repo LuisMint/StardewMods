@@ -68,6 +68,13 @@ internal class PowerCoilAmbientEffect
             if (obj.QualifiedItemId != PowerCoilPatches.TargetQualifiedItemId)
                 continue;
 
+            // MOD: added — an over-capacity coil (see PowerSiloSystem) isn't actually doing anything,
+            // so it shouldn't get the "it's running" sparkle either; simply not tracking its tile here
+            // means any flash already in flight for it just stops repeating (and its tracking entry
+            // gets cleaned up below, the same as if the coil had been removed).
+            if (!PowerCoilPatches.IsPowered(obj))
+                continue;
+
             seenTiles.Add(tile);
 
             if (!this.TicksUntilNextFlash.TryGetValue(tile, out int ticksLeft))

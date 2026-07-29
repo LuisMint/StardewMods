@@ -27,6 +27,11 @@
         },
         {
             "Action": "Load",
+            "Target": "Mods/{{ModId}}/PowerCoilCraftIcon_UnPowered",
+            "FromFile": "Pipes/PowerCoil_UnPowered_CraftIcon.png"
+        },
+        {
+            "Action": "Load",
             "Target": "Mods/{{ModId}}/WhitelistSign",
             "FromFile": "Pipes/WhitelistSign.png"
         },
@@ -54,6 +59,26 @@
             "Action": "Load",
             "Target": "Mods/{{ModId}}/NoPowerIcon",
             "FromFile": "Pipes/NoPowerIcon.png"
+        },
+        {
+            "Action": "Load",
+            "Target": "Mods/{{ModId}}/PowerSiloBody",
+            "FromFile": "Pipes/PowerSiloBody.png"
+        },
+        {
+            "Action": "Load",
+            "Target": "Mods/{{ModId}}/PowerSiloTop",
+            "FromFile": "Pipes/PowerSiloTop.png"
+        },
+        {
+            "Action": "Load",
+            "Target": "Mods/{{ModId}}/PowerCoil_UnPowered",
+            "FromFile": "Pipes/PowerCoil_UnPowered.png"
+        },
+        {
+            "Action": "Load",
+            "Target": "Mods/{{ModId}}/MarkPowerCoilsIcon",
+            "FromFile": "Pipes/markPowerCoils.png"
         }
     ]
 }
