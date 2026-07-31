@@ -1,12 +1,15 @@
+using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using Pathoschild.Stardew.Automate.Framework.Patches;
 using Pathoschild.Stardew.Common;
 using Pathoschild.Stardew.Common.UI;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
 using StardewValley;
+using SObject = StardewValley.Object;
 
 namespace Pathoschild.Stardew.Automate.Framework;
 
@@ -61,6 +64,20 @@ internal class OverlayMenu : BaseOverlay
     /// <summary>MOD: added. The size of the white/black sign-detection debug marker, as a fraction of the full tile size — drawn smaller (and centered) than the tile so the connector-role color underneath stays visible around its edges too, not just through its own translucency.</summary>
     private const float SignMarkerSizeScale = 0.65f;
 
+    /// <summary>MOD: added. The size of the power-coil grid-usage marker, as a fraction of the full tile size, per the user's request.</summary>
+    private const float PowerCoilMarkerSizeScale = 0.4f; //1f / 3f;
+
+    /// <summary>MOD: added. The fill opacity for the power-coil grid-usage marker — deliberately more solid than the tile's own background fill, so it reads as a clear marker rather than another translucent tint layered on top.</summary>
+    private const float PowerCoilMarkerFillOpacity = 0.85f;
+
+    /// <summary>MOD: added. The draw scale for the power-coil grid-usage marker's "placed/capacity" text — <see cref="Game1.tinyFont"/> at its natural size is still too large to comfortably fit inside a marker only a third of a tile wide.</summary>
+    private const float PowerCoilMarkerTextScale = 0.6f;
+
+    /// <summary>MOD: added. The Power Silo capacity system — used to check whether the mechanic is enabled (see <see cref="PowerSiloSystem.IsEnabled"/>) and to look up each individual Power Coil's own rank/the grid's total capacity for the marker's text. Reading a coil's rank/capacity is cheap (a modData lookup and a buildings-only scan respectively — see <see cref="PowerSiloSystem.GetCoilRank"/>/<see cref="PowerSiloSystem.GetTotalCapacity"/>), so unlike the marker's color (below), this is looked up fresh every draw call rather than cached at construction.</summary>
+    private readonly PowerSiloSystem PowerSilo;
+
+    /// <summary>MOD: added. The item names/IDs that count as a Power Coil for the grid-usage marker.</summary>
+    private readonly HashSet<string> PowerCoilSourceNames;
 
     /*********
     ** Public methods
@@ -71,11 +88,15 @@ internal class OverlayMenu : BaseOverlay
     /// <param name="reflection">Simplifies access to private code.</param>
     /// <param name="locationKey">The unique key for the current location.</param>
     /// <param name="machineData">The machine groups to display — its lookups already fold in any Junimo-touching local group with its own real automation (see <see cref="MachineDataForLocation"/>'s own remarks), so a Junimo chest is drawn through the exact same logic as any other chest below, with no special-casing needed.</param>
-    public OverlayMenu(IModEvents events, IInputHelper inputHelper, IReflectionHelper reflection, string locationKey, MachineDataForLocation? machineData)
+    /// <param name="powerSilo">MOD: added. The Power Silo capacity system.</param>
+    /// <param name="powerCoilSourceNames">MOD: added. The item names/IDs that count as a Power Coil for the grid-usage marker.</param>
+    public OverlayMenu(IModEvents events, IInputHelper inputHelper, IReflectionHelper reflection, string locationKey, MachineDataForLocation? machineData, PowerSiloSystem powerSilo, HashSet<string> powerCoilSourceNames)
         : base(events, inputHelper, reflection)
     {
         this.LocationKey = locationKey;
         this.MachineData = machineData;
+        this.PowerSilo = powerSilo;
+        this.PowerCoilSourceNames = powerCoilSourceNames;
     }
 
 
@@ -96,6 +117,12 @@ internal class OverlayMenu : BaseOverlay
         // of an already-drawn border at their shared edge. Drawing every background first, then
         // every border on top, guarantees borders are never covered.
         List<(Vector2 Tile, IMachineGroup Group, Color BorderColor)> borderQueue = new();
+
+        // MOD: added — same reasoning as borderQueue above: the power-coil marker's text needs to render
+        // on top of the group borders too (borders are drawn in their own pass, after every tile's
+        // background/marker fill — see pass 2 below), so it's queued here and drawn in a final pass
+        // after borders, instead of immediately alongside the marker's own fill square.
+        List<(Vector2 Position, string Text, SpriteFont Font, float Scale)> textQueue = new();
 
         // pass 1: backgrounds
         foreach (Vector2 tile in TileHelper.GetVisibleTiles(expand: 1))
@@ -209,6 +236,51 @@ internal class OverlayMenu : BaseOverlay
                 );
             }
 
+            // MOD: added — draw a small red/green marker over any tile with a power coil, showing
+            // whether it's currently within the power grid's capacity (see
+            // PowerSiloSystem.RefreshCoilAllowance), plus that SPECIFIC coil's own "rank/capacity" as
+            // white text floating just above the tile (e.g. "9/8" vs "3/8" for two different coils under
+            // the same capacity — the rank tells you which one would turn on next if capacity increased
+            // by one, which a single grid-wide total can't). Drawn as its own layer on top of everything
+            // above (same approach as the sign-detection marker) so it stays visible regardless of the
+            // tile's own fill/role color.
+            if (this.PowerSilo.IsEnabled
+                && this.PowerCoilSourceNames.Count > 0
+                && Game1.currentLocation.Objects.TryGetValue(tile, out SObject? coil)
+                && (this.PowerCoilSourceNames.Contains(coil.QualifiedItemId) || this.PowerCoilSourceNames.Contains(coil.Name)))
+            {
+                float markerSize = tileSize * OverlayMenu.PowerCoilMarkerSizeScale;
+                float markerOffset = (tileSize - markerSize) / 2f;
+                Color markerColor = PowerCoilPatches.IsPowered(coil) ? Color.Green : Color.Red;
+
+                spriteBatch.DrawLine(
+                    screenX + markerOffset,
+                    screenY + markerOffset,
+                    new Vector2(markerSize, markerSize),
+                    markerColor * OverlayMenu.PowerCoilMarkerFillOpacity
+                );
+
+                int? rank = this.PowerSilo.GetCoilRank(coil);
+                int capacity = this.PowerSilo.GetTotalCapacity();
+                string usageText = rank.HasValue ? $"{rank}/{capacity}" : $"?/{capacity}";
+
+                // MOD: fixed — measure with the SAME font actually drawn below. Measuring with one font
+                // but drawing with another (e.g. after swapping fonts) gives a bounding box that doesn't
+                // match the real rendered size, so the centering offset undershoots/overshoots and the
+                // text appears to start at the center and run off to one side instead of being centered.
+                SpriteFont font = Game1.dialogueFont;
+                Vector2 textSize = font.MeasureString(usageText) * OverlayMenu.PowerCoilMarkerTextScale;
+
+                // MOD: queued instead of drawn immediately — see comment above textQueue. Centered in the
+                // middle of the tile (not the small marker square, which is too cramped to hold it).
+                textQueue.Add((
+                    new Vector2(screenX + tileSize / 2f - textSize.X / 2f, screenY + tileSize / 2f - textSize.Y / 2f),
+                    usageText,
+                    font,
+                    OverlayMenu.PowerCoilMarkerTextScale
+                ));
+            }
+
             // MOD: queue the border instead of drawing it immediately — see comment above borderQueue
             if (group != null)
             {
@@ -235,6 +307,10 @@ internal class OverlayMenu : BaseOverlay
         // pass 2: borders — drawn after every background (including all neighbors), so they always render on top
         foreach ((Vector2 tile, IMachineGroup group, Color borderColor) in borderQueue)
             this.DrawEdgeBorders(spriteBatch, group, tile, borderColor);
+
+        // pass 3: power-coil marker text — drawn after borders, so it always renders on top of them instead of underneath
+        foreach ((Vector2 position, string text, SpriteFont font, float scale) in textQueue)
+            spriteBatch.DrawString(font, text, position, Color.White, 0f, Vector2.Zero, scale, SpriteEffects.None, 1f);
 
         // draw cursor
         this.DrawCursor();

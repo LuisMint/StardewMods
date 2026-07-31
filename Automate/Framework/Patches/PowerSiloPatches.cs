@@ -45,6 +45,26 @@ internal static class PowerSiloPatches
     /// <summary>The power silo capacity system, used to refresh every coil's allowance after a placement/destruction.</summary>
     private static PowerSiloSystem? PowerSiloSystem;
 
+    /// <summary>
+    /// MOD: added. Queue specific locations for a machine reload — called after <see cref="PowerSiloSystem.RefreshCoilAllowance"/>
+    /// so <see cref="PowerSystem.GetPoweredTiles"/> gets recomputed wherever it actually needs to be, not
+    /// just in the location that triggered the refresh. <see cref="PowerSiloSystem.RefreshCoilAllowance"/>
+    /// re-ranks and re-stamps EVERY Power Coil across the WHOLE SAVE (oldest-placed-first, up to capacity)
+    /// — so placing or removing a single coil in one location can just as easily flip a completely
+    /// different coil's powered/unpowered state in some other location entirely (e.g. pushing total coil
+    /// count over capacity bumps the youngest excess coil, wherever it happens to be). Only the triggering
+    /// location gets queued for reload through the normal <c>ObjectListChanged</c> handling, so without
+    /// this, every OTHER location whose coil(s) just flipped state would keep using stale powered-tile
+    /// data (and thus stale automation gating for power-required machines there) until something unrelated
+    /// happened to touch that location later.
+    ///
+    /// MOD: fixed — this used to queue EVERY location in the save unconditionally, which caused a
+    /// noticeable lag spike on saves with many locations even though most of them had nothing to do with
+    /// the change. <see cref="PowerSiloSystem.RefreshCoilAllowance"/> now reports exactly which locations
+    /// had a coil actually flip state, so this only reloads those.
+    /// </summary>
+    private static Action<IEnumerable<GameLocation>>? RequeueLocations;
+
 
     /*********
     ** Public methods
@@ -54,12 +74,14 @@ internal static class PowerSiloPatches
     /// <param name="getSolarPanelNames">MOD: added. Get the item names/IDs that count as a Solar Panel for the solar tier's connected-panel bonus.</param>
     /// <param name="getLocalSourceNames">MOD: added. Get the item names/IDs that count as a "local" power source (e.g. the Powered Chest).</param>
     /// <param name="powerSiloSystem">The power silo capacity system, used to refresh every coil's allowance after a placement/destruction.</param>
-    public static void Initialize(Func<HashSet<string>> getSourceNames, Func<HashSet<string>> getSolarPanelNames, Func<HashSet<string>> getLocalSourceNames, PowerSiloSystem powerSiloSystem)
+    /// <param name="requeueLocations">MOD: added. Queue the given locations for a machine reload — see <see cref="RequeueLocations"/>'s own remarks for why this is needed after a coil allowance refresh.</param>
+    public static void Initialize(Func<HashSet<string>> getSourceNames, Func<HashSet<string>> getSolarPanelNames, Func<HashSet<string>> getLocalSourceNames, PowerSiloSystem powerSiloSystem, Action<IEnumerable<GameLocation>> requeueLocations)
     {
         PowerSiloPatches.GetSourceNames = getSourceNames;
         PowerSiloPatches.GetSolarPanelNames = getSolarPanelNames;
         PowerSiloPatches.GetLocalSourceNames = getLocalSourceNames;
         PowerSiloPatches.PowerSiloSystem = powerSiloSystem;
+        PowerSiloPatches.RequeueLocations = requeueLocations;
     }
 
     /// <summary>Apply these patches to the game.</summary>
@@ -150,7 +172,9 @@ internal static class PowerSiloPatches
             return;
 
         placedCoil.modData[PowerSiloSystem.PlacementOrderModDataKey] = DateTime.UtcNow.Ticks.ToString();
-        powerSiloSystem.RefreshCoilAllowance();
+        IReadOnlySet<GameLocation> changedLocations = powerSiloSystem.RefreshCoilAllowance();
+        if (changedLocations.Count > 0)
+            PowerSiloPatches.RequeueLocations?.Invoke(changedLocations); // MOD: added — see RequeueLocations's own remarks for why locations OTHER than this one may also need to pick up the refresh
 
         // MOD: added — the refresh above just stamped this exact coil, so its own modData now
         // reflects whether it actually made it within capacity; play "grunt" only if it did, and stay
@@ -178,7 +202,9 @@ internal static class PowerSiloPatches
         if (PowerSiloPatches.PowerSiloSystem is not { } powerSiloSystem || !PowerSiloPatches.IsPowerCoil(__instance))
             return;
 
-        powerSiloSystem.RefreshCoilAllowance();
+        IReadOnlySet<GameLocation> changedLocations = powerSiloSystem.RefreshCoilAllowance();
+        if (changedLocations.Count > 0)
+            PowerSiloPatches.RequeueLocations?.Invoke(changedLocations); // MOD: added — see RequeueLocations's own remarks for why locations OTHER than this one may also need to pick up the refresh
     }
 
     /// <summary>MOD: added. Play a sound and show a capacity popup when a player interacts with a Power Coil directly.</summary>
@@ -224,7 +250,10 @@ internal static class PowerSiloPatches
         if (before == after)
             return;
 
-        powerSiloSystem.RefreshCoilAllowance(); // MOD: added — the capacity changed, so which coils currently fit within it needs re-evaluating too
+        // MOD: added — the capacity changed, so which coils currently fit within it needs re-evaluating too
+        IReadOnlySet<GameLocation> changedLocations = powerSiloSystem.RefreshCoilAllowance();
+        if (changedLocations.Count > 0)
+            PowerSiloPatches.RequeueLocations?.Invoke(changedLocations); // MOD: added — see RequeueLocations's own remarks for why locations OTHER than this one may also need to pick up the refresh
         location.playSound("give_gift");
         PowerSiloPatches.ShowCapacityPopup(powerSiloSystem, before, after);
     }

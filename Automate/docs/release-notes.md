@@ -2,6 +2,11 @@
 
 # Release notes
 ## Upcoming release
+* Automation now runs in response to game events (time passing, chest contents changing) by default instead of a fixed interval, cutting overhead on dense farms — it's at least as responsive as the old polling, not a tradeoff. Disable the new "event-based automation" option (in the config file or Generic Mod Config Menu) to restore the previous fixed-interval behavior if needed.
+* When event-based automation is on, a machine finishing its normal processing time is now handled directly the instant it happens, instead of waiting for the next scheduled scan — and restocking a chest only rescans that chest's own location, instead of the whole save.
+* Added an "event-based push/pull delay" option (default 0.1 seconds, event-based mode only) so items don't seem to move instantly — purely cosmetic, set to 0 to disable. Each individual push and pull gets its own independent delay, so several machines/chests acting around the same time still resolve independently instead of all at once.
+* Added an "action delay" option (default off, up to 10 seconds, works in both interval and event-based mode) — once a group has something to do, its machines take turns pushing/pulling one at a time instead of all at once, so a group with many machines takes proportionally longer to fully settle than a group with few. A separate group's own pacing is fully independent, and pauses (any open menu, not just the Esc menu) correctly pause this pacing too instead of letting it silently continue in the background.
+* Fixed the Power Silo's coil-allowance refresh only requeuing the location a coil was placed/removed in, even though it can flip a coil's powered state in a completely different location — could cause a noticeable lag spike, or another location's power range silently going stale.
 * Improved translations. Thanks to jjongleee (updated Korean)!
 
 ## 2.6.1

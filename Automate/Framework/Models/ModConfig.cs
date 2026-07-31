@@ -18,7 +18,25 @@ internal class ModConfig
     /// <summary>Whether Automate is enabled.</summary>
     public bool Enabled { get; set; } = true;
 
-    /// <summary>The number of ticks between each automation process (60 = once per second).</summary>
+    /// <summary>
+    /// MOD: added. Whether to run automation in response to SMAPI's <c>TimeChanged</c>/
+    /// <c>ChestInventoryChanged</c> events instead of polling every <see cref="AutomationInterval"/>
+    /// ticks — a machine's ready/not-ready state can only change on those exact events anyway (see
+    /// <c>ModEntry.TryRunAutomationPass</c>'s remarks), so this eliminates the wasted rescans between
+    /// them, including while the game is paused. Disable to fall back to the original fixed-interval
+    /// polling if your setup doesn't get along with it.
+    /// </summary>
+    public bool UseEventBasedAutomation { get; set; } = true;
+
+    /// <summary>
+    /// MOD: added. How many real-time seconds to wait after a machine/chest is found ready before
+    /// actually pushing/pulling its item, when <see cref="UseEventBasedAutomation"/> is on — purely
+    /// cosmetic, so items don't seem to teleport instantly and the player has a moment to see what's
+    /// happening. 0 disables the delay entirely (acts the instant it's found ready).
+    /// </summary>
+    public float EventBasedPushPullDelaySeconds { get; set; } = 0.1f;
+
+    /// <summary>The number of ticks between each automation process (60 = once per second). Only used when <see cref="UseEventBasedAutomation"/> is disabled.</summary>
     public int AutomationInterval { get; set; } = 60;
 
     /// <summary>The key bindings.</summary>

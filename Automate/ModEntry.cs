@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using HarmonyLib;
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 using Pathoschild.Stardew.Automate.Framework;
 using Pathoschild.Stardew.Automate.Framework.Commands;
 using Pathoschild.Stardew.Automate.Framework.Models;
@@ -12,6 +14,7 @@ using Pathoschild.Stardew.Automate.Framework.Patches;
 using Pathoschild.Stardew.Common;
 using Pathoschild.Stardew.Common.Integrations.GenericModConfigMenu;
 using Pathoschild.Stardew.Common.Messages;
+using Pathoschild.Stardew.Common.Utilities;
 using StardewModdingAPI;
 using StardewModdingAPI.Events;
 using StardewModdingAPI.Utilities;
@@ -57,8 +60,68 @@ internal class ModEntry : Mod
     /// <summary>Whether this is a secondary screen in split-screen mode.</summary>
     private bool IsSecondaryScreen => Context.IsSplitScreen && !Context.IsMainPlayer;
 
-    /// <summary>The number of ticks until the next automation cycle.</summary>
+    /// <summary>The number of ticks until the next automation cycle. Only used when <see cref="ModConfig.UseEventBasedAutomation"/> is disabled.</summary>
     private int AutomateCountdown;
+
+    /// <summary>
+    /// MOD: added. Whether to run one automation pass on the next <see cref="OnUpdateTicked"/> call,
+    /// regardless of trigger mode — set right after something rebuilds machine groups outside the
+    /// normal event flow (a new day starting, a config change) so event-based mode doesn't have to
+    /// wait for the next natural <see cref="OnTimeChanged"/>/<see cref="OnChestInventoryChanged"/> to
+    /// reflect it, the same way interval mode already gets an instant pass via <see cref="AutomateCountdown"/>
+    /// being reset to 0.
+    /// </summary>
+    private bool RunAutomationPassOnNextTick;
+
+    /// <summary>
+    /// MOD: added. Locations whose <see cref="IWorldEvents.ChestInventoryChanged"/> pass may have found
+    /// its containers locked (the player has a chest menu open, so <see cref="MachineGroup.Automate"/>
+    /// bails out immediately) — retried once any menu closes (see <see cref="OnMenuChanged"/>), since
+    /// that's exactly when such a lock would be released. Without this, a manual edit made through an
+    /// open chest menu would sit unprocessed until the next incidental <see cref="OnTimeChanged"/> tick,
+    /// since the chest's contents don't change again just from closing the menu (nothing re-fires
+    /// <see cref="IWorldEvents.ChestInventoryChanged"/> at that point).
+    /// </summary>
+    private readonly HashSet<GameLocation> LocationsPendingLockedRetry = new();
+
+    /// <summary>
+    /// MOD: added. How many <see cref="OnTimeChanged"/> firings have happened since the last full,
+    /// unscoped backstop scan of every active group. <see cref="Patches.MachineReadyPatches"/> already
+    /// covers the common case (an ordinary machine finishing its processing countdown) precisely and
+    /// immediately, so re-scanning literally everything on every single 10-minute tick as well is mostly
+    /// redundant now — this backstop only exists for the handful of cases that hook can't see at all
+    /// (non-<c>Object</c>-backed machines; instant-complete 0-minute recipes), so it only needs to run
+    /// occasionally, not every tick.
+    /// </summary>
+    private int TicksSinceFullBackstopScan;
+
+    /// <summary>MOD: added. How many <see cref="OnTimeChanged"/> firings to let pass between full backstop scans (see <see cref="TicksSinceFullBackstopScan"/>) — once per in-game hour.</summary>
+    private const int FullBackstopScanIntervalTicks = 6;
+
+    /// <summary>
+    /// MOD: added. Automation passes queued to run after <see cref="ModConfig.EventBasedPushPullDelaySeconds"/>
+    /// has passed, instead of immediately — purely cosmetic, so a machine/chest interaction is easier to
+    /// actually see happening instead of resolving instantly. Used by <see cref="OnTimeChanged"/>'s
+    /// per-machine output pushes and <see cref="OnChestInventoryChanged"/>/<see cref="OnMenuChanged"/>'s
+    /// per-machine input feeds.
+    /// </summary>
+    private readonly List<(double CreatedAtMs, double ScheduledTimeMs, Action Action)> PendingDelayedPasses = new();
+
+    /// <summary>
+    /// MOD: added. Real time actually spent with <see cref="Game1.shouldTimePass"/> true, in milliseconds
+    /// — the clock every delay/queue timing calculation uses instead of reading
+    /// <see cref="Game1.currentGameTime"/> directly, so having ANY menu open (inventory, a chest, etc.),
+    /// not just the Escape/options pause screen, correctly stops these purely cosmetic delays from
+    /// silently counting down — and the queue from silently draining — in the background while the player
+    /// can't see any of it happening. Time simply doesn't pass for these delays while paused, and resumes
+    /// exactly where it left off once unpaused, rather than causing a catch-up burst. This only affects
+    /// the delay/queue timing itself — it does NOT pause automation entirely, matching this mod's existing
+    /// design of still automating while the game is paused when no cosmetic delay is configured.
+    /// </summary>
+    private double UnpausedElapsedMs;
+
+    /// <summary>MOD: added. How long the most recent delayed per-machine push/pull actually waited (in milliseconds) before firing, for the perf overlay to show — lets <see cref="ModConfig.EventBasedPushPullDelaySeconds"/> be verified against real measured timing instead of going on feel alone.</summary>
+    private double? LastActualDelayMs;
 
     /// <summary>The number of ticks until the config UI is registered with Generic Mod Config Menu.</summary>
     /// <remarks>This must happen later than <see cref="IGameLoopEvents.GameLaunched"/>, since Content Patcher packs haven't added their edits to <c>Data/Machines</c> yet at that point.</remarks>
@@ -66,6 +129,9 @@ internal class ModEntry : Mod
 
     /// <summary>The current overlay being displayed, if any.</summary>
     private readonly PerScreen<OverlayMenu?> CurrentOverlay = new();
+
+    /// <summary>MOD: added. Whether the automation performance overlay (see <see cref="AutomationPerfTracker"/>) is currently shown.</summary>
+    private bool ShowPerfOverlay;
 
 
     /*********
@@ -145,6 +211,15 @@ internal class ModEntry : Mod
 
         PoweredChestPatches.Apply(harmony);
 
+        // MOD: added — reacts directly to a specific machine becoming ready via Object.minutesElapsed,
+        // instead of waiting for the periodic full-group scan to notice (see its own remarks).
+        MachineReadyPatches.Initialize(
+            getUseEventBasedAutomation: () => this.Config.UseEventBasedAutomation,
+            getLocationKey: this.MachineManager.Factory.GetLocationKey,
+            machineManager: this.MachineManager
+        );
+        MachineReadyPatches.Apply(harmony);
+
         PowerRequiredMachinePatches.Initialize(
             getSystem: () => this.MachineManager.Factory.PowerRequiredMachineSystem,
             getPoweredTiles: location => this.MachineManager.GetMachineDataFor(location)?.PoweredTiles
@@ -160,7 +235,8 @@ internal class ModEntry : Mod
             getSourceNames: () => this.Config.PowerSourceNames,
             getSolarPanelNames: () => this.Config.PowerSiloSolarPanelNames, // MOD: added
             getLocalSourceNames: () => this.Config.LocalPowerSourceNames, // MOD: added — so a Powered Chest's own placement/removal is recognized as solar-connectivity-relevant too
-            powerSiloSystem: this.MachineManager.Factory.PowerSiloSystem
+            powerSiloSystem: this.MachineManager.Factory.PowerSiloSystem,
+            requeueLocations: locations => this.MachineManager.QueueReload(locations) // MOD: added — see PowerSiloPatches.RequeueLocations's own remarks for why a coil-allowance refresh may need to reach locations other than the one that triggered it
         );
         PowerSiloPatches.Apply(harmony);
 
@@ -193,27 +269,37 @@ internal class ModEntry : Mod
             getTiers: () => this.Config.PowerSiloTiers
         ).Register();
 
+        // MOD: added — gives the Dwarf a "build a Power Silo" option alongside their normal shop, reusing
+        // vanilla's own carpenter menu (see DwarfBuildMenuPatches's own remarks).
+        DwarfBuildMenuPatches.Apply(harmony);
+
         // hook events
         helper.Events.Content.AssetRequested += this.OnAssetRequested;
         helper.Events.GameLoop.SaveLoaded += this.OnSaveLoaded;
         helper.Events.GameLoop.DayEnding += this.OnDayEnding;
         helper.Events.GameLoop.DayStarted += this.OnDayStarted;
         helper.Events.GameLoop.UpdateTicked += this.OnUpdateTicked;
+        helper.Events.GameLoop.TimeChanged += this.OnTimeChanged; // MOD: added — event-based automation trigger
         helper.Events.Input.ButtonsChanged += this.OnButtonsChanged;
         helper.Events.Multiplayer.ModMessageReceived += this.OnModMessageReceived;
         helper.Events.Player.Warped += this.OnWarped;
         helper.Events.World.BuildingListChanged += this.OnBuildingListChanged;
         helper.Events.World.LocationListChanged += this.OnLocationListChanged;
         helper.Events.World.ObjectListChanged += this.OnObjectListChanged;
+        helper.Events.World.ChestInventoryChanged += this.OnChestInventoryChanged; // MOD: added — event-based automation trigger
         helper.Events.World.TerrainFeatureListChanged += this.OnTerrainFeatureListChanged;
         helper.Events.World.LargeTerrainFeatureListChanged += this.OnLargeTerrainFeatureListChanged;
         helper.Events.Display.RenderedWorld += this.OnRenderedWorld;
+        helper.Events.Display.RenderedHud += this.OnRenderedHud; // MOD: added — draws the automation performance overlay, see AutomationPerfTracker
+        helper.Events.Display.MenuChanged += this.OnMenuChanged; // MOD: added — retries locations left pending by OnChestInventoryChanged once a menu (e.g. a chest) closes
 
         // hook commands
         this.CommandHandler.RegisterWith(helper.ConsoleCommands);
 
         // log info
-        this.Monitor.VerboseLog($"Initialized with automation every {this.Config.AutomationInterval} ticks.");
+        this.Monitor.VerboseLog(this.Config.UseEventBasedAutomation
+            ? "Initialized with event-based automation."
+            : $"Initialized with automation every {this.Config.AutomationInterval} ticks.");
         if (this.Config.WarnForMissingBridgeMod)
             this.ReportMissingBridgeMods(this.Data.SuggestedIntegrations);
     }
@@ -308,6 +394,13 @@ internal class ModEntry : Mod
     /// <inheritdoc cref="IGameLoopEvents.SaveLoaded" />
     private void OnSaveLoaded(object? sender, SaveLoadedEventArgs e)
     {
+        // MOD: added — returning to title and loading a different save (or the same one again) keeps the
+        // SAME ModEntry instance alive (SMAPI doesn't recreate mods per save), so any of this mod's own
+        // delay/queue bookkeeping left over from a PREVIOUS save would reference now-defunct machine/group
+        // objects. OnDayStarted already does this for the same reason (a day transition also fully
+        // rebuilds every group) — this covers the broader "entirely different save" case.
+        this.ResetDelayQueueState();
+
         // disable if secondary player
         if (!this.EnableAutomation)
         {
@@ -348,6 +441,9 @@ internal class ModEntry : Mod
         {
             this.MachineManager.Reset();
             this.AutomateCountdown = 0;
+            this.RunAutomationPassOnNextTick = true; // MOD: added — event-based mode's equivalent instant pass, since it doesn't use AutomateCountdown
+            this.TicksSinceFullBackstopScan = 0; // MOD: added — avoid an almost-immediate redundant backstop scan right after the pass above already covered everything
+            this.ResetDelayQueueState(); // MOD: added — MachineManager.Reset() just discarded every group/machine instance, so any of this mod's own delay/queue bookkeeping for them is now stale
 
             // MOD: added — an unconditional refresh every new day, on top of the usual triggers (a
             // coil placed/destroyed, a Solar Panel placed/destroyed, or a Silo built/destroyed/fed a new
@@ -487,27 +583,60 @@ internal class ModEntry : Mod
         {
             try
             {
+                // MOD: fixed — see UnpausedElapsedMs's own remarks for why this clock (not raw wall-clock
+                // time) drives every delay/queue timing calculation. Originally checked Game1.paused, but
+                // that's ONLY true for the Escape/options pause menu — opening your inventory, a chest, or
+                // any other menu doesn't set it at all, so the clock kept advancing regardless.
+                // Game1.shouldTimePass() is vanilla's own purpose-built check for "is time actually passing
+                // right now," correctly accounting for any open menu, events, festivals, and (in
+                // multiplayer) the shared world pause state instead of just one flag.
+                if (Game1.shouldTimePass())
+                    this.UnpausedElapsedMs += Game1.currentGameTime.ElapsedGameTime.TotalMilliseconds;
+
                 // reload machines if needed
                 if (this.EnableAutomationChangeTracking)
                 {
                     if (this.MachineManager.ReloadQueuedLocations())
                         this.ResetOverlayIfShown();
+
+                    // MOD: added — always drain (even outside event-based mode, so this can't grow
+                    // unbounded), but only act on it in event-based mode: interval mode's own periodic
+                    // full scan already picks up a newly-joined member on its own, but event-based mode
+                    // has no other trigger for this at all — a container joining a group doesn't fire
+                    // ChestInventoryChanged (nothing was stored/removed, it just came into range), and a
+                    // machine joining isn't itself "becoming ready." Without this, a newly-connected
+                    // chest/machine just sat there until the player happened to open/edit a chest (or the
+                    // ~7s backstop scan) triggered an unrelated rescan. Reported directly by a user.
+                    IReadOnlyList<IMachineGroup> newlyJoinedGroups = this.MachineManager.TakeGroupsWithNewMembers();
+                    if (this.Config.UseEventBasedAutomation)
+                    {
+                        foreach (IMachineGroup group in newlyJoinedGroups)
+                            this.ScheduleGroupCheck(group);
+                    }
                 }
 
-                // process machines
-                if (--this.AutomateCountdown <= 0)
+                // MOD: added — a one-shot instant pass for event-based mode, queued by something that
+                // rebuilt machine groups outside the normal TimeChanged/ChestInventoryChanged flow (see
+                // RunAutomationPassOnNextTick's own remarks). Runs after the reload above so freshly
+                // rebuilt groups are already in place.
+                if (this.RunAutomationPassOnNextTick)
+                {
+                    this.RunAutomationPassOnNextTick = false;
+                    this.TryRunAutomationPass();
+                }
+
+                // process machines (interval mode only — event-based mode is instead triggered by
+                // OnTimeChanged/OnChestInventoryChanged, see TryRunAutomationPass's own remarks for why
+                // that's strictly at least as responsive as this countdown ever was)
+                if (!this.Config.UseEventBasedAutomation && --this.AutomateCountdown <= 0)
                 {
                     this.AutomateCountdown = this.Config.AutomationInterval;
-
-                    IMachineGroup[] activeGroups = this.MachineManager.GetActiveMachineGroups().ToArray();
-                    foreach (IMachineGroup group in activeGroups)
-                        group.Automate();
-
-                    // MOD: added — separate from each group's own Automate() call above, since the
-                    // power-required-machines wake-up callouts need cross-rebuild tracking by location
-                    // (see PowerRequiredMachineSystem.ProcessStarvedMachineCallouts's own remarks).
-                    this.MachineManager.Factory.PowerRequiredMachineSystem.ProcessStarvedMachineCallouts(activeGroups);
+                    this.TryRunAutomationPass();
                 }
+
+                // MOD: added — flush any event-based passes whose cosmetic delay (see
+                // ModConfig.EventBasedPushPullDelaySeconds) has elapsed.
+                this.RunDuePendingPasses();
             }
             catch (Exception ex)
             {
@@ -557,6 +686,286 @@ internal class ModEntry : Mod
         }
     }
 
+    /// <inheritdoc cref="IGameLoopEvents.TimeChanged" />
+    /// <remarks>
+    /// MOD: added. This event fires right after vanilla's own per-location "ten minute update" pass has
+    /// completely finished for this tick — which means every <see cref="Patches.MachineReadyPatches"/>
+    /// detection for this tick has already been recorded by the time this handler runs, so there's no
+    /// "stragglers" problem to wait out; the whole tick's detections are already final. Instead of blindly
+    /// re-scanning every active group here (confirmed, via a real performance comparison test, to cost
+    /// MORE total time than the old fixed interval, since it double-processed the exact same machines
+    /// <see cref="Patches.MachineReadyPatches"/> just found), this pushes output for only the specific
+    /// machines that were actually flagged this tick, each scheduled independently (see
+    /// <see cref="RunOrScheduleDelayedPass"/>) rather than bundled into one shared pass — and, per
+    /// <see cref="IMachineGroup.TryFeedMachineInput"/>'s own remarks, does NOT chain an immediate re-feed;
+    /// a machine that empties gets its OWN separately-delayed feed instead. A much less frequent full,
+    /// unscoped scan still runs periodically (see <see cref="TicksSinceFullBackstopScan"/>) as a backstop
+    /// for the handful of completion paths this hook can't see at all.
+    /// </remarks>
+    private void OnTimeChanged(object? sender, TimeChangedEventArgs e)
+    {
+        if (!Context.IsWorldReady || !this.EnableAutomation || !this.Config.UseEventBasedAutomation)
+            return;
+
+        try
+        {
+            // MOD: fixed — schedule each ready machine's OUTPUT push as its own independent delayed pass,
+            // rather than bundling everything flagged this tick into one shared pass/delay. See
+            // MachineReadyPatches' own remarks: bundling made every machine that became ready in the same
+            // tick resolve in one synchronized visual burst instead of each being paced independently from
+            // its own detection moment, which is what ModConfig.EventBasedPushPullDelaySeconds is meant to show.
+            foreach ((IMachineGroup group, IMachine machine) in MachineReadyPatches.TakePendingReadyMachines())
+                this.RunOrScheduleDelayedPass(() => this.AutomateMachine(group, machine), this.Config.EventBasedPushPullDelaySeconds);
+
+            if (++this.TicksSinceFullBackstopScan >= ModEntry.FullBackstopScanIntervalTicks)
+            {
+                this.TicksSinceFullBackstopScan = 0;
+                this.TryRunAutomationPass();
+            }
+
+            // MOD: added — power-starved callouts (see ProcessStarvedMachineCallouts's own remarks) need
+            // their own steady, every-tick cadence with a COMPLETE view of every active group each time,
+            // independent of whichever partial subset (if any) the automation passes above just touched.
+            // This is cheap regardless of active group count (just reads a small cached set per group),
+            // so it doesn't need to share the backstop scan's much lower frequency.
+            this.MachineManager.Factory.PowerRequiredMachineSystem.ProcessStarvedMachineCallouts(this.MachineManager.GetActiveMachineGroups());
+        }
+        catch (Exception ex)
+        {
+            this.HandleError(ex, "processing machines");
+        }
+    }
+
+    /// <inheritdoc cref="IWorldEvents.ChestInventoryChanged" />
+    /// <remarks>
+    /// MOD: added. Event-based automation's input-side trigger — covers every way a chest's contents
+    /// can change (a player restocking it, or one chest/machine pushing into another, including
+    /// Automate's own pushes), so a machine waiting on ingredients is noticed the moment they arrive
+    /// instead of waiting for the next poll.
+    ///
+    /// MOD: fixed — this used to schedule ONE shared delayed pass that fed every currently-empty machine
+    /// in the location's active groups all at once (via <see cref="MachineGroup.Automate"/>). Per direct
+    /// user feedback, that meant several machines all being fed by the same chest restock would visually
+    /// resolve in one synchronized burst instead of each pull being independently paced. Now schedules a
+    /// separate delayed <see cref="IMachineGroup.TryFeedMachineInput"/> call per currently-empty machine
+    /// (see <see cref="ScheduleInputFeedsFor"/>), each with its own independent delay.
+    ///
+    /// MOD: fixed — narrowed further to just the group(s) that actually cover <see cref="ChestInventoryChangedEventArgs.Chest"/>'s
+    /// own tile, instead of every active group in the location. This used to scan every group in the
+    /// location regardless of relevance — harmless for a normal machine (its own <c>GetState() != Empty</c>
+    /// check already filters out anything not actually waiting on input), but a <see cref="Machines.Objects.PoweredChestMachine"/>
+    /// always reports itself as ready to act (see its own <c>GetState</c> remarks), so it got probed on
+    /// EVERY chest change anywhere in the location, not just changes to containers it's actually connected
+    /// to — real wasted work scheduling/queuing an action for it that almost always turned out to be a
+    /// no-op, not just a cosmetic concern.
+    /// </remarks>
+    private void OnChestInventoryChanged(object? sender, ChestInventoryChangedEventArgs e)
+    {
+        if (!Context.IsWorldReady || !this.EnableAutomation || !this.Config.UseEventBasedAutomation)
+            return;
+
+        try
+        {
+            this.ScheduleInputFeedsFor(e.Location, e.Chest.TileLocation);
+
+            // MOD: added — this event fires the moment the chest's contents change, which for a
+            // player editing it through an open menu is BEFORE the menu closes, while its mutex is
+            // still locked (MachineGroup.Automate bails out immediately for a locked container). The
+            // contents won't change again just from closing the menu, so nothing else will naturally
+            // retrigger this location — remember it and retry once any menu closes instead (see
+            // OnMenuChanged). Harmless to queue unconditionally even when nothing was actually locked;
+            // the retry is cheap and just finds nothing left to do.
+            this.LocationsPendingLockedRetry.Add(e.Location);
+        }
+        catch (Exception ex)
+        {
+            this.HandleError(ex, "processing machines");
+        }
+    }
+
+    /// <inheritdoc cref="IDisplayEvents.MenuChanged" />
+    /// <remarks>
+    /// MOD: added. Retries every location <see cref="OnChestInventoryChanged"/> left pending (its
+    /// containers may have still been locked at the time) whenever a menu closes — a chest's mutex is
+    /// only ever released at that exact moment, so this is the correct signal to react to rather than
+    /// polling lock state every tick. Reacts to ANY menu closing (not just a chest's) rather than trying
+    /// to identify chest menus specifically, since a mod like Chests Anywhere can edit a chest that
+    /// isn't even in the player's current location — the real location was already captured correctly
+    /// back when <see cref="OnChestInventoryChanged"/> queued it, so this doesn't need to re-derive it
+    /// from the closing menu at all.
+    /// </remarks>
+    private void OnMenuChanged(object? sender, MenuChangedEventArgs e)
+    {
+        if (e.NewMenu != null || !Context.IsWorldReady || !this.EnableAutomation || !this.Config.UseEventBasedAutomation || this.LocationsPendingLockedRetry.Count == 0)
+            return;
+
+        try
+        {
+            GameLocation[] locations = this.LocationsPendingLockedRetry.ToArray();
+            this.LocationsPendingLockedRetry.Clear();
+
+            foreach (GameLocation location in locations)
+                this.ScheduleInputFeedsFor(location);
+        }
+        catch (Exception ex)
+        {
+            this.HandleError(ex, "processing machines");
+        }
+    }
+
+    /// <summary>
+    /// MOD: changed. Run one automation pass across every currently-active machine group — shared by
+    /// interval mode's regular polling, event-based mode's rare periodic backstop scan, and the one-shot
+    /// pass after a day starts or the config changes, so the actual processing logic isn't duplicated
+    /// between them. One instant <see cref="IMachineGroup.Automate"/> call per group.
+    /// </summary>
+    private void TryRunAutomationPass()
+    {
+        IMachineGroup[] activeGroups = this.MachineManager.GetActiveMachineGroups().ToArray();
+
+        foreach (IMachineGroup group in activeGroups)
+        {
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            group.Automate();
+            AutomationPerfTracker.RecordFullScan(stopwatch.Elapsed.TotalMilliseconds);
+        }
+
+        // MOD: added — power-required-machines wake-up callouts need cross-rebuild tracking by location
+        // (see PowerRequiredMachineSystem.ProcessStarvedMachineCallouts's own remarks). Deliberately NOT
+        // delayed — it's a reminder message, not a push/pull action, and reads a small cached set per group.
+        this.MachineManager.Factory.PowerRequiredMachineSystem.ProcessStarvedMachineCallouts(activeGroups);
+    }
+
+    /// <summary>
+    /// MOD: added. Automate a single machine that either <see cref="Patches.MachineReadyPatches"/> flagged
+    /// as ready, or <see cref="OnChestInventoryChanged"/>/<see cref="OnMenuChanged"/> found newly feedable —
+    /// pushing its output (via <see cref="IMachineGroup.TryPushMachineOutput"/>) if it's Done, AND feeding it
+    /// fresh input (via <see cref="IMachineGroup.TryFeedMachineInput"/>) if it's Empty, checked fresh so BOTH
+    /// happen in the same call when a push immediately empties the machine.
+    /// </summary>
+    /// <param name="group">The machine's owning group.</param>
+    /// <param name="machine">The machine to automate.</param>
+    private void AutomateMachine(IMachineGroup group, IMachine machine)
+    {
+        MachineState stateBefore = machine.GetState();
+        if (stateBefore is not (MachineState.Done or MachineState.Empty))
+            return;
+
+        Stopwatch stopwatch = Stopwatch.StartNew();
+
+        if (stateBefore is MachineState.Done)
+            group.TryPushMachineOutput(machine);
+
+        if (machine.GetState() is MachineState.Empty)
+            group.TryFeedMachineInput(machine);
+
+        AutomationPerfTracker.RecordFlaggedBatch(stopwatch.Elapsed.TotalMilliseconds);
+    }
+
+    /// <summary>
+    /// Schedule an independent, separately-delayed <see cref="AutomateMachine"/> for every machine that's
+    /// CURRENTLY empty in a location's active groups — used by <see cref="OnChestInventoryChanged"/>/
+    /// <see cref="OnMenuChanged"/> instead of one shared pass covering the whole location, so several
+    /// machines fed by the same chest restock each get their own independent pacing rather than all
+    /// resolving in one synchronized burst. The candidate list is captured now (at the moment the chest
+    /// changed), but each individual feed re-validates the machine's state itself right before acting, so a
+    /// machine that's no longer empty by the time its own delay elapses is safely skipped instead of
+    /// double-fed.
+    /// </summary>
+    /// <param name="location">The location whose active groups to scan for empty machines.</param>
+    /// <param name="originTile">MOD: added. The specific tile whose container just changed, if known — narrows the scan to just the group(s) covering that tile instead of every active group in the location (see <see cref="OnChestInventoryChanged"/>'s own remarks for why that narrowing matters). Left <c>null</c> for <see cref="OnMenuChanged"/>'s locked-container retry, which no longer has a specific tile to narrow to by the time it fires — that path keeps scanning the whole location as a broader backstop.</param>
+    private void ScheduleInputFeedsFor(GameLocation location, Vector2? originTile = null)
+    {
+        IEnumerable<IMachineGroup> groups = originTile.HasValue
+            ? this.MachineManager.GetActiveMachineGroupsFor(location, originTile.Value)
+            : this.MachineManager.GetActiveMachineGroupsFor(location);
+
+        foreach (IMachineGroup group in groups)
+        {
+            foreach (IMachine machine in group.Machines)
+            {
+                if (machine.GetState() != MachineState.Empty)
+                    continue;
+
+                this.RunOrScheduleDelayedPass(() => this.AutomateMachine(group, machine), this.Config.EventBasedPushPullDelaySeconds);
+            }
+        }
+    }
+
+    /// <summary>
+    /// MOD: added. Give one specific group's currently Done/Empty machines a one-time proactive automation
+    /// check — used right after that group gains a new member (see
+    /// <see cref="MachineManager.TakeGroupsWithNewMembers"/>), since neither a newly-joined container nor a
+    /// newly-joined machine fires any of event-based mode's other triggers on its own: a container coming
+    /// into range doesn't fire <see cref="OnChestInventoryChanged"/> (nothing was stored/removed, it just
+    /// became reachable), and a machine joining isn't itself "becoming ready" for
+    /// <see cref="Patches.MachineReadyPatches"/> to notice. Checks BOTH states (not just Empty, unlike
+    /// <see cref="ScheduleInputFeedsFor"/>) since a machine could already have been sitting Done with
+    /// nowhere to push before the new member arrived. Schedules each machine independently, with the same
+    /// <see cref="ModConfig.EventBasedPushPullDelaySeconds"/> pacing as every other event-based trigger,
+    /// rather than automating the whole group synchronously in one call.
+    /// </summary>
+    /// <param name="group">The group to check.</param>
+    private void ScheduleGroupCheck(IMachineGroup group)
+    {
+        foreach (IMachine machine in group.Machines)
+        {
+            if (machine.GetState() is MachineState.Done or MachineState.Empty)
+                this.RunOrScheduleDelayedPass(() => this.AutomateMachine(group, machine), this.Config.EventBasedPushPullDelaySeconds);
+        }
+    }
+
+    /// <summary>
+    /// Run an automation pass now, or after <paramref name="delaySeconds"/> real-time seconds if that's
+    /// greater than zero. <paramref name="action"/> is evaluated lazily at whichever point it actually runs
+    /// — for a delayed pass, that means anything it reads (e.g. a fresh <see cref="MachineManager.GetActiveMachineGroupsFor"/>
+    /// lookup) reflects state as of the delay elapsing, not the moment it was originally scheduled.
+    /// </summary>
+    /// <param name="action">The automation pass to run.</param>
+    /// <param name="delaySeconds">How many real-time seconds to wait before running <paramref name="action"/> — 0 or less runs it immediately instead of queuing it.</param>
+    private void RunOrScheduleDelayedPass(Action action, float delaySeconds)
+    {
+        if (delaySeconds <= 0)
+        {
+            action();
+            return;
+        }
+
+        double curTimeMs = this.UnpausedElapsedMs;
+        double scheduledTimeMs = curTimeMs + delaySeconds * 1000;
+        this.PendingDelayedPasses.Add((curTimeMs, scheduledTimeMs, action));
+    }
+
+    /// <summary>MOD: added. Run any <see cref="PendingDelayedPasses"/> whose delay has elapsed — meant to be called once per <see cref="OnUpdateTicked"/>.</summary>
+    private void RunDuePendingPasses()
+    {
+        if (this.PendingDelayedPasses.Count == 0)
+            return;
+
+        double curTimeMs = this.UnpausedElapsedMs;
+        for (int i = this.PendingDelayedPasses.Count - 1; i >= 0; i--)
+        {
+            (double createdAtMs, double scheduledTimeMs, Action action) = this.PendingDelayedPasses[i];
+            if (curTimeMs < scheduledTimeMs)
+                continue;
+
+            this.PendingDelayedPasses.RemoveAt(i);
+
+            // MOD: added — see LastActualDelayMs's own remarks; lets the perf overlay show the real
+            // measured delay instead of going on feel alone.
+            this.LastActualDelayMs = curTimeMs - createdAtMs;
+
+            try
+            {
+                action();
+            }
+            catch (Exception ex)
+            {
+                this.HandleError(ex, "processing a delayed automation pass");
+            }
+        }
+    }
+
     /// <inheritdoc cref="IDisplayEvents.RenderedWorld" />
     private void OnRenderedWorld(object? sender, RenderedWorldEventArgs e)
     {
@@ -577,6 +986,67 @@ internal class ModEntry : Mod
         }
     }
 
+    /// <summary>
+    /// MOD: added. Build the automation performance summary lines, shared by the overlay (see
+    /// <see cref="OnRenderedHud"/>) and the log dump written when recording stops (see <see cref="OnButtonsChanged"/>)
+    /// so the two can't drift out of sync.
+    /// </summary>
+    private string[] BuildPerfSummaryLines()
+    {
+        List<string> lines =
+        [
+            $"Automate performance ({(this.Config.UseEventBasedAutomation ? "event-based" : "interval")})",
+            $"Recording: {AutomationPerfTracker.Elapsed:mm\\:ss}",
+            $"Full scans: {AutomationPerfTracker.FullScans} (avg {AutomationPerfTracker.FullScanAverageMs:0.###}ms, total {AutomationPerfTracker.FullScanTotalMilliseconds:0.##}ms)",
+            $"Flagged-machine batches: {AutomationPerfTracker.FlaggedBatches} (avg {AutomationPerfTracker.FlaggedBatchAverageMs:0.###}ms, total {AutomationPerfTracker.FlaggedBatchTotalMilliseconds:0.##}ms)",
+            $"Machines flagged by minutesElapsed: {AutomationPerfTracker.FlaggedMachines} (batched into the flagged-machine batches above)",
+            $"Total: {AutomationPerfTracker.TotalPasses} passes, {AutomationPerfTracker.TotalMilliseconds:0.##}ms ({AutomationPerfTracker.PercentOfElapsedTime:0.###}% of elapsed time)"
+        ];
+
+        // MOD: added — shows the REAL measured delay of the most recent fired pass next to the
+        // configured target, so it can be verified against actual timing instead of going on feel alone.
+        if (this.Config.EventBasedPushPullDelaySeconds > 0)
+        {
+            string actual = this.LastActualDelayMs is { } lastActualDelayMs ? $"{lastActualDelayMs:0}ms" : "none fired yet";
+            lines.Add($"Last push/pull delay: {actual} (configured {this.Config.EventBasedPushPullDelaySeconds * 1000:0}ms)");
+        }
+
+        return [.. lines];
+    }
+
+    /// <inheritdoc cref="IDisplayEvents.RenderedHud" />
+    private void OnRenderedHud(object? sender, RenderedHudEventArgs e)
+    {
+        // MOD: added — draws the automation performance overlay (see AutomationPerfTracker's own
+        // remarks) while toggled on; a temporary diagnostic aid, not meant to ship long-term.
+        if (!this.ShowPerfOverlay)
+            return;
+
+        try
+        {
+            SpriteBatch b = e.SpriteBatch;
+            SpriteFont font = Game1.smallFont;
+
+            string[] lines = this.BuildPerfSummaryLines();
+
+            Vector2 position = new(16, 16);
+            float lineHeight = font.MeasureString("A").Y + 2;
+            float maxWidth = 0;
+            foreach (string line in lines)
+                maxWidth = Math.Max(maxWidth, font.MeasureString(line).X);
+
+            Rectangle background = new((int)position.X - 8, (int)position.Y - 8, (int)maxWidth + 16, (int)(lineHeight * lines.Length) + 16);
+            b.Draw(Game1.staminaRect, background, Color.Black * 0.75f);
+
+            for (int i = 0; i < lines.Length; i++)
+                b.DrawString(font, lines[i], position + new Vector2(0, lineHeight * i), Color.White);
+        }
+        catch (Exception ex)
+        {
+            this.HandleError(ex, "drawing automation performance overlay");
+        }
+    }
+
     /// <inheritdoc cref="IInputEvents.ButtonsChanged" />
     private void OnButtonsChanged(object? sender, ButtonsChangedEventArgs e)
     {
@@ -592,6 +1062,28 @@ internal class ModEntry : Mod
                     this.DisableOverlay();
                 else
                     this.EnableOverlay();
+            }
+
+            // MOD: added — toggle the automation performance overlay (see AutomationPerfTracker's own
+            // remarks). Starting/stopping the recording alongside the display means every time you turn
+            // it on, you get a clean window to compare against a previous run, rather than a lifetime total.
+            if (Context.IsPlayerFree && this.Keys.TogglePerformanceOverlay.JustPressed())
+            {
+                if (this.ShowPerfOverlay)
+                {
+                    this.ShowPerfOverlay = false;
+                    AutomationPerfTracker.StopRecording();
+
+                    // MOD: added — dump the same summary shown on the overlay to the log, so it's easy to
+                    // copy/paste or compare against a previous run without having to screenshot the HUD.
+                    this.Monitor.Log(string.Join(Environment.NewLine, this.BuildPerfSummaryLines()), LogLevel.Info);
+                }
+                else
+                {
+                    this.ShowPerfOverlay = true;
+                    this.LastActualDelayMs = null; // MOD: added — clean slate for the new recording window, same as AutomationPerfTracker's own counts
+                    AutomationPerfTracker.StartRecording();
+                }
             }
         }
         catch (Exception ex)
@@ -637,6 +1129,15 @@ internal class ModEntry : Mod
     public void ReloadConfig()
     {
         this.AutomateCountdown = Math.Min(this.AutomateCountdown, this.Config.AutomationInterval);
+        this.RunAutomationPassOnNextTick = true; // MOD: added — event-based mode's equivalent instant pass (e.g. right after toggling UseEventBasedAutomation itself)
+
+        // MOD: added — every branch below calls MachineManager.Clear()/Reset(), discarding every
+        // group/machine instance currently in use — see ResetDelayQueueState's own remarks for why this
+        // mod's own delay/queue bookkeeping needs clearing right alongside that. This is very likely the
+        // MOST frequently hit of the three places this reset is needed, since it fires on every single
+        // Generic Mod Config Menu save — including every time EventBasedPushPullDelaySeconds itself gets
+        // tuned while testing.
+        this.ResetDelayQueueState();
 
         if (!this.Config.Enabled)
         {
@@ -651,6 +1152,19 @@ internal class ModEntry : Mod
             this.MachineManager.Reset();
             this.ResetOverlayIfShown();
         }
+    }
+
+    /// <summary>
+    /// MOD: added. Clear all of this mod's own <see cref="PendingDelayedPasses"/> — meant to be called
+    /// anywhere <see cref="MachineManager.Reset"/>/<see cref="MachineManager.Clear"/> also runs
+    /// (<see cref="OnDayStarted"/>, <see cref="OnSaveLoaded"/>, <see cref="ReloadConfig"/>), since those
+    /// discard every <see cref="IMachineGroup"/>/<see cref="IMachine"/> instance currently in use. Without
+    /// this, a leftover scheduled pass would eventually fire against outdated group/machine state instead of
+    /// the fresh instances built afterward.
+    /// </summary>
+    private void ResetDelayQueueState()
+    {
+        this.PendingDelayedPasses.Clear();
     }
 
     /// <summary>Log warnings if custom-machine frameworks are installed without their automation component.</summary>
@@ -721,7 +1235,9 @@ internal class ModEntry : Mod
             inputHelper: this.Helper.Input,
             reflection: this.Helper.Reflection,
             locationKey: this.MachineManager.Factory.GetLocationKey(Game1.currentLocation),
-            machineData: this.MachineManager.GetMachineDataFor(Game1.currentLocation)
+            machineData: this.MachineManager.GetMachineDataFor(Game1.currentLocation),
+            powerSilo: this.MachineManager.Factory.PowerSiloSystem,
+            powerCoilSourceNames: this.Config.PowerSourceNames
         );
     }
 

@@ -1,0 +1,11 @@
+{
+    "Changes": [
+        {
+            "Action": "EditData",
+            "Target": "Data/Events/Mine",
+            "Entries": {
+                "Kree_CM_UOHGR4IM/Friendship Dwarf 1": "none/18 13/farmer 18 13 0 Dwarf 27 8 1 Henchman 31 8 3/unskippable/addObject 29 7 luisMint.AutomatePowerPipes_PoweredChest/globalFadeToClear 0.007 true/move farmer 0 -4 0/pause 500/faceDirection farmer 1/emote farmer 8/playSound batScreech/jump Henchman 14/emote Dwarf 8/emote Henchman 16/jump Dwarf 8/playSound stairsdown/speed Henchman 5/move Henchman 15 0 2 true/pause 400/emote Dwarf 12/playMusic EarthMine/pause 1100/faceDirection Dwarf 3/textAboveHead Dwarf \"Oh, It's you...\"/pause 1000/move Dwarf -2 0 3/speak Dwarf \"Farm human...\"/speak Dwarf \"There has been a lot of sensation underground lately. Others of my kind have made new advances reclaiming old dwarf technology\"/speak Dwarf \"Truthfully, it does not interest me in the slightest... \"/move Dwarf 0 -1 2/speak Dwarf \"...I was thinking someone like you could get more use of it than I ever could\"/speak Dwarf \"Go on, give it a closer look.\"/speed farmer 3/move farmer 0 -1 1/move farmer 9 0 1/pause 600/emote farmer 8/speak Dwarf \"It's a Powered Chest ...\"/pause 700/ignoreCollisions farmer/move farmer 1 0 1/speed farmer 1/pause 700/playSound grunt/emote farmer 16/message \"It's warm to the touch.\"/question chestQuestion \"#How does this work?#I'll take it off your hands\"/splitSpeak Dwarf \"It's the main component to all automation. It can move items to and from machines and chests using conduits.\"/splitSpeak Dwarf \"Also it in itself is a power source!\"/splitSpeak Dwarf \"I sell all the things that could help you get started, I even have a book that might explain things better.~I sell all the things that could help you get started, I even have a instructional book in case you want to know more.\"/itemAboveHead (BC)luisMint.AutomatePowerPipes_PoweredChest true/removeObject 29 7/pause 100/message \"\"/addItem (BC)luisMint.AutomatePowerPipes_PoweredChest/end"
+            }
+        }
+    ]
+}

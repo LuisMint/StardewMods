@@ -59,7 +59,7 @@ internal class SummaryCommand : BaseCommand
 
         // settings
         report.AppendLine("Settings:\n------------------------------");
-        report.AppendLine($"   Automation interval: {config.AutomationInterval}");
+        report.AppendLine($"   Automation trigger: {(config.UseEventBasedAutomation ? "event-based" : $"every {config.AutomationInterval} ticks")}");
         if (config.Connectors.Any())
             report.AppendLine($"   Connectors: {string.Join(", ", from idOrName in config.Connectors orderby idOrName select $"'{idOrName}'")}");
 

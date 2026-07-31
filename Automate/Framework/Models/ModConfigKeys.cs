@@ -15,6 +15,9 @@ internal class ModConfigKeys
     /// <summary>The keys which toggle the automation overlay.</summary>
     public KeybindList ToggleOverlay { get; set; } = new(SButton.U);
 
+    /// <summary>MOD: added. The keys which toggle the automation performance overlay (see <see cref="AutomationPerfTracker"/>).</summary>
+    public KeybindList TogglePerformanceOverlay { get; set; } = new(SButton.P);
+
 
     /*********
     ** Public methods
@@ -27,5 +30,6 @@ internal class ModConfigKeys
     public void OnDeserialized(StreamingContext context)
     {
         this.ToggleOverlay ??= new KeybindList();
+        this.TogglePerformanceOverlay ??= new KeybindList();
     }
 }

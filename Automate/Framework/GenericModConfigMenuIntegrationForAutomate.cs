@@ -54,6 +54,21 @@ internal class GenericModConfigMenuIntegrationForAutomate : IGenericModConfigMen
                 get: config => config.Enabled,
                 set: (config, value) => config.Enabled = value
             )
+            .AddCheckbox(
+                name: I18n.Config_UseEventBasedAutomation_Name,
+                tooltip: I18n.Config_UseEventBasedAutomation_Desc,
+                get: config => config.UseEventBasedAutomation,
+                set: (config, value) => config.UseEventBasedAutomation = value
+            )
+            .AddNumberField(
+                name: I18n.Config_EventBasedPushPullDelaySeconds_Name,
+                tooltip: I18n.Config_EventBasedPushPullDelaySeconds_Desc,
+                get: config => config.EventBasedPushPullDelaySeconds,
+                set: (config, value) => config.EventBasedPushPullDelaySeconds = value,
+                min: 0f,
+                max: 2f,
+                interval: 0.05f
+            )
             .AddNumberField(
                 name: I18n.Config_AutomationInterval_Name,
                 tooltip: I18n.Config_AutomationInterval_Desc,

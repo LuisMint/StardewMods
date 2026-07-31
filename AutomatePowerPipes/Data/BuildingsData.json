@@ -20,7 +20,7 @@
                     "SortTileOffset": 0,
                     "CollisionMap": "XXXX\nXXXX\nXXXX",
                     "AdditionalPlacementTiles": null,
-                    "Builder": "Robin",
+                    "Builder": "Dwarf",
                     "BuildCondition": null,
                     "BuildDays": 2,
                     "BuildCost": 2000,

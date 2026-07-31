@@ -7,6 +7,7 @@ using Pathoschild.Stardew.Automate.Framework.Models;
 using Pathoschild.Stardew.Common;
 using StardewValley;
 using StardewValley.Buildings;
+using StardewValley.Extensions;
 
 namespace Pathoschild.Stardew.Automate.Framework.Patches;
 
@@ -65,6 +66,9 @@ internal static class PowerSiloCapPatches
     /// <summary>MOD: changed — how far PAST the target the rise overshoots at its peak, as a fraction of the total rise distance (e.g. 0.4 = overshoots 40% of the way again past the target before coming back). Toned down slightly from an earlier 0.6f, per feedback.</summary>
     private const float OvershootAmount = 0.1f;
 
+    /// <summary>MOD: added. The cap's light radius — per direct user request, "the strength of a lamppost". Matches vanilla's own generic <c>isLamp</c> light radius (see <see cref="SObject.checkForAction"/>'s decompiled source, the plain <c>lightSource = new LightSource(4, ..., 3f, ...)</c> branch used for lamp-flagged objects), rather than <see cref="PoweredChestPatches.LightRadius"/>'s much smaller radius.</summary>
+    private const float LampLightRadius = 2f;
+
     /// <summary>Get the <c>buildingType</c> ID(s) that count as a Power Silo.</summary>
     private static Func<HashSet<string>>? GetSiloBuildingNames;
 
@@ -83,6 +87,15 @@ internal static class PowerSiloCapPatches
     /// happens to get drawn in a given tick.
     /// </summary>
     private static readonly Dictionary<Building, (float Start, float Target, float ElapsedSeconds)> RiseState = new();
+
+    /// <summary>
+    /// MOD: added. Each known Power Silo's own light source (plus the location it's currently registered
+    /// in, since a torn-down <see cref="Building"/> can't reliably be asked for its own parent location
+    /// anymore) — created once per Silo the first time <see cref="Tick"/> sees it, then just repositioned
+    /// every tick afterward via <see cref="UpdateCapLight"/> to track the cap's own rise animation,
+    /// rather than recreating the <see cref="LightSource"/> (and re-registering it) from scratch each time.
+    /// </summary>
+    private static readonly Dictionary<Building, (LightSource Light, GameLocation Location)> CapLights = new();
 
     /// <summary>
     /// MOD: added. Whether the building CURRENTLY being drawn (i.e. between <see cref="Draw_Prefix"/>
@@ -153,6 +166,7 @@ internal static class PowerSiloCapPatches
             return;
 
         float deltaSeconds = (float)Game1.currentGameTime.ElapsedGameTime.TotalSeconds;
+        HashSet<Building> seenBuildings = new(); // MOD: added — tracks which Silos are still actually placed this tick, so CleanUpRemovedCapLights can tell a torn-down one from one that's just off-screen
 
         foreach (GameLocation location in CommonHelper.GetLocations())
         {
@@ -162,36 +176,55 @@ internal static class PowerSiloCapPatches
                     continue;
 
                 float target = PowerSiloCapPatches.GetTargetRiseTiles(building, powerSiloSystem);
+                (float Start, float Target, float ElapsedSeconds) state;
 
-                if (!PowerSiloCapPatches.RiseState.TryGetValue(building, out (float Start, float Target, float ElapsedSeconds) state))
+                if (!PowerSiloCapPatches.RiseState.TryGetValue(building, out state))
                 {
                     // MOD: a Silo seen for the first time (e.g. right after loading a save) snaps
                     // straight to its target — Start == Target means EvaluateRise always returns the
                     // target regardless of ElapsedSeconds, so nothing animates in from zero.
-                    PowerSiloCapPatches.RiseState[building] = (target, target, 0f);
-                    continue;
+                    state = (target, target, 0f);
+                    PowerSiloCapPatches.RiseState[building] = state;
                 }
-
-                if (Math.Abs(state.Target - target) > 0.001f)
+                else if (Math.Abs(state.Target - target) > 0.001f)
                 {
                     // MOD: the tier changed — restart the ease from wherever it CURRENTLY is (not the
                     // old start point), so a tier change mid-rise never causes a visual jump.
                     float currentValue = PowerSiloCapPatches.EvaluateRise(state);
-                    PowerSiloCapPatches.RiseState[building] = (currentValue, target, 0f);
+                    state = (currentValue, target, 0f);
+                    PowerSiloCapPatches.RiseState[building] = state;
                     PowerSiloCapPatches.SpawnUpgradeSmoke(location, building); // MOD: added — a one-time puff burst right as the rise toward the new tier kicks off
                 }
                 else
                 {
-                    PowerSiloCapPatches.RiseState[building] = (state.Start, state.Target, state.ElapsedSeconds + deltaSeconds);
+                    state = (state.Start, state.Target, state.ElapsedSeconds + deltaSeconds);
+                    PowerSiloCapPatches.RiseState[building] = state;
                 }
+
+                // MOD: added — per direct user request, a lamppost-strength light that moves with the
+                // cap's own rise animation (see UpdateCapLight's own remarks).
+                seenBuildings.Add(building);
+                PowerSiloCapPatches.UpdateCapLight(location, building, PowerSiloCapPatches.EvaluateRise(state));
             }
         }
+
+        PowerSiloCapPatches.CleanUpRemovedCapLights(seenBuildings);
     }
 
-    /// <summary>MOD: added. Clear all cached animation state — meant to be called on day start, mirroring <see cref="MachineManager.Reset"/>, so a Silo torn down (or a save reloaded) doesn't leave stale entries behind.</summary>
+    /// <summary>
+    /// MOD: changed. Clear all cached animation state — meant to be called on day start, mirroring
+    /// <see cref="MachineManager.Reset"/>, so a Silo torn down (or a save reloaded) doesn't leave stale
+    /// entries behind. Deliberately does NOT also call <see cref="GameLocation.removeLightSource"/> for
+    /// every tracked <see cref="CapLights"/> entry here — every Silo still actually standing gets
+    /// rediscovered on the very next <see cref="Tick"/> anyway, which re-registers its light under the
+    /// SAME deterministic ID (see <see cref="UpdateCapLight"/>), so any old registration is simply
+    /// overwritten a moment later. <see cref="CleanUpRemovedCapLights"/> is what handles a Silo that's
+    /// genuinely gone.
+    /// </summary>
     public static void Reset()
     {
         PowerSiloCapPatches.RiseState.Clear();
+        PowerSiloCapPatches.CapLights.Clear();
     }
 
     /// <summary>
@@ -227,6 +260,91 @@ internal static class PowerSiloCapPatches
             sprite.delayBeforeAnimationStart = i * 80;
 
             Game1.Multiplayer.broadcastSprites(location, sprite);
+        }
+    }
+
+    /// <summary>
+    /// MOD: added. Create (the first time a Silo is seen) or reposition (every tick after) a light source
+    /// that tracks the cap's own current rise animation — per direct user request, "the strength of a
+    /// lamppost" that "moves with the power silo top". Reuses <see cref="PowerCoilPatches.LightColor"/>
+    /// (the same hand-tuned tint every other power-related light in this mod already uses) at
+    /// <see cref="LampLightRadius"/>, rather than <see cref="PoweredChestPatches.LightRadius"/>'s much
+    /// smaller one — this is meant to actually light up the area around the Silo, not just glow softly
+    /// right at its own tile.
+    /// </summary>
+    /// <param name="location">The location containing the Silo.</param>
+    /// <param name="building">The Silo whose cap light to update.</param>
+    /// <param name="riseTiles">The cap's currently-animated rise height (see <see cref="EvaluateRise"/>), matching whatever <see cref="Draw_Postfix"/> is using to actually draw it this same tick.</param>
+    private static void UpdateCapLight(GameLocation location, Building building, float riseTiles)
+    {
+        // MOD: matches Draw_Postfix's own position math exactly, so the light always sits right on the
+        // (currently-rendered) cap, never lagging a tick behind or drifting off it during a rise/overshoot.
+        Texture2D capTexture = Game1.content.Load<Texture2D>(PowerSiloCapPatches.CapAssetName);
+        Vector2 drawPosition = new(building.tileX.Value * 64f, (building.tileY.Value + building.tilesHigh.Value) * 64f);
+        Vector2 capPosition = drawPosition + new Vector2(0f, -riseTiles * 64f - capTexture.Height * 4f);
+        Vector2 lightPosition = capPosition + new Vector2(capTexture.Width * 4f / 2f, capTexture.Height * 4f / 2f); // MOD: centered on the cap sprite itself, not its top-left draw anchor
+
+        if (PowerSiloCapPatches.CapLights.TryGetValue(building, out (LightSource Light, GameLocation Location) existing))
+        {
+            existing.Light.position.Value = lightPosition;
+
+            // MOD: added — a Silo can (rarely) change which location it's registered under without ever
+            // being torn down (e.g. moved via the carpenter menu's "move buildings" flow); re-register
+            // under the new location if so, rather than leaving the light glowing in the old one.
+            if (existing.Location != location)
+            {
+                existing.Location.removeLightSource(existing.Light.Id);
+                location.sharedLights.AddLight(existing.Light);
+                PowerSiloCapPatches.CapLights[building] = (existing.Light, location);
+            }
+
+            return;
+        }
+
+        // MOD: added — deterministic per-tile ID (matching the tile-based hashing vanilla's own object
+        // light sources already use), unique within a single location's own sharedLights, which is all
+        // that's required here.
+        string lightId = $"PowerSiloCap_{building.tileX.Value}_{building.tileY.Value}";
+        LightSource light = new(
+            id: lightId,
+            textureIndex: 4,
+            position: lightPosition,
+            radius: PowerSiloCapPatches.LampLightRadius,
+            color: PowerCoilPatches.LightColor,
+            lightContext: LightSource.LightContext.None,
+            playerID: 0L,
+            onlyLocation: location.NameOrUniqueName
+        );
+
+        location.sharedLights.AddLight(light);
+        PowerSiloCapPatches.CapLights[building] = (light, location);
+    }
+
+    /// <summary>
+    /// MOD: added. Remove the cap light for any Silo that's no longer actually placed anywhere (torn
+    /// down, or its location removed entirely) — <see cref="Reset"/> alone doesn't catch this mid-day,
+    /// since it only runs at day start.
+    /// </summary>
+    /// <param name="stillPresentBuildings">Every Silo <see cref="Tick"/> actually found this pass.</param>
+    private static void CleanUpRemovedCapLights(HashSet<Building> stillPresentBuildings)
+    {
+        if (PowerSiloCapPatches.CapLights.Count == 0)
+            return;
+
+        List<Building>? toRemove = null;
+        foreach ((Building building, (LightSource light, GameLocation location)) in PowerSiloCapPatches.CapLights)
+        {
+            if (stillPresentBuildings.Contains(building))
+                continue;
+
+            location.removeLightSource(light.Id);
+            (toRemove ??= new List<Building>()).Add(building);
+        }
+
+        if (toRemove != null)
+        {
+            foreach (Building building in toRemove)
+                PowerSiloCapPatches.CapLights.Remove(building);
         }
     }
 

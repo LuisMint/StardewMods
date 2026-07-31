@@ -83,6 +83,33 @@ internal class MachineManager
     /// <summary>MOD: added. The full tile footprint (entities + connectors) of every active automation group as of the last rebuild, keyed by location key — used to detect a group that stops being valid ENTIRELY (as opposed to just losing one member), so a "group broken" sound can be played exactly once for that event. See its use for how "the same group" is tracked across rebuilds despite <see cref="IMachineGroup"/> instances having no stable identity.</summary>
     private readonly Dictionary<string, List<HashSet<Vector2>>> PreviouslyActiveGroupTileSetsByLocation = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// MOD: added. Groups that gained at least one new machine/container member since the last rebuild —
+    /// reuses the exact same newly-joined detection the join-sparkle effect uses (see
+    /// <see cref="PreviouslyActiveEntityTilesByLocation"/>'s own remarks), queued here for
+    /// <see cref="TakeGroupsWithNewMembers"/> to drain. In event-based mode, nothing else notices a
+    /// membership change on its own: a container coming into range doesn't fire <c>ChestInventoryChanged</c>
+    /// (nothing was stored/removed, it just became reachable), and a machine joining isn't itself
+    /// "becoming ready." Without this, a newly-connected chest/machine just sat there doing nothing until
+    /// the player happened to open/edit some unrelated chest, or the periodic backstop scan eventually
+    /// caught it — reported directly by a user.
+    /// </summary>
+    private readonly List<IMachineGroup> GroupsWithNewMembers = new();
+
+    /// <summary>
+    /// MOD: added. Every currently-known machine, keyed by (location key, tile) — lets a Harmony patch
+    /// that only has a raw game object (e.g. <see cref="Patches.MachineReadyPatches"/>) look up exactly
+    /// which machine/group it belongs to, without scanning every machine in every group. Deliberately
+    /// keyed by position rather than by the machine's own underlying entity reference, since every
+    /// <see cref="IMachine"/> — including third-party ones — already has to provide <c>Location</c>/
+    /// <c>TileArea</c> via <see cref="IAutomatable"/>, so this covers every machine type automatically
+    /// with no interface changes needed anywhere.
+    /// </summary>
+    private readonly Dictionary<(string LocationKey, Vector2 Tile), (IMachineGroup Group, IMachine Machine)> MachineByLocationAndTile = new();
+
+    /// <summary>MOD: added. Every tile key currently indexed in <see cref="MachineByLocationAndTile"/> for a given location key — used to evict exactly that location's entries when its groups are reloaded/removed, the same way <see cref="LastKnownSignItems"/> etc. are evicted.</summary>
+    private readonly Dictionary<string, List<Vector2>> MachineTileKeysByLocation = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>MOD: added. The join sparkle's tint for a tile whose connection is pull-only (<see cref="ConnectorRole.ChestInputOnly"/> — the chest acts as a source, items are taken FROM it).</summary>
     private static readonly Color PullConnectionSparkleColor = Color.Red;
 
@@ -237,6 +264,69 @@ internal class MachineManager
             yield return group;
     }
 
+    /// <summary>
+    /// MOD: added. Get the same active machine groups <see cref="GetActiveMachineGroups"/> would, but
+    /// narrowed to a specific location — used to scope an automation pass triggered by a
+    /// location-specific event (e.g. <c>ChestInventoryChanged</c>) to just the affected location, instead
+    /// of rescanning every location in the save. The Junimo aggregate group is still included
+    /// unconditionally (same as <see cref="GetActiveMachineGroups"/>) since it can span multiple
+    /// locations by design — there's no way to narrow it to just one without breaking that.
+    /// </summary>
+    /// <param name="location">The location whose machine groups to fetch.</param>
+    public IEnumerable<IMachineGroup> GetActiveMachineGroupsFor(GameLocation location)
+    {
+        if (this.JunimoMachineGroup.HasInternalAutomation)
+            yield return this.JunimoMachineGroup;
+
+        string locationKey = this.Factory.GetLocationKey(location);
+        foreach (IMachineGroup group in this.ActiveMachineGroups)
+        {
+            if (group.LocationKey == locationKey)
+                yield return group;
+        }
+    }
+
+    /// <summary>
+    /// MOD: added. Get the same active machine groups <see cref="GetActiveMachineGroupsFor(GameLocation)"/>
+    /// would, but narrowed further to only the group(s) that actually cover a specific tile — used to
+    /// scope an automation pass triggered by a SPECIFIC container's inventory change (e.g.
+    /// <c>ChestInventoryChanged</c>) to just the group(s) that container actually belongs to, instead of
+    /// every group in the location. Without this, a container that's ALWAYS considered "empty" for
+    /// scheduling purposes (see <see cref="Machines.Objects.PoweredChestMachine.GetState"/>'s own remarks)
+    /// gets re-probed on EVERY chest change anywhere in the location, not just changes to containers it's
+    /// actually connected to — real wasted work scheduling/queuing an action for it that's almost always
+    /// going to be a no-op.
+    /// </summary>
+    /// <param name="location">The location whose machine groups to fetch.</param>
+    /// <param name="tile">The tile the changed container occupies.</param>
+    public IEnumerable<IMachineGroup> GetActiveMachineGroupsFor(GameLocation location, Vector2 tile)
+    {
+        string locationKey = this.Factory.GetLocationKey(location);
+        foreach (IMachineGroup group in this.GetActiveMachineGroupsFor(location))
+        {
+            if (group.GetTiles(locationKey).Contains(tile))
+                yield return group;
+        }
+    }
+
+    /// <summary>
+    /// MOD: added. Get and clear every group that's gained at least one new machine/container member since
+    /// the last call — see <see cref="GroupsWithNewMembers"/>'s own remarks for why event-based mode needs
+    /// this. Meant to be drained once per tick (see <c>ModEntry.OnUpdateTicked</c>) right after
+    /// <see cref="ReloadQueuedLocations"/>, regardless of automation mode, so this can't grow unbounded —
+    /// only event-based mode needs to actually act on the result, since interval mode's own periodic full
+    /// scan already picks up a newly-joined member on its own.
+    /// </summary>
+    public IReadOnlyList<IMachineGroup> TakeGroupsWithNewMembers()
+    {
+        if (this.GroupsWithNewMembers.Count == 0)
+            return Array.Empty<IMachineGroup>();
+
+        IMachineGroup[] result = [.. this.GroupsWithNewMembers];
+        this.GroupsWithNewMembers.Clear();
+        return result;
+    }
+
     /// <summary>Get the active and disabled machine groups in a specific location for the API.</summary>
     /// <param name="location">The location whose machine groups to fetch.</param>
     public IEnumerable<IMachineGroup> GetForApi(GameLocation location)
@@ -296,6 +386,25 @@ internal class MachineManager
     public GameLocation? GetLocationByKey(string locationKey)
     {
         return this.LocationsByKey.GetValueOrDefault(locationKey);
+    }
+
+    /// <summary>MOD: added. Get the machine (and its group) at a given location/tile, if any is currently tracked there — see <see cref="MachineByLocationAndTile"/>'s own remarks.</summary>
+    /// <param name="locationKey">The location key, as formatted by <see cref="MachineGroupFactory.GetLocationKey"/>.</param>
+    /// <param name="tile">The tile to check.</param>
+    /// <param name="group">The machine's group, if found.</param>
+    /// <param name="machine">The machine, if found.</param>
+    public bool TryGetMachineAt(string locationKey, Vector2 tile, out IMachineGroup group, out IMachine machine)
+    {
+        if (this.MachineByLocationAndTile.TryGetValue((locationKey, tile), out (IMachineGroup Group, IMachine Machine) entry))
+        {
+            group = entry.Group;
+            machine = entry.Machine;
+            return true;
+        }
+
+        group = null!;
+        machine = null!;
+        return false;
     }
 
     /****
@@ -476,6 +585,18 @@ internal class MachineManager
             foreach (string locationKey in locationKeys)
                 this.LocationsByKey.Remove(locationKey);
 
+            // MOD: added — drop stale location+tile machine index entries for locations being
+            // reloaded/removed; they'll be reseeded fresh below for anything still active.
+            foreach (string locationKey in locationKeys)
+            {
+                if (this.MachineTileKeysByLocation.TryGetValue(locationKey, out List<Vector2>? tiles))
+                {
+                    foreach (Vector2 tile in tiles)
+                        this.MachineByLocationAndTile.Remove((locationKey, tile));
+                    this.MachineTileKeysByLocation.Remove(locationKey);
+                }
+            }
+
             // MOD: added — drop stale sign snapshot entries for locations being reloaded/removed;
             // they'll be reseeded fresh below for anything still active.
             foreach ((string LocationKey, Vector2 Tile) key in this.LastKnownSignItems.Keys.Where(k => locationKeys.Contains(k.LocationKey)).ToArray())
@@ -538,6 +659,27 @@ internal class MachineManager
 
                 else
                     active.Add(group);
+            }
+
+            // MOD: added — (re)build the location+tile machine index for this location (see
+            // MachineByLocationAndTile's own remarks) — includes disabled groups too, deliberately:
+            // a machine in a currently-disabled group shouldn't be silently dropped from the index,
+            // since the group's own Automate() gating (locked containers, pause expiries) already
+            // handles whether it's actually safe to process.
+            {
+                List<Vector2> tileKeys = [];
+                foreach (IMachineGroup group in active.Concat(disabled).Concat(junimo))
+                {
+                    foreach (IMachine machine in group.Machines)
+                    {
+                        foreach (Vector2 tile in machine.TileArea.GetTiles())
+                        {
+                            this.MachineByLocationAndTile[(locationKey, tile)] = (group, machine);
+                            tileKeys.Add(tile);
+                        }
+                    }
+                }
+                this.MachineTileKeysByLocation[locationKey] = tileKeys;
             }
 
             // MOD: added — show a small sparkle flash (the same star used for the geode-cracking
@@ -611,6 +753,7 @@ internal class MachineManager
                     if (groupHasNewJoin)
                     {
                         anyNewJoin = true;
+                        this.GroupsWithNewMembers.Add(group); // MOD: added — see TakeGroupsWithNewMembers's own remarks
                         foreach ((Vector2 connectorTile, ConnectorRole role) in connectorRoles)
                             AssignSparkleColor(connectorTile, MachineManager.GetConnectionSparkleColor(role));
                     }

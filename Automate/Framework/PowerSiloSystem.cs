@@ -86,6 +86,16 @@ internal class PowerSiloSystem
     /// </summary>
     internal const string CoilPoweredModDataKey = "luisMint.AutomatePowerPipes/CoilPowered";
 
+    /// <summary>
+    /// MOD: added. The <see cref="SObject.modData"/> key storing a Power Coil's own 1-based rank in the
+    /// oldest-first ordering used by <see cref="RefreshCoilAllowance"/> — lets a caller show e.g. "9/8"
+    /// vs "3/8" for two different coils under the same capacity, so it's clear which one would turn on
+    /// next if the grid's capacity increased by one. Missing entirely (e.g. a coil placed before this
+    /// mechanic existed, or before the first <see cref="RefreshCoilAllowance"/> call) means its rank
+    /// isn't known yet — see <see cref="GetCoilRank"/>.
+    /// </summary>
+    internal const string CoilRankModDataKey = "luisMint.AutomatePowerPipes/CoilRank";
+
 
     /*********
     ** Accessors
@@ -234,13 +244,21 @@ internal class PowerSiloSystem
     /// saves aren't retroactively broken. Only meant to be called on an actual trigger — see this
     /// class's own remarks for the full list.
     /// </summary>
-    public void RefreshCoilAllowance()
+    /// <returns>
+    /// MOD: added. The locations containing a coil whose powered/unpowered state actually FLIPPED as a
+    /// result of this call — a re-ranking can affect a completely different location than the one that
+    /// triggered the refresh (e.g. pushing total coil count over capacity bumps whichever coil is
+    /// youngest, wherever it happens to be), so callers use this to requeue only the locations that
+    /// genuinely need their machine groups/powered-tile data recomputed, instead of every location in the
+    /// save (confirmed, via a real report, to cause a noticeable lag spike on saves with many locations).
+    /// </returns>
+    public IReadOnlySet<GameLocation> RefreshCoilAllowance()
     {
         HashSet<string> sourceNames = this.GetSourceNames();
         bool enabled = this.IsEnabled;
         int capacity = enabled ? this.GetTotalCapacity() : int.MaxValue;
 
-        List<(SObject Coil, long PlacementOrder)> coils = [];
+        List<(SObject Coil, GameLocation Location, long PlacementOrder)> coils = [];
         foreach (GameLocation location in CommonHelper.GetLocations())
         {
             foreach (SObject obj in location.Objects.Values)
@@ -252,11 +270,13 @@ internal class PowerSiloSystem
                     ? parsed
                     : long.MinValue;
 
-                coils.Add((obj, placementOrder));
+                coils.Add((obj, location, placementOrder));
             }
         }
 
         coils.Sort((a, b) => a.PlacementOrder.CompareTo(b.PlacementOrder));
+
+        HashSet<GameLocation> changedLocations = new();
         for (int i = 0; i < coils.Count; i++)
         {
             // MOD: fixed — every reader compares against the literal lowercase "false", but
@@ -264,8 +284,31 @@ internal class PowerSiloSystem
             // "False" never actually compared equal to "false", so every coil silently read back as
             // powered regardless of capacity. Writing the literal lowercase string directly avoids the
             // whole class of case-sensitivity bugs instead of just patching this one spot.
-            coils[i].Coil.modData[PowerSiloSystem.CoilPoweredModDataKey] = i < capacity ? "true" : "false";
+            string newValue = i < capacity ? "true" : "false";
+
+            // MOD: added — same "missing or not-false = powered" convention PowerSystem.GetPoweredTiles
+            // itself uses, so a coil that's never been stamped before (e.g. this is the very first
+            // refresh) is correctly treated as unchanged rather than a spurious flip.
+            bool wasPowered = !coils[i].Coil.modData.TryGetValue(PowerSiloSystem.CoilPoweredModDataKey, out string? oldValue) || oldValue != "false";
+            bool isPowered = newValue != "false";
+
+            coils[i].Coil.modData[PowerSiloSystem.CoilPoweredModDataKey] = newValue;
+            coils[i].Coil.modData[PowerSiloSystem.CoilRankModDataKey] = (i + 1).ToString();
+
+            if (wasPowered != isPowered)
+                changedLocations.Add(coils[i].Location);
         }
+
+        return changedLocations;
+    }
+
+    /// <summary>Get a Power Coil's own 1-based rank in the oldest-first ordering (see <see cref="RefreshCoilAllowance"/>), or <c>null</c> if it hasn't been ranked yet (e.g. before the first refresh since this mechanic was added).</summary>
+    /// <param name="coil">The Power Coil object.</param>
+    public int? GetCoilRank(SObject coil)
+    {
+        return coil.modData.TryGetValue(PowerSiloSystem.CoilRankModDataKey, out string? raw) && int.TryParse(raw, out int rank)
+            ? rank
+            : null;
     }
 
     /// <summary>

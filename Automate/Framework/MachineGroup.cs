@@ -408,6 +408,107 @@ internal class MachineGroup : IMachineGroup
         }
     }
 
+    /// <inheritdoc />
+    /// <remarks>
+    /// MOD: added/changed. Mirrors <see cref="Automate"/>'s per-machine output body rather than sharing a
+    /// single extracted method with it (the group-wide loop has its own <c>outputReady</c>/<c>inputReady</c>
+    /// batching context this doesn't need), but reuses the exact same private helpers/state
+    /// (<see cref="TryPushOutput"/>, <see cref="OnMachineCrashed"/>, <see cref="MachinePauseExpiries"/>,
+    /// <see cref="OutputPauseExpiries"/>) so a machine handled this way is throttled/paused identically to
+    /// one found by the full scan.
+    ///
+    /// Deliberately does NOT chain an immediate re-feed when the machine ends up <see cref="MachineState.Empty"/>
+    /// afterward (an earlier version of this method did) — see <see cref="TryFeedMachineInput"/>'s own
+    /// remarks for why feeding needs to be its own separately-scheduled event instead.
+    /// </remarks>
+    /// <param name="machine">The machine to push output from.</param>
+    /// <returns>Whether the machine ended up <see cref="MachineState.Empty"/> as a result (i.e. ready for new input).</returns>
+    public bool TryPushMachineOutput(IMachine machine)
+    {
+        IStorage storage = this.StorageManager;
+        if (storage.HasLockedContainers() || this.MachinePauseExpiries.ContainsKey(machine))
+            return false;
+
+        // still call the real GetState() rather than trusting the raw vanilla flag that triggered this
+        // call — some machine types have extra state logic beyond heldObject/readyForHarvest (e.g.
+        // DataBasedObjectMachine's incubator special case, which defers Done until the egg hatches)
+        if (machine.GetState() != MachineState.Done)
+            return false;
+
+        double curTime = Game1.currentGameTime.TotalGameTime.TotalMilliseconds;
+        ITrackedStack? output = null;
+        try
+        {
+            output = machine.GetOutput();
+            if (output is null)
+                return machine.GetState() is MachineState.Empty;
+
+            string outputKey = $"{output.Type}:{output.Sample.ParentSheetIndex}";
+            if (this.OutputPauseExpiries.ContainsKey(outputKey))
+                return false;
+
+            if (this.TryPushOutput(machine, storage, output))
+                return machine.GetState() is MachineState.Empty;
+
+            this.OutputPauseExpiries[outputKey] = curTime + this.OutputPauseMilliseconds;
+            return false;
+        }
+        catch (Exception ex)
+        {
+            string action = output == null
+                ? "retrieving its output"
+                : $"storing its output item {output.Sample.QualifiedItemId} ('{output.Sample.Name}')";
+            this.OnMachineCrashed(machine, action, curTime, ex);
+            return false;
+        }
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// MOD: added. The input-side counterpart to <see cref="TryPushMachineOutput"/> — split into its own
+    /// method (rather than an immediate chained call right after a successful push, as an earlier version
+    /// of this class did) specifically so feeding a machine can be scheduled as its OWN independent,
+    /// separately-delayed event. Confirmed, via direct user feedback, that chaining the two together
+    /// instantly defeated the point of <see cref="Models.ModConfig.EventBasedPushPullDelaySeconds"/>: a
+    /// push immediately followed by an undelayed pull looked identical to one instantaneous action instead
+    /// of two independently-paced ones.
+    ///
+    /// MOD: fixed — now returns <see cref="IMachine.SetInput"/>'s own result instead of discarding it. A
+    /// caller inferring "did this do anything" by comparing <see cref="IMachine.GetState"/> before and after
+    /// would silently misclassify every real action by a <see cref="IChestLikeMachine"/> (i.e. a
+    /// <see cref="Machines.Objects.PoweredChestMachine"/>) as a no-op — its <c>GetState</c> is hardcoded to
+    /// always report <see cref="MachineState.Empty"/>, so the before/after states are always equal even when
+    /// <see cref="IMachine.SetInput"/> genuinely moved items. Returning the real result directly avoids that
+    /// trap for any caller that needs to know whether a commit actually happened.
+    /// </remarks>
+    /// <param name="machine">The machine to feed.</param>
+    public bool TryFeedMachineInput(IMachine machine)
+    {
+        IStorage storage = this.StorageManager;
+        if (storage.HasLockedContainers() || this.MachinePauseExpiries.ContainsKey(machine))
+            return false;
+
+        if (machine.GetState() != MachineState.Empty)
+            return false;
+
+        // MOD: added — same "power-required machine out of power range" gate Automate()'s own input loop
+        // applies (see its own remarks); without this check, a power-starved machine could get fed here,
+        // bypassing the power requirement entirely.
+        if (this.PowerStarvedTiles.Count > 0 && machine.TileArea.GetTiles().Any(this.PowerStarvedTiles.Contains))
+            return false;
+
+        double curTime = Game1.currentGameTime.TotalGameTime.TotalMilliseconds;
+        try
+        {
+            return machine.SetInput(storage);
+        }
+        catch (Exception ex)
+        {
+            this.OnMachineCrashed(machine, "setting its input", curTime, ex);
+            return false;
+        }
+    }
+
 
     /*********
     ** Private methods

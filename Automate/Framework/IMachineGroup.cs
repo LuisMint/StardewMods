@@ -45,6 +45,30 @@ internal interface IMachineGroup
     /// <summary>Automate the machines inside the group.</summary>
     void Automate();
 
+    /// <summary>
+    /// MOD: added. Try to push a single machine's output into this group's storage, without touching any
+    /// other machine in the group — see <see cref="Patches.MachineReadyPatches"/>'s own remarks for why
+    /// each machine is handled independently rather than as part of a shared batch.
+    /// </summary>
+    /// <param name="machine">The machine to push output from — must already belong to this group.</param>
+    /// <returns>Whether the machine ended up empty (ready for new input) as a result.</returns>
+    bool TryPushMachineOutput(IMachine machine);
+
+    /// <summary>
+    /// MOD: added. Try to feed a single machine fresh input from this group's storage, without touching
+    /// any other machine in the group — kept separate from <see cref="TryPushMachineOutput"/> so pushing
+    /// and feeding can each be scheduled with their own independent delay (see <see cref="ModEntry.RunOrScheduleDelayedPass"/>)
+    /// instead of one instantly chaining into the other.
+    /// </summary>
+    /// <param name="machine">The machine to feed — must already belong to this group.</param>
+    /// <returns>Whether the machine's input was actually changed as a result. MOD: this is the caller's
+    /// only reliable way to know whether feeding actually did anything — for a normal machine, comparing
+    /// <see cref="IMachine.GetState"/> before/after would give the same answer, but that comparison is
+    /// always a false negative for a <see cref="IChestLikeMachine"/> like <see cref="Machines.Objects.PoweredChestMachine"/>,
+    /// whose <c>GetState</c> is hardcoded to always report <see cref="MachineState.Empty"/> regardless of
+    /// what its own <see cref="IMachine.SetInput"/> call just did.</returns>
+    bool TryFeedMachineInput(IMachine machine);
+
     /// <summary>Get the tiles covered by this machine group.</summary>
     /// <param name="locationKey">The location key for which to get tiles.</param>
     IReadOnlySet<Vector2> GetTiles(string locationKey);
