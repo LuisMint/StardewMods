@@ -10,12 +10,20 @@ namespace Pathoschild.Stardew.Automate.Framework;
 /// <list type="bullet">
 /// <item><b>Full scans</b> — one whole-group <see cref="IMachineGroup.Automate"/> call from
 /// <c>ModEntry.TryRunAutomationPass</c> (interval mode's entire polling mechanism, event-based mode's rare
-/// periodic backstop, and the one-shot pass after a day starts or the config changes).</item>
+/// periodic backstop, and the one-shot pass after a day starts or the config changes) — but ONLY while
+/// <see cref="Models.ModConfig.ActionDelaySeconds"/> is 0. Once it's greater than zero, that same bulk
+/// trigger stops calling <see cref="IMachineGroup.Automate"/> directly and instead queues each ready/empty
+/// machine into its group's own FIFO queue (see <c>ModEntry.RunGroupBatch</c>, below), so this bucket goes
+/// quiet and the flagged-machine batches bucket picks up everything instead.</item>
 /// <item><b>Flagged-machine batches</b> — despite the name (kept for continuity with this metric's
-/// history), this covers every individual <c>ModEntry.AutomateMachine</c> call, regardless of which
-/// trigger found the machine (<see cref="Patches.MachineReadyPatches"/> reporting it ready, a chest restock
-/// making it feedable, or a newly-joined group): pushes its output if Done, AND feeds it fresh input if
-/// Empty, after its own <see cref="Models.ModConfig.EventBasedPushPullDelaySeconds"/> cosmetic delay.</item>
+/// history), this covers every individual <c>ModEntry.AutomateMachine</c> call made while draining a
+/// group's queue (see <c>ModEntry.RunGroupBatch</c>), regardless of which trigger originally queued the
+/// machine (<see cref="Patches.MachineReadyPatches"/> reporting it ready, a chest restock making it
+/// feedable, or the bulk scan finding it Done/Empty): pushes its output if Done, AND feeds it fresh input if
+/// Empty. Each group drains up to <see cref="Models.ModConfig.ActionsPerDelayWindow"/> machines from the
+/// FRONT of its queue every <see cref="Models.ModConfig.ActionDelaySeconds"/> if configured, on top of the
+/// fine-grained hooks' own <see cref="Models.ModConfig.EventBasedPushPullDelaySeconds"/> cosmetic reveal
+/// delay before a machine is even queued.</item>
 /// </list>
 /// Separately, <b>flagged machines</b> is a plain counter of individual <see cref="Patches.MachineReadyPatches"/>
 /// detections (output-ready only) — lower than the flagged-machine batch count above whenever feeds or the

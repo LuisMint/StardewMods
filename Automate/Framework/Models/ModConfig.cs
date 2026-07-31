@@ -36,6 +36,31 @@ internal class ModConfig
     /// </summary>
     public float EventBasedPushPullDelaySeconds { get; set; } = 0.1f;
 
+    /// <summary>
+    /// MOD: added. How many real-time seconds a group waits before each batch of push/pull actions (see
+    /// <see cref="ActionsPerDelayWindow"/>), including the very first batch for a freshly-active group —
+    /// applies in BOTH interval mode and event-based mode, unlike <see cref="EventBasedPushPullDelaySeconds"/>
+    /// which only applies to event-based mode's fine-grained per-machine reveal. 0 disables this entirely
+    /// (the original instant, whole-group-at-once behavior).
+    ///
+    /// Paced per group via <c>ModEntry.GroupActionQueues</c> — a FIFO queue of that group's own machines,
+    /// drained a batch at a time. Deliberately does NOT try to carry a group's pacing forward across a
+    /// rebuild that recreates its wrapper instance; per direct user feedback, a rebuild just resets the
+    /// affected group's pacing to fresh (its machines get rediscovered and re-queued from scratch by the
+    /// normal triggers) rather than trying to bridge old-to-new group instances, which is what caused most
+    /// of the fragility in earlier attempts at this feature. A separate group's own queue and pacing always
+    /// runs fully independently.
+    /// </summary>
+    public float ActionDelaySeconds { get; set; } = 0f;
+
+    /// <summary>
+    /// MOD: added. How many machines a group may drain from the FRONT of its action queue (see
+    /// <see cref="ActionDelaySeconds"/>) in one batch, before the rest have to wait for the next one.
+    /// Defaults to 1 (one action at a time). <c>0</c> (or less) means unlimited — drain the group's entire
+    /// queue in one batch. Has no effect when <see cref="ActionDelaySeconds"/> is 0.
+    /// </summary>
+    public int ActionsPerDelayWindow { get; set; } = 1;
+
     /// <summary>The number of ticks between each automation process (60 = once per second). Only used when <see cref="UseEventBasedAutomation"/> is disabled.</summary>
     public int AutomationInterval { get; set; } = 60;
 
@@ -363,6 +388,12 @@ internal class ModConfig
     public void OnDeserialized(StreamingContext context)
     {
         this.Controls ??= new ModConfigKeys();
+
+        // MOD: added — guard against a nonsensical (hand-edited) negative delay/batch size; 0 is valid for both (0 batch size means unlimited).
+        if (this.ActionDelaySeconds < 0)
+            this.ActionDelaySeconds = 0;
+        if (this.ActionsPerDelayWindow < 0)
+            this.ActionsPerDelayWindow = 0;
 
         this.Connectors = this.Connectors.ToNonNullCaseInsensitive();
         this.Connectors.RemoveWhere(string.IsNullOrWhiteSpace);

@@ -104,8 +104,54 @@ internal class ModEntry : Mod
     /// actually see happening instead of resolving instantly. Used by <see cref="OnTimeChanged"/>'s
     /// per-machine output pushes and <see cref="OnChestInventoryChanged"/>/<see cref="OnMenuChanged"/>'s
     /// per-machine input feeds.
+    ///
+    /// MOD: added — <c>Group</c> records which <see cref="IMachineGroup"/> (if any) the pass is scoped to,
+    /// purely so <see cref="PurgeRemovedGroupsPacingState"/> can cancel a still-pending pass for a group
+    /// that's just been discarded by a rebuild, instead of letting it fire later against a group whose
+    /// <see cref="GroupActionQueues"/>/<see cref="QueuedMachines"/> entries have already been cleaned up.
+    /// Without this, such a stale pass would silently RE-CREATE those entries from scratch when it finally
+    /// ran — effectively resurrecting a group that was supposed to be dead, back into a live, independently
+    /// ticking duplicate of whatever new group replaced it. Confirmed directly via diagnostic logging: a
+    /// group would commit twice within a few hundred milliseconds at session start, well short of the
+    /// configured delay, because a leftover pass from the group's very first (pre-warp) scan fired after
+    /// that scan had already been superseded and purged.
     /// </summary>
-    private readonly List<(double CreatedAtMs, double ScheduledTimeMs, Action Action)> PendingDelayedPasses = new();
+    private readonly List<(double CreatedAtMs, double ScheduledTimeMs, Action Action, IMachineGroup? Group)> PendingDelayedPasses = new();
+
+    /// <summary>
+    /// MOD: added. Each group's own FIFO queue of machines waiting for their push/pull — used only while
+    /// <see cref="ModConfig.ActionDelaySeconds"/> is greater than zero. A machine's position in this queue
+    /// is fixed the moment it's added (see <see cref="QueuedMachines"/>'s own remarks for why that fixed
+    /// ordering matters) and can't be jumped by later rediscovery, regardless of how often something
+    /// rediscovers it as "still ready" before its turn comes up.
+    ///
+    /// Deliberately keyed by <see cref="IMachineGroup"/> reference, with NO attempt to carry a queue forward
+    /// across a rebuild that recreates the group instance — per direct user feedback, that's an acceptable
+    /// trade: a rebuild just resets the affected group's pacing to fresh (its machines get rediscovered and
+    /// re-queued from scratch by the normal triggers), rather than trying to bridge old-to-new group
+    /// instances, which is what caused most of the fragility in earlier attempts at this feature.
+    /// </summary>
+    private readonly Dictionary<IMachineGroup, Queue<IMachine>> GroupActionQueues = new(new ObjectReferenceComparer<IMachineGroup>());
+
+    /// <summary>
+    /// MOD: added. Every machine currently sitting in some group's <see cref="GroupActionQueues"/>, waiting
+    /// for its turn. Without this, a machine still waiting in queue would get enqueued AGAIN every time
+    /// something rediscovers it as "still ready" — interval mode's bulk scan rediscovers every still-ready
+    /// machine on EVERY <see cref="ModConfig.AutomationInterval"/> tick (often much shorter than
+    /// <see cref="ModConfig.ActionDelaySeconds"/>), and <see cref="ScheduleInputFeedsFor"/> rediscovers every
+    /// still-empty machine on EVERY chest change in the group.
+    ///
+    /// This matters even more for a machine whose <see cref="IMachine.GetState"/> never actually leaves
+    /// Done/Empty between being queued and being serviced — e.g. <see cref="Machines.Objects.PoweredChestMachine"/>,
+    /// which always reports <see cref="MachineState.Empty"/>. Without this dedup, such a machine would get
+    /// rediscovered (and would try to jump the queue) far more often than a normal machine that's only
+    /// occasionally ready, structurally starving everything queued behind it — reported directly by a user as
+    /// an unexpectedly long stall in event-based mode and multiple machines committing at once in interval mode.
+    /// </summary>
+    private readonly HashSet<IMachine> QueuedMachines = new(new ObjectReferenceComparer<IMachine>());
+
+    /// <summary>MOD: added. Every group that currently has a batch scheduled (see <see cref="TryScheduleGroupBatch"/>) — used only while <see cref="ModConfig.ActionDelaySeconds"/> is greater than zero. A group already in here is left alone by any new trigger that finds more of its work; the already-scheduled batch will drain its <see cref="GroupActionQueues"/> entry fresh when it fires (see <see cref="RunGroupBatch"/>).</summary>
+    private readonly HashSet<IMachineGroup> ArmedGroupBatches = new(new ObjectReferenceComparer<IMachineGroup>());
 
     /// <summary>
     /// MOD: added. Real time actually spent with <see cref="Game1.shouldTimePass"/> true, in milliseconds
@@ -599,6 +645,13 @@ internal class ModEntry : Mod
                     if (this.MachineManager.ReloadQueuedLocations())
                         this.ResetOverlayIfShown();
 
+                    // MOD: added — always drain (even outside event-based mode and even when action
+                    // pacing is disabled, so this can't grow unbounded) — see
+                    // PurgeRemovedGroupsPacingState's own remarks for why any group discarded by the
+                    // rescan above needs to be untangled from this mod's own pacing bookkeeping right
+                    // away, not left to keep ticking on its own stale schedule.
+                    this.PurgeRemovedGroupsPacingState(this.MachineManager.TakeRemovedGroups());
+
                     // MOD: added — always drain (even outside event-based mode, so this can't grow
                     // unbounded), but only act on it in event-based mode: interval mode's own periodic
                     // full scan already picks up a newly-joined member on its own, but event-based mode
@@ -611,6 +664,22 @@ internal class ModEntry : Mod
                     if (this.Config.UseEventBasedAutomation)
                     {
                         foreach (IMachineGroup group in newlyJoinedGroups)
+                            this.ScheduleGroupCheck(group);
+                    }
+
+                    // MOD: added — always drain (even outside event-based mode, so this can't grow
+                    // unbounded), but only act on it in event-based mode, same as newlyJoinedGroups above.
+                    // Broader than newlyJoinedGroups: fires for EVERY group a rescan produced, not just
+                    // ones that gained a genuinely new tile — see MachineManager.RescannedGroups' own
+                    // remarks for why a group that only SHRANK (a machine was broken/removed) needs this
+                    // too, since it's rebuilt into a brand-new IMachineGroup instance with an empty,
+                    // unarmed queue, and nothing else naturally re-triggers it. Confirmed directly via
+                    // diagnostic logging: without this, breaking one furnace out of a group made the whole
+                    // remaining group stop automating until an unrelated event elsewhere happened to touch
+                    // it.
+                    foreach (IMachineGroup group in this.MachineManager.TakeRescannedGroups())
+                    {
+                        if (this.Config.UseEventBasedAutomation)
                             this.ScheduleGroupCheck(group);
                     }
                 }
@@ -715,7 +784,13 @@ internal class ModEntry : Mod
             // tick resolve in one synchronized visual burst instead of each being paced independently from
             // its own detection moment, which is what ModConfig.EventBasedPushPullDelaySeconds is meant to show.
             foreach ((IMachineGroup group, IMachine machine) in MachineReadyPatches.TakePendingReadyMachines())
-                this.RunOrScheduleDelayedPass(() => this.AutomateMachine(group, machine), this.Config.EventBasedPushPullDelaySeconds);
+            {
+                this.RunOrScheduleDelayedPass(() =>
+                {
+                    this.EnqueueForAutomation(group, machine, "MachineReadyPatches");
+                    this.TryScheduleGroupBatch(group);
+                }, this.Config.EventBasedPushPullDelaySeconds, group);
+            }
 
             if (++this.TicksSinceFullBackstopScan >= ModEntry.FullBackstopScanIntervalTicks)
             {
@@ -817,17 +892,38 @@ internal class ModEntry : Mod
     /// MOD: changed. Run one automation pass across every currently-active machine group — shared by
     /// interval mode's regular polling, event-based mode's rare periodic backstop scan, and the one-shot
     /// pass after a day starts or the config changes, so the actual processing logic isn't duplicated
-    /// between them. One instant <see cref="IMachineGroup.Automate"/> call per group.
+    /// between them.
+    ///
+    /// When <see cref="ModConfig.ActionDelaySeconds"/> is 0, this is the fast path — one instant
+    /// <see cref="IMachineGroup.Automate"/> call per group. When it's greater than zero, each group's own
+    /// Done/Empty machines are queued via <see cref="EnqueueForAutomation"/> instead, exactly like the
+    /// fine-grained event-based hooks do, so it doesn't matter which trigger found a machine.
     /// </summary>
     private void TryRunAutomationPass()
     {
         IMachineGroup[] activeGroups = this.MachineManager.GetActiveMachineGroups().ToArray();
 
-        foreach (IMachineGroup group in activeGroups)
+        if (this.Config.ActionDelaySeconds <= 0)
         {
-            Stopwatch stopwatch = Stopwatch.StartNew();
-            group.Automate();
-            AutomationPerfTracker.RecordFullScan(stopwatch.Elapsed.TotalMilliseconds);
+            foreach (IMachineGroup group in activeGroups)
+            {
+                Stopwatch stopwatch = Stopwatch.StartNew();
+                group.Automate();
+                AutomationPerfTracker.RecordFullScan(stopwatch.Elapsed.TotalMilliseconds);
+            }
+        }
+        else
+        {
+            foreach (IMachineGroup group in activeGroups)
+            {
+                foreach (IMachine machine in group.Machines)
+                {
+                    if (machine.GetState() is MachineState.Done or MachineState.Empty)
+                        this.EnqueueForAutomation(group, machine, "IntervalScan");
+                }
+
+                this.TryScheduleGroupBatch(group);
+            }
         }
 
         // MOD: added — power-required-machines wake-up callouts need cross-rebuild tracking by location
@@ -838,35 +934,176 @@ internal class ModEntry : Mod
 
     /// <summary>
     /// MOD: added. Automate a single machine that either <see cref="Patches.MachineReadyPatches"/> flagged
-    /// as ready, or <see cref="OnChestInventoryChanged"/>/<see cref="OnMenuChanged"/> found newly feedable —
-    /// pushing its output (via <see cref="IMachineGroup.TryPushMachineOutput"/>) if it's Done, AND feeding it
-    /// fresh input (via <see cref="IMachineGroup.TryFeedMachineInput"/>) if it's Empty, checked fresh so BOTH
-    /// happen in the same call when a push immediately empties the machine.
+    /// as ready, <see cref="OnChestInventoryChanged"/>/<see cref="OnMenuChanged"/> found newly feedable, or
+    /// <see cref="TryRunAutomationPass"/>'s bulk scan found — pushing its output (via
+    /// <see cref="IMachineGroup.TryPushMachineOutput"/>) if it's Done, AND feeding it fresh input (via
+    /// <see cref="IMachineGroup.TryFeedMachineInput"/>) if it's Empty, checked fresh so BOTH happen in the
+    /// same call when a push immediately empties the machine.
     /// </summary>
     /// <param name="group">The machine's owning group.</param>
     /// <param name="machine">The machine to automate.</param>
-    private void AutomateMachine(IMachineGroup group, IMachine machine)
+    /// <returns>Whether the machine actually did anything.</returns>
+    private bool AutomateMachine(IMachineGroup group, IMachine machine)
     {
         MachineState stateBefore = machine.GetState();
         if (stateBefore is not (MachineState.Done or MachineState.Empty))
-            return;
+            return false;
 
         Stopwatch stopwatch = Stopwatch.StartNew();
 
+        // MOD: track whether a real commit happened via TryPushMachineOutput/TryFeedMachineInput's OWN
+        // return values, NOT by comparing machine.GetState() before and after — that comparison is always a
+        // false negative for a IChestLikeMachine like PoweredChestMachine, whose GetState() is hardcoded to
+        // always report MachineState.Empty regardless of what SetInput just did.
+        bool didSomething = false;
+
         if (stateBefore is MachineState.Done)
-            group.TryPushMachineOutput(machine);
+            didSomething |= group.TryPushMachineOutput(machine);
 
         if (machine.GetState() is MachineState.Empty)
-            group.TryFeedMachineInput(machine);
+            didSomething |= group.TryFeedMachineInput(machine);
 
         AutomationPerfTracker.RecordFlaggedBatch(stopwatch.Elapsed.TotalMilliseconds);
+
+        return didSomething;
     }
 
     /// <summary>
-    /// Schedule an independent, separately-delayed <see cref="AutomateMachine"/> for every machine that's
-    /// CURRENTLY empty in a location's active groups — used by <see cref="OnChestInventoryChanged"/>/
+    /// MOD: added. Add a machine to its group's FIFO action queue (see <see cref="GroupActionQueues"/>) if
+    /// it isn't already there (see <see cref="QueuedMachines"/>'s own remarks for why that dedup matters). A
+    /// no-op while <see cref="ModConfig.ActionDelaySeconds"/> is 0, since nothing consults the queue in that
+    /// mode — <see cref="TryScheduleGroupBatch"/> just runs <see cref="IMachineGroup.Automate"/> directly
+    /// instead.
+    /// </summary>
+    /// <param name="group">The machine's owning group.</param>
+    /// <param name="machine">The machine believed ready for a push/pull.</param>
+    /// <param name="source">MOD: added. A short tag identifying which trigger called this, purely for the diagnostic trace log below (e.g. "IntervalScan", "MachineReadyPatches", "ChestInventoryChanged", "NewGroupMember").</param>
+    private void EnqueueForAutomation(IMachineGroup group, IMachine machine, string source)
+    {
+        if (this.Config.ActionDelaySeconds <= 0)
+            return;
+
+        if (!this.QueuedMachines.Add(machine))
+        {
+            this.Monitor.Log($"[pacing] ({source}) {this.DescribePacingMachine(machine)} already queued for {this.DescribePacingGroup(group)} — duplicate discovery skipped at t={this.UnpausedElapsedMs:0}ms.", LogLevel.Trace);
+            return; // already queued — see QueuedMachines's own remarks
+        }
+
+        if (!this.GroupActionQueues.TryGetValue(group, out Queue<IMachine>? queue))
+            this.GroupActionQueues[group] = queue = new Queue<IMachine>();
+
+        queue.Enqueue(machine);
+
+        this.Monitor.Log($"[pacing] ({source}) Enqueued {this.DescribePacingMachine(machine)} for {this.DescribePacingGroup(group)} — queue length now {queue.Count} at t={this.UnpausedElapsedMs:0}ms.", LogLevel.Trace);
+    }
+
+    /// <summary>
+    /// MOD: added. Arm a group's batch timer if it has queued work AND isn't already priming for one — the
+    /// SINGLE mechanism every trigger (<see cref="Patches.MachineReadyPatches"/>, <see cref="OnChestInventoryChanged"/>,
+    /// <see cref="TryRunAutomationPass"/>'s bulk scan, a newly-joined group) shares, so it doesn't matter
+    /// which one found a group's work. Safe to call unconditionally after enqueuing (or with nothing newly
+    /// enqueued at all) — a group with an empty <see cref="GroupActionQueues"/> entry, or one already
+    /// priming, is simply left alone.
+    ///
+    /// A group with nothing queued does nothing at all (no repeating heartbeat); the INSTANT it gets queued
+    /// work, it starts priming (waiting <see cref="ModConfig.ActionDelaySeconds"/>, even for the very first
+    /// batch); once primed, <see cref="RunGroupBatch"/> fires one "shot" (up to
+    /// <see cref="ModConfig.ActionsPerDelayWindow"/> actions, taken from the FRONT of the queue in the order
+    /// they were added) and immediately starts priming again if more queued work remains, or goes back to
+    /// doing nothing if the queue is now empty.
+    ///
+    /// <see cref="ModConfig.ActionDelaySeconds"/> <c>&lt;= 0</c> bypasses all of this and runs the group's
+    /// normal <see cref="IMachineGroup.Automate"/> pass directly instead, matching the original
+    /// instant/unbatched behavior.
+    /// </summary>
+    /// <param name="group">The group to schedule a batch for.</param>
+    private void TryScheduleGroupBatch(IMachineGroup group)
+    {
+        if (this.Config.ActionDelaySeconds <= 0)
+        {
+            group.Automate();
+            return;
+        }
+
+        if (!this.GroupActionQueues.TryGetValue(group, out Queue<IMachine>? queue) || queue.Count == 0)
+            return; // nothing queued for this group — nothing to prime for
+
+        if (!this.ArmedGroupBatches.Add(group))
+        {
+            this.Monitor.Log($"[pacing] {this.DescribePacingGroup(group)} already priming — not re-arming (queue length {queue.Count}) at t={this.UnpausedElapsedMs:0}ms.", LogLevel.Trace);
+            return; // already priming — it'll drain the queue (including anything just added to it) when it fires
+        }
+
+        this.Monitor.Log($"[pacing] Arming {this.DescribePacingGroup(group)} to fire in {this.Config.ActionDelaySeconds}s (queue length {queue.Count}) at t={this.UnpausedElapsedMs:0}ms.", LogLevel.Trace);
+        this.RunOrScheduleDelayedPass(() => this.RunGroupBatch(group), this.Config.ActionDelaySeconds, group);
+    }
+
+    /// <summary>
+    /// MOD: added. Fire one group's batch (its "shot") — drains up to <see cref="ModConfig.ActionsPerDelayWindow"/>
+    /// genuine actions from the FRONT of its <see cref="GroupActionQueues"/> entry (0 or less means
+    /// unlimited — drain the whole queue in one shot), then immediately starts priming again (see
+    /// <see cref="TryScheduleGroupBatch"/>) if the queue still isn't empty afterward.
+    ///
+    /// Each dequeued machine's state is re-validated fresh by <see cref="AutomateMachine"/> right before
+    /// acting on it — a machine that's no longer Done/Empty by the time its turn comes up (e.g. it was
+    /// serviced some other way in the meantime) is a safe, free no-op, not counted against the batch budget.
+    /// </summary>
+    /// <param name="group">The group whose batch just came due.</param>
+    private void RunGroupBatch(IMachineGroup group)
+    {
+        double fireTimeMs = this.UnpausedElapsedMs;
+
+        if (!this.ArmedGroupBatches.Remove(group))
+        {
+            this.Monitor.Log($"[pacing] Stale batch fire for {this.DescribePacingGroup(group)} ignored (not armed) at t={fireTimeMs:0}ms.", LogLevel.Trace);
+            return;
+        }
+
+        if (!this.GroupActionQueues.TryGetValue(group, out Queue<IMachine>? queue))
+            return;
+
+        int committed = 0;
+        int attempted = 0;
+        bool unlimited = this.Config.ActionsPerDelayWindow <= 0;
+
+        while (queue.Count > 0 && (unlimited || committed < this.Config.ActionsPerDelayWindow))
+        {
+            IMachine machine = queue.Dequeue();
+            this.QueuedMachines.Remove(machine);
+            attempted++;
+
+            bool didSomething = this.AutomateMachine(group, machine);
+            this.Monitor.Log($"[pacing] {this.DescribePacingGroup(group)} batch @t={fireTimeMs:0}ms: {this.DescribePacingMachine(machine)} -> {(didSomething ? "COMMITTED" : "no-op")}.", LogLevel.Trace);
+
+            if (didSomething)
+                committed++;
+        }
+
+        this.Monitor.Log($"[pacing] {this.DescribePacingGroup(group)} batch @t={fireTimeMs:0}ms done: attempted {attempted}, committed {committed}, {queue.Count} left in queue.", LogLevel.Trace);
+
+        if (queue.Count > 0)
+            this.TryScheduleGroupBatch(group);
+    }
+
+    /// <summary>MOD: added. A short, stable-enough-for-one-session tag identifying a group in the diagnostic trace log (see <see cref="EnqueueForAutomation"/>/<see cref="TryScheduleGroupBatch"/>/<see cref="RunGroupBatch"/>) — NOT meant to survive a rebuild (a rebuilt group is a new object, and thus a new tag), just to let separate log lines about the SAME group instance be visually correlated.</summary>
+    /// <param name="group">The group to describe.</param>
+    private string DescribePacingGroup(IMachineGroup group)
+    {
+        return $"group#{group.GetHashCode():X} ({group.Machines.Length} machines, {group.LocationKey ?? "Junimo aggregate"})";
+    }
+
+    /// <summary>MOD: added. A short tag identifying a machine in the diagnostic trace log (see <see cref="EnqueueForAutomation"/>/<see cref="RunGroupBatch"/>) — its type and tile position, which is stable and recognizable even across a rebuild (unlike the machine's own object identity).</summary>
+    /// <param name="machine">The machine to describe.</param>
+    private string DescribePacingMachine(IMachine machine)
+    {
+        return $"{machine.MachineTypeID}@({machine.TileArea.X},{machine.TileArea.Y})";
+    }
+
+    /// <summary>
+    /// Schedule an independent, separately-delayed <see cref="EnqueueForAutomation"/> for every machine
+    /// that's CURRENTLY empty in a location's active groups — used by <see cref="OnChestInventoryChanged"/>/
     /// <see cref="OnMenuChanged"/> instead of one shared pass covering the whole location, so several
-    /// machines fed by the same chest restock each get their own independent pacing rather than all
+    /// machines fed by the same chest restock each get their own independent reveal pacing rather than all
     /// resolving in one synchronized burst. The candidate list is captured now (at the moment the chest
     /// changed), but each individual feed re-validates the machine's state itself right before acting, so a
     /// machine that's no longer empty by the time its own delay elapses is safely skipped instead of
@@ -887,7 +1124,11 @@ internal class ModEntry : Mod
                 if (machine.GetState() != MachineState.Empty)
                     continue;
 
-                this.RunOrScheduleDelayedPass(() => this.AutomateMachine(group, machine), this.Config.EventBasedPushPullDelaySeconds);
+                this.RunOrScheduleDelayedPass(() =>
+                {
+                    this.EnqueueForAutomation(group, machine, "ChestInventoryChanged");
+                    this.TryScheduleGroupBatch(group);
+                }, this.Config.EventBasedPushPullDelaySeconds, group);
             }
         }
     }
@@ -910,8 +1151,14 @@ internal class ModEntry : Mod
     {
         foreach (IMachine machine in group.Machines)
         {
-            if (machine.GetState() is MachineState.Done or MachineState.Empty)
-                this.RunOrScheduleDelayedPass(() => this.AutomateMachine(group, machine), this.Config.EventBasedPushPullDelaySeconds);
+            if (machine.GetState() is not (MachineState.Done or MachineState.Empty))
+                continue;
+
+            this.RunOrScheduleDelayedPass(() =>
+            {
+                this.EnqueueForAutomation(group, machine, "NewGroupMember");
+                this.TryScheduleGroupBatch(group);
+            }, this.Config.EventBasedPushPullDelaySeconds, group);
         }
     }
 
@@ -923,7 +1170,8 @@ internal class ModEntry : Mod
     /// </summary>
     /// <param name="action">The automation pass to run.</param>
     /// <param name="delaySeconds">How many real-time seconds to wait before running <paramref name="action"/> — 0 or less runs it immediately instead of queuing it.</param>
-    private void RunOrScheduleDelayedPass(Action action, float delaySeconds)
+    /// <param name="group">MOD: added. The group <paramref name="action"/> is scoped to, if any — see <see cref="PendingDelayedPasses"/>'s own remarks for why this needs to be tracked.</param>
+    private void RunOrScheduleDelayedPass(Action action, float delaySeconds, IMachineGroup? group = null)
     {
         if (delaySeconds <= 0)
         {
@@ -933,7 +1181,7 @@ internal class ModEntry : Mod
 
         double curTimeMs = this.UnpausedElapsedMs;
         double scheduledTimeMs = curTimeMs + delaySeconds * 1000;
-        this.PendingDelayedPasses.Add((curTimeMs, scheduledTimeMs, action));
+        this.PendingDelayedPasses.Add((curTimeMs, scheduledTimeMs, action, group));
     }
 
     /// <summary>MOD: added. Run any <see cref="PendingDelayedPasses"/> whose delay has elapsed — meant to be called once per <see cref="OnUpdateTicked"/>.</summary>
@@ -945,7 +1193,7 @@ internal class ModEntry : Mod
         double curTimeMs = this.UnpausedElapsedMs;
         for (int i = this.PendingDelayedPasses.Count - 1; i >= 0; i--)
         {
-            (double createdAtMs, double scheduledTimeMs, Action action) = this.PendingDelayedPasses[i];
+            (double createdAtMs, double scheduledTimeMs, Action action, IMachineGroup? _) = this.PendingDelayedPasses[i];
             if (curTimeMs < scheduledTimeMs)
                 continue;
 
@@ -1155,16 +1403,76 @@ internal class ModEntry : Mod
     }
 
     /// <summary>
-    /// MOD: added. Clear all of this mod's own <see cref="PendingDelayedPasses"/> — meant to be called
-    /// anywhere <see cref="MachineManager.Reset"/>/<see cref="MachineManager.Clear"/> also runs
-    /// (<see cref="OnDayStarted"/>, <see cref="OnSaveLoaded"/>, <see cref="ReloadConfig"/>), since those
-    /// discard every <see cref="IMachineGroup"/>/<see cref="IMachine"/> instance currently in use. Without
-    /// this, a leftover scheduled pass would eventually fire against outdated group/machine state instead of
-    /// the fresh instances built afterward.
+    /// MOD: added. Clear all of this mod's own <see cref="PendingDelayedPasses"/>/<see cref="GroupActionQueues"/>/
+    /// <see cref="QueuedMachines"/>/<see cref="ArmedGroupBatches"/> — meant to be called anywhere
+    /// <see cref="MachineManager.Reset"/>/<see cref="MachineManager.Clear"/> also runs (<see cref="OnDayStarted"/>,
+    /// <see cref="OnSaveLoaded"/>, <see cref="ReloadConfig"/>), since those discard every
+    /// <see cref="IMachineGroup"/>/<see cref="IMachine"/> instance currently in use. Without this, a
+    /// leftover scheduled pass would eventually fire against outdated group/machine state instead of the
+    /// fresh instances built afterward, and this bookkeeping would keep holding references to now-discarded
+    /// instances indefinitely.
     /// </summary>
     private void ResetDelayQueueState()
     {
         this.PendingDelayedPasses.Clear();
+        this.GroupActionQueues.Clear();
+        this.QueuedMachines.Clear();
+        this.ArmedGroupBatches.Clear();
+    }
+
+    /// <summary>
+    /// MOD: added. Clear <see cref="GroupActionQueues"/>/<see cref="QueuedMachines"/>/<see cref="ArmedGroupBatches"/>
+    /// entries tied to specific <see cref="IMachineGroup"/> instances that <see cref="MachineManager"/> just
+    /// discarded via a targeted, location-scoped rescan (see <see cref="MachineManager.TakeRemovedGroups"/>)
+    /// — the narrower sibling of <see cref="ResetDelayQueueState"/>, which only handles the OTHER case
+    /// (a full <see cref="MachineManager.Reset"/> that discards every group at once).
+    ///
+    /// Without this, an old group's own pending pacing timer (armed via <see cref="RunOrScheduleDelayedPass"/>
+    /// before the rescan happened) keeps firing on schedule even after <see cref="MachineManager"/> has moved
+    /// on to a brand-new <see cref="IMachineGroup"/> instance for the same physical machines — since
+    /// <see cref="IMachineGroup"/> has no stable identity across a rebuild, that closure still captures the
+    /// OLD group reference directly, and nothing else ever tells this bookkeeping that key is now stale. The
+    /// result, confirmed via diagnostic logging: the same physical machine cluster gets driven independently
+    /// by several "zombie" groups at once, each pacing itself correctly in isolation but committing on its
+    /// own schedule in parallel with the others — which looks exactly like a single group suddenly
+    /// processing multiple actions per window.
+    ///
+    /// Removing a group's queue entry also un-marks whichever of its machines were still sitting in
+    /// <see cref="QueuedMachines"/> — deliberately, so if the same physical machine gets rediscovered under
+    /// the new group (which it will, via the normal triggers), it isn't wrongly treated as "already queued"
+    /// against a queue that no longer exists. Safe to do only because <see cref="PendingDelayedPasses"/>
+    /// entries scoped to this group are ALSO cancelled below — otherwise a still-pending pass (e.g. one of
+    /// <see cref="ScheduleGroupCheck"/>'s per-machine closures, queued moments before this same group got
+    /// superseded) would later run against the now-unmarked machines and see them as newly discovered,
+    /// silently recreating this group's queue/armed-timer entries from scratch and resurrecting it as an
+    /// independent duplicate of whatever new group replaced it — confirmed directly via diagnostic logging
+    /// as the cause of a group committing twice within a few hundred milliseconds at session start.
+    /// </summary>
+    /// <param name="removedGroups">The groups that were just discarded.</param>
+    private void PurgeRemovedGroupsPacingState(IReadOnlyList<IMachineGroup> removedGroups)
+    {
+        if (removedGroups.Count == 0)
+            return;
+
+        HashSet<IMachineGroup> removedSet = new(removedGroups, new ObjectReferenceComparer<IMachineGroup>());
+
+        foreach (IMachineGroup group in removedGroups)
+        {
+            if (this.GroupActionQueues.Remove(group, out Queue<IMachine>? queue))
+            {
+                foreach (IMachine machine in queue)
+                    this.QueuedMachines.Remove(machine);
+            }
+
+            this.ArmedGroupBatches.Remove(group);
+        }
+
+        for (int i = this.PendingDelayedPasses.Count - 1; i >= 0; i--)
+        {
+            IMachineGroup? passGroup = this.PendingDelayedPasses[i].Group;
+            if (passGroup != null && removedSet.Contains(passGroup))
+                this.PendingDelayedPasses.RemoveAt(i);
+        }
     }
 
     /// <summary>Log warnings if custom-machine frameworks are installed without their automation component.</summary>
@@ -1218,6 +1526,7 @@ internal class ModEntry : Mod
         if (!Context.IsMainPlayer)
         {
             this.MachineManager.Reset();
+            this.ResetDelayQueueState(); // MOD: added — MachineManager.Reset() just discarded every group/machine instance, so any of this mod's own delay/queue bookkeeping for them is now stale (same as the other MachineManager.Reset() call sites)
             this.MachineManager.ReloadQueuedLocations();
         }
         else

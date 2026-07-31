@@ -97,6 +97,43 @@ internal class MachineManager
     private readonly List<IMachineGroup> GroupsWithNewMembers = new();
 
     /// <summary>
+    /// MOD: added. Every locally-active <see cref="IMachineGroup"/> that came out of a location rescan
+    /// (see <see cref="ReloadMachinesIn"/>'s "add new groups" step) — unlike <see cref="GroupsWithNewMembers"/>,
+    /// this fires for EVERY group the rescan produced, not just ones that gained a genuinely new tile.
+    /// Accumulated here and drained by <see cref="TakeRescannedGroups"/>.
+    ///
+    /// This exists because a group can be rebuilt (a new <see cref="IMachineGroup"/> instance, per
+    /// <see cref="IMachineGroup"/>'s own lack of stable identity across rebuilds) for reasons that
+    /// <see cref="GroupsWithNewMembers"/> deliberately does NOT count as "joining" — most importantly,
+    /// a group that just SHRANK (a member was removed/broken). <see cref="GroupsWithNewMembers"/> only
+    /// looks for tiles that are new compared to the previous scan, so a group that lost a member has zero
+    /// new tiles and is silently skipped. Without a broader signal, that freshly rebuilt (smaller) group's
+    /// queue starts out completely empty and unarmed — none of event-based mode's other triggers (a
+    /// machine "becoming ready," a chest's contents changing) fire on their own just because a rescan
+    /// happened, so the group would sit doing nothing until some unrelated coincidental event happened to
+    /// touch it, or the periodic backstop scan eventually reached it. Confirmed directly via diagnostic
+    /// logging: after removing a furnace from a group, the remaining furnaces stopped automating entirely
+    /// until an unrelated chest elsewhere in the same location happened to change.
+    /// </summary>
+    private readonly List<IMachineGroup> RescannedGroups = new();
+
+    /// <summary>
+    /// MOD: added. Every <see cref="IMachineGroup"/> instance discarded by the last <see cref="ReloadMachinesIn"/>
+    /// call (because its location was rescanned and replaced with brand-new group instances — see the
+    /// "remove old groups" step below), accumulated here and drained by <see cref="TakeRemovedGroups"/>.
+    /// <see cref="IMachineGroup"/> has no stable identity across a rebuild, so anything outside this class
+    /// that keys its own state by a specific <see cref="IMachineGroup"/> reference (namely <c>ModEntry</c>'s
+    /// per-group action-pacing queues) needs to know exactly when one of its keys just became orphaned —
+    /// otherwise that old group's own pending pacing timer keeps firing forever, completely independently
+    /// of (and in parallel with) the new group covering the same physical machines. That was a real,
+    /// confirmed bug: diagnostic logging showed the SAME physical machine cluster being driven by several
+    /// "zombie" groups at once, each committing on its own schedule, which looked exactly like "the group
+    /// takes multiple actions at once" even though each individual group's own pacing was completely
+    /// correct in isolation.
+    /// </summary>
+    private readonly List<IMachineGroup> RemovedGroups = new();
+
+    /// <summary>
     /// MOD: added. Every currently-known machine, keyed by (location key, tile) — lets a Harmony patch
     /// that only has a raw game object (e.g. <see cref="Patches.MachineReadyPatches"/>) look up exactly
     /// which machine/group it belongs to, without scanning every machine in every group. Deliberately
@@ -324,6 +361,40 @@ internal class MachineManager
 
         IMachineGroup[] result = [.. this.GroupsWithNewMembers];
         this.GroupsWithNewMembers.Clear();
+        return result;
+    }
+
+    /// <summary>
+    /// MOD: added. Get and clear every <see cref="IMachineGroup"/> instance discarded since the last call
+    /// — see <see cref="RemovedGroups"/>'s own remarks for why this matters. Meant to be drained once per
+    /// tick (see <c>ModEntry.OnUpdateTicked</c>) right after <see cref="ReloadQueuedLocations"/>, same as
+    /// <see cref="TakeGroupsWithNewMembers"/>, regardless of automation mode or whether action pacing is
+    /// even enabled — cheap to drain into an empty result when nothing was removed.
+    /// </summary>
+    public IReadOnlyList<IMachineGroup> TakeRemovedGroups()
+    {
+        if (this.RemovedGroups.Count == 0)
+            return Array.Empty<IMachineGroup>();
+
+        IMachineGroup[] result = [.. this.RemovedGroups];
+        this.RemovedGroups.Clear();
+        return result;
+    }
+
+    /// <summary>
+    /// MOD: added. Get and clear every locally-active <see cref="IMachineGroup"/> produced by a rescan
+    /// since the last call — see <see cref="RescannedGroups"/>'s own remarks for why this needs to be
+    /// broader than <see cref="TakeGroupsWithNewMembers"/>. Meant to be drained once per tick (see
+    /// <c>ModEntry.OnUpdateTicked</c>) right after <see cref="ReloadQueuedLocations"/>, same as its
+    /// siblings.
+    /// </summary>
+    public IReadOnlyList<IMachineGroup> TakeRescannedGroups()
+    {
+        if (this.RescannedGroups.Count == 0)
+            return Array.Empty<IMachineGroup>();
+
+        IMachineGroup[] result = [.. this.RescannedGroups];
+        this.RescannedGroups.Clear();
         return result;
     }
 
@@ -579,7 +650,16 @@ internal class MachineManager
                 this.Monitor.Log($"Reloading machines in {locationKeys.Count} locations: {string.Join(", ", locationKeys)}...");
 
             foreach (string locationKey in locationKeys)
-                anyChanged |= this.MachineData.Remove(locationKey);
+            {
+                if (this.MachineData.Remove(locationKey, out MachineDataForLocation? oldData))
+                {
+                    anyChanged = true;
+
+                    // MOD: added — see RemovedGroups' own remarks for why these need to be tracked.
+                    this.RemovedGroups.AddRange(oldData.ActiveMachineGroups);
+                    this.RemovedGroups.AddRange(oldData.DisabledMachineGroups);
+                }
+            }
 
             // MOD: added — drop stale cached location references for locations being reloaded/removed too.
             foreach (string locationKey in locationKeys)
@@ -701,6 +781,11 @@ internal class MachineManager
             // all (its tiles would never appear in the tracked snapshot, so it could neither be
             // detected joining NOR leaving).
             IEnumerable<IMachineGroup> sparkleEligibleGroups = active.Concat(junimo.Where(g => g.HasLocalInternalAutomation));
+
+            // MOD: added — see RescannedGroups' own remarks. Unconditional (unlike the new-join detection
+            // below), so it fires on every rescan of this location, including the very first one.
+            this.RescannedGroups.AddRange(sparkleEligibleGroups);
+
             Dictionary<IMachineGroup, HashSet<Vector2>> entityTilesByGroup = new();
             HashSet<Vector2> activeEntityTiles = new();
             foreach (IMachineGroup group in sparkleEligibleGroups)

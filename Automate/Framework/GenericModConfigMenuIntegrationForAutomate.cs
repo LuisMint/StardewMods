@@ -70,6 +70,23 @@ internal class GenericModConfigMenuIntegrationForAutomate : IGenericModConfigMen
                 interval: 0.05f
             )
             .AddNumberField(
+                name: I18n.Config_ActionDelaySeconds_Name,
+                tooltip: I18n.Config_ActionDelaySeconds_Desc,
+                get: config => config.ActionDelaySeconds,
+                set: (config, value) => config.ActionDelaySeconds = value,
+                min: 0f,
+                max: 10f,
+                interval: 0.1f
+            )
+            .AddNumberField(
+                name: I18n.Config_ActionsPerDelayWindow_Name,
+                tooltip: I18n.Config_ActionsPerDelayWindow_Desc,
+                get: config => config.ActionsPerDelayWindow,
+                set: (config, value) => config.ActionsPerDelayWindow = value,
+                min: 0,
+                max: 20
+            )
+            .AddNumberField(
                 name: I18n.Config_AutomationInterval_Name,
                 tooltip: I18n.Config_AutomationInterval_Desc,
                 get: config => config.AutomationInterval,
