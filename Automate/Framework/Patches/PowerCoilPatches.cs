@@ -6,6 +6,7 @@ using Microsoft.Xna.Framework.Graphics;
 using Pathoschild.Stardew.Automate.Framework;
 using StardewValley;
 using StardewValley.Audio;
+using StardewValley.Extensions;
 using StardewValley.ItemTypeDefinitions;
 using StardewValley.Menus;
 using SObject = StardewValley.Object;
@@ -59,6 +60,12 @@ internal static class PowerCoilPatches
 
     /// <summary>A fixed phase offset for the shake, purely so it doesn't happen to start perfectly in sync with the main pulse.</summary>
     private const float ShakePhaseOffset = MathF.PI / 2f;
+
+    /// <summary>MOD: added. The coil sprite's own tint while <see cref="PowerCoilCompass.ShowCompass"/> is on and this coil is powered — matches <see cref="PowerCoilCompass"/>'s own arrow tint.</summary>
+    private static readonly Color PoweredCoilTint = Color.Yellow;
+
+    /// <summary>MOD: added. The coil sprite's own tint while <see cref="PowerCoilCompass.ShowCompass"/> is on and this coil is unpowered — matches <see cref="PowerCoilCompass"/>'s own arrow tint.</summary>
+    private static readonly Color UnpoweredCoilTint = Color.Red;
 
     /// <summary>
     /// The light's radius. A radius of 10 rendered as a large dark void instead of a bigger light —
@@ -143,6 +150,23 @@ internal static class PowerCoilPatches
         harmony.Patch(
             original: AccessTools.Method(typeof(SoundsHelper), nameof(SoundsHelper.PlayAll)),
             prefix: new HarmonyMethod(typeof(PowerCoilPatches), nameof(PlaySound_Prefix))
+        );
+
+        // MOD: added — keeps an already-placed coil's actual light registration in sync with its live
+        // powered/over-capacity state, not just whatever it was at construction time. See
+        // UpdateWhenCurrentLocation_Postfix's own remarks for why InitializeLightSource_Postfix alone
+        // isn't enough for a coil that flips state well after being placed.
+        harmony.Patch(
+            original: AccessTools.Method(typeof(SObject), nameof(SObject.updateWhenCurrentLocation)),
+            postfix: new HarmonyMethod(typeof(PowerCoilPatches), nameof(UpdateWhenCurrentLocation_Postfix))
+        );
+
+        // MOD: added — shake + a "can't do that" cue when the player interacts with an unpowered
+        // (over-capacity) coil, per direct user request. Not a blocking patch — whatever vanilla's own
+        // checkForAction would otherwise do for a plain Type:Crafting BigCraftable still runs normally.
+        harmony.Patch(
+            original: AccessTools.Method(typeof(SObject), nameof(SObject.checkForAction)),
+            prefix: new HarmonyMethod(typeof(PowerCoilPatches), nameof(CheckForAction_Prefix))
         );
     }
 
@@ -244,6 +268,45 @@ internal static class PowerCoilPatches
     }
 
     /// <summary>
+    /// MOD: added. Keep an already-placed coil's light registration in sync with its live powered
+    /// state every tick, not just whatever it was at construction time. <see cref="InitializeLightSource_Postfix"/>
+    /// alone only runs when <c>initializeLightSource</c> is actually called (placement, or a location
+    /// reload) — it doesn't re-fire just because <see cref="PowerSiloSystem.RefreshCoilAllowance"/>
+    /// later flips this SAME coil's powered flag (e.g. more coils get built elsewhere and push this
+    /// one over capacity, or a Silo tier-up frees up room for it again) — so without this, a coil's
+    /// light would keep shining (or stay dark) exactly as it was when first placed, regardless of
+    /// whatever its sprite/pulse is currently showing. Turns a light back on by re-running
+    /// <see cref="InitializeLightSource_Postfix"/> (via calling <c>initializeLightSource</c> again)
+    /// rather than duplicating its construction logic here.
+    /// </summary>
+    /// <param name="__instance">The object being updated.</param>
+    private static void UpdateWhenCurrentLocation_Postfix(SObject __instance)
+    {
+        if (__instance.QualifiedItemId != PowerCoilPatches.TargetQualifiedItemId)
+            return;
+
+        GameLocation? location = __instance.Location;
+        if (location == null)
+            return;
+
+        if (!PowerCoilPatches.IsPowered(__instance))
+        {
+            if (__instance.lightSource != null)
+            {
+                location.removeLightSource(__instance.lightSource.Id);
+                __instance.lightSource = null;
+            }
+            return;
+        }
+
+        if (__instance.lightSource == null)
+            __instance.initializeLightSource(__instance.TileLocation);
+
+        if (__instance.lightSource != null && !location.hasLightSource(__instance.lightSource.Id))
+            location.sharedLights.AddLight(__instance.lightSource.Clone());
+    }
+
+    /// <summary>
     /// Fully replace the Power Coil's world draw call, so it can be taller than the standard 2-tile
     /// BigCraftable box. Vanilla's own <c>Object.getSourceRectForBigCraftable</c> hardcodes a 32px
     /// (2-tile) source height regardless of the actual texture's size — even for the default,
@@ -285,7 +348,13 @@ internal static class PowerCoilPatches
         // pushed the bottom down a full tile).
         Vector2 scale = __instance.getScale() * 4f;
         float extraBaseHeight = (texture.Height * 4f) - 128f;
-        Vector2 topAnchor = Game1.GlobalToLocal(Game1.viewport, new Vector2(x * 64, y * 64 - 64));
+
+        // MOD: added — same shakeTimer-driven horizontal jitter PowerRequiredMachinePatches/PoweredChestPatches
+        // already use elsewhere in this codebase, so setting shakeTimer (see CheckForAction_Prefix) actually
+        // reads as a visible "can't do that" wobble instead of doing nothing.
+        int shakeJitter = __instance.shakeTimer > 0 ? Game1.random.Next(-1, 2) : 0;
+
+        Vector2 topAnchor = Game1.GlobalToLocal(Game1.viewport, new Vector2(x * 64 + shakeJitter, y * 64 - 64));
         Rectangle destination = new(
             (int)(topAnchor.X - scale.X / 2f),
             (int)(topAnchor.Y - scale.Y / 2f - extraBaseHeight),
@@ -293,8 +362,15 @@ internal static class PowerCoilPatches
             (int)(texture.Height * 4f + scale.Y / 2f)
         );
 
+        // MOD: added — a yellow/red tint on the coil itself while the compass is toggled on (see
+        // PowerCoilCompass), matching its own arrow tint, per direct user request — makes a coil easy to
+        // spot at a glance even without following its arrow.
+        Color coilTint = PowerCoilCompass.ShowCompass
+            ? (isPowered ? PowerCoilPatches.PoweredCoilTint : PowerCoilPatches.UnpoweredCoilTint)
+            : Color.White;
+
         float layerDepth = Math.Max(0f, (float)((y + 1) * 64 - 24) / 10000f) + x * 1E-05f;
-        spriteBatch.Draw(texture, destination, sourceRect, Color.White * alpha, 0f, Vector2.Zero, SpriteEffects.None, layerDepth);
+        spriteBatch.Draw(texture, destination, sourceRect, coilTint * alpha, 0f, Vector2.Zero, SpriteEffects.None, layerDepth);
 
         // MOD: replicate vanilla's lamp glow decal, since we're skipping its own draw method entirely
         // — shifted up by the same extra height so it still sits near the sprite's actual top. Skipped
@@ -491,6 +567,26 @@ internal static class PowerCoilPatches
     private static void PerformToolAction_Postfix()
     {
         PowerCoilPatches.IsBreakingPowerCoil = false;
+    }
+
+    /// <summary>
+    /// MOD: added. Shake and play a "can't do that" cue when the player interacts with an unpowered
+    /// (over-capacity) coil, per direct user request — the same reaction vanilla objects use to
+    /// signal a rejected interaction. Reuses the shake magnitude <see cref="PoweredChestPatches"/>
+    /// already sets for its own one-time placement shake, and <see cref="MachineManager"/>'s own
+    /// "cancel" cue for a broken/invalid automation state. Not a blocking patch — whatever vanilla's
+    /// own <c>checkForAction</c> would otherwise do for a plain Type:Crafting BigCraftable (normally
+    /// nothing) still runs afterward.
+    /// </summary>
+    /// <param name="__instance">The object being interacted with.</param>
+    /// <param name="justCheckingForActivity">Whether this is just a capability check (e.g. for cursor icon) rather than a real interaction.</param>
+    private static void CheckForAction_Prefix(SObject __instance, bool justCheckingForActivity)
+    {
+        if (justCheckingForActivity || __instance.QualifiedItemId != PowerCoilPatches.TargetQualifiedItemId || PowerCoilPatches.IsPowered(__instance))
+            return;
+
+        __instance.shakeTimer = 50;
+        __instance.Location?.playSound("cancel");
     }
 
     /// <summary>

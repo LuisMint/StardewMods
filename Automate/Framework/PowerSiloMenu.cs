@@ -20,10 +20,11 @@ namespace Pathoschild.Stardew.Automate.Framework;
 /// stack of buttons along the right edge), but scoped to what a Power Silo actually needs to show:
 /// capacity usage and its next upgrade requirement. The two side buttons largely mirror
 /// <see cref="PondQueryMenu.changeNettingButton"/>/<see cref="PondQueryMenu.emptyButton"/>'s
-/// positions/icons; <see cref="MarkAllCoilsButton"/> is a real "mark/hide every Power Coil on the world
-/// map" toggle (see <see cref="Patches.PowerCoilMapMarkerPatches"/>), while <see cref="ChangeAppearanceButton"/>
-/// (an actual appearance change) is still a placeholder for later, so clicking it currently just shows
-/// a "coming soon" hover tooltip and does nothing.
+/// positions/icons; <see cref="MarkAllCoilsButton"/> toggles the "Power Coil markers" compass/arrow
+/// overlay (see <see cref="PowerCoilCompass"/>) and <see cref="ChangeAppearanceButton"/> — despite its
+/// field name, a holdover from when it was a placeholder — now toggles showing every Power Coil on the
+/// world map instead (see <see cref="Patches.PowerCoilMapMarkerPatches"/>); per direct user request,
+/// these two used to share a single toggle/button and are now fully independent.
 ///
 /// The icon grid represents THIS Silo's own progress (one slot per point of the max any single Silo
 /// can contribute, filled up to its current tier) rather than the save-wide total, so it stays a
@@ -107,8 +108,8 @@ internal class PowerSiloMenu : IClickableMenu
     /// <summary>MOD: added. The qualified item ID drawn in the solar-tier icon cluster (see <see cref="draw"/>'s <c>isSolarTier</c> branch) once a Silo reaches the terminal solar tier — a Solar Panel, standing in for the connected-panel bonus rather than the flat battery grid.</summary>
     private const string SolarPanelQualifiedItemId = "(BC)231";
 
-    /// <summary>MOD: added. How many Solar Panel icons to draw in the solar-tier cluster — always 3, close together, per the design (the last one carries the "x{count}" badge).</summary>
-    private const int SolarClusterIconCount = 3;
+    /// <summary>MOD: added. How many Solar Panel icons to draw in the solar-tier cluster — matches <see cref="PowerSiloSystem.SolarPanelsPerCapacityPoint"/> (the icons represent one full set), close together, per the design (the last one carries the "x{count}" badge).</summary>
+    private const int SolarClusterIconCount = PowerSiloSystem.SolarPanelsPerCapacityPoint;
 
     /// <summary>MOD: added. The draw scale for each icon in the solar-tier cluster.</summary>
     private const float SolarClusterIconScale = 2.25f;
@@ -146,10 +147,10 @@ internal class PowerSiloMenu : IClickableMenu
     /// <summary>The button that closes this menu.</summary>
     private readonly ClickableTextureComponent OkButton;
 
-    /// <summary>MOD: added. Placeholder button for a future "change the Silo's appearance" feature — currently a no-op.</summary>
+    /// <summary>MOD: added. "Show/Hide Power Coils on map" — toggles <see cref="PowerCoilMapMarkerPatches.ShowMapMarkers"/>, marking every Power Coil's location on the world map. Field name is a holdover from when this was a placeholder "change appearance" button.</summary>
     private readonly ClickableTextureComponent ChangeAppearanceButton;
 
-    /// <summary>MOD: added. Toggles <see cref="PowerCoilMapMarkerPatches.ShowMarkers"/>, marking every Power Coil's location on the world map.</summary>
+    /// <summary>MOD: added. "Show/Hide Power Coil markers" — toggles <see cref="PowerCoilCompass.ShowCompass"/>, showing compass arrows toward every Power Coil in the player's current location (plus a yellow/red tint on the coils themselves), independently of <see cref="ChangeAppearanceButton"/>'s own world-map toggle.</summary>
     private readonly ClickableTextureComponent MarkAllCoilsButton;
 
     /// <summary>The text currently hovered, shown as a tooltip.</summary>
@@ -197,6 +198,8 @@ internal class PowerSiloMenu : IClickableMenu
             Game1.mouseCursors, Game1.getSourceRectForStandardTileSheet(Game1.mouseCursors, 46), 1f
         );
 
+        // MOD: kept its original vanilla icon (a map-ish icon from the standard mouseCursors sheet),
+        // per direct user request — only MarkAllCoilsButton uses the dedicated coil icon.
         this.ChangeAppearanceButton = new ClickableTextureComponent(
             new Rectangle(this.xPositionOnScreen + this.width + 4, okButtonY - 128, 64, 64),
             Game1.mouseCursors, new Rectangle(48, 384, 16, 16), 4f
@@ -228,16 +231,17 @@ internal class PowerSiloMenu : IClickableMenu
         }
         else if (this.MarkAllCoilsButton.containsPoint(x, y))
         {
-            // MOD: added — toggles the world-map overlay (see PowerCoilMapMarkerPatches); a distinct
-            // sound for each direction so turning it on/off has its own audible cue.
-            bool nowShowing = PowerCoilMapMarkerPatches.ToggleMarkers();
+            // MOD: added — toggles the compass/arrow overlay (see PowerCoilCompass); a distinct sound
+            // for each direction so turning it on/off has its own audible cue.
+            bool nowShowing = PowerCoilCompass.ToggleCompass();
             Game1.playSound(nowShowing ? "smallSelect" : "bigDeSelect");
         }
         else if (this.ChangeAppearanceButton.containsPoint(x, y))
         {
-            // MOD: added — still a placeholder for now (see this class's own remarks); a gentle
-            // "not yet" cue rather than silently doing nothing.
-            Game1.playSound("cancel");
+            // MOD: added — toggles the world-map overlay (see PowerCoilMapMarkerPatches); a distinct
+            // sound for each direction so turning it on/off has its own audible cue.
+            bool nowShowing = PowerCoilMapMarkerPatches.ToggleMapMarkers();
+            Game1.playSound(nowShowing ? "smallSelect" : "bigDeSelect");
         }
     }
 
@@ -261,10 +265,10 @@ internal class PowerSiloMenu : IClickableMenu
                 button.scale = Math.Max(button.baseScale, button.scale - 0.05f);
         }
 
-        if (this.ChangeAppearanceButton.containsPoint(x, y))
-            this.HoverText = "Change Appearance (coming soon)";
-        else if (this.MarkAllCoilsButton.containsPoint(x, y))
-            this.HoverText = PowerCoilMapMarkerPatches.ShowMarkers ? "Hide Power Coils" : "Mark Power Coils";
+        if (this.MarkAllCoilsButton.containsPoint(x, y))
+            this.HoverText = PowerCoilCompass.ShowCompass ? "Hide Power Coil markers" : "Show Power Coil markers";
+        else if (this.ChangeAppearanceButton.containsPoint(x, y))
+            this.HoverText = PowerCoilMapMarkerPatches.ShowMapMarkers ? "Hide Power Coils on map" : "Show Power Coils on map";
     }
 
     /// <inheritdoc />
@@ -324,8 +328,9 @@ internal class PowerSiloMenu : IClickableMenu
 
         // MOD: once a Silo reaches the terminal solar tier, the flat battery grid no longer means
         // anything (capacity there comes from connected Solar Panels, not delivered items) — replace it
-        // with a compact 3-icon Solar Panel cluster instead, the last icon carrying an "x{count}" badge
-        // for how many panels are actually connected right now (see PowerSiloSystem.GetConnectedSolarPanelCount).
+        // with a compact Solar Panel cluster instead (SolarClusterIconCount icons, one per panel in a
+        // full set), the last icon carrying an "x{count}" badge for how many panels are actually
+        // connected right now (see PowerSiloSystem.GetConnectedSolarPanelCount).
         if (isSolarTier)
         {
             ParsedItemData solarItemData = ItemRegistry.GetDataOrErrorItem(PowerSiloMenu.SolarPanelQualifiedItemId);
@@ -333,13 +338,13 @@ internal class PowerSiloMenu : IClickableMenu
             Rectangle solarSourceRect = solarItemData.GetSourceRect();
             int connectedCount = this.PowerSiloSystem.GetConnectedSolarPanelCount();
 
-            // MOD: a modulo-3 "fill" representation, not a flat x/3 progress bar — the 3 icons represent
-            // the CURRENT partial set of 3 filling up (so it always shows a fresh 0-3 count that resets
-            // each time a set completes), while the "x{amount}" badge is how many complete sets of 3
-            // have been made so far (i.e. how many extra coils that's actually granted). E.g. 4 connected
-            // panels = one complete set already banked (x1) plus 1 of the next set filled.
-            int completedSets = connectedCount / 3;
-            int filledIcons = connectedCount == 0 ? 0 : ((connectedCount - 1) % 3) + 1;
+            // MOD: a modulo "fill" representation, not a flat x/N progress bar — the icons represent the
+            // CURRENT partial set filling up (so it always shows a fresh 0-N count that resets each time
+            // a set completes), while the "x{amount}" badge is how many complete sets have been made so
+            // far (i.e. how many extra coils that's actually granted). E.g. with a set size of 5, 6
+            // connected panels = one complete set already banked (x1) plus 1 of the next set filled.
+            int completedSets = connectedCount / PowerSiloSystem.SolarPanelsPerCapacityPoint;
+            int filledIcons = connectedCount == 0 ? 0 : ((connectedCount - 1) % PowerSiloSystem.SolarPanelsPerCapacityPoint) + 1;
 
             float iconPixelSize = 16f * PowerSiloMenu.SolarClusterIconScale;
             float clusterWidth = PowerSiloMenu.SolarClusterIconCount * iconPixelSize + (PowerSiloMenu.SolarClusterIconCount - 1) * PowerSiloMenu.SolarClusterIconGap;
@@ -500,7 +505,7 @@ internal class PowerSiloMenu : IClickableMenu
         int maxPerSilo = this.Tiers[^1].CapacityGranted;
         PowerSiloTierConfig tier = this.Tiers[tierIndex];
         bool isSolarTier = tier.GrantsSolarBonus;
-        int thisSiloCapacity = tier.CapacityGranted + (isSolarTier ? this.PowerSiloSystem.GetConnectedSolarPanelCount() / 3 : 0);
+        int thisSiloCapacity = tier.CapacityGranted + (isSolarTier ? this.PowerSiloSystem.GetConnectedSolarPanelCount() / PowerSiloSystem.SolarPanelsPerCapacityPoint : 0);
 
         // MOD: added — the next tier's flat CapacityGranted (or the same as thisSiloCapacity if this is
         // already the last tier, so nothing shows as "about to be gained") — lets the capacity grid show

@@ -61,6 +61,9 @@ internal class PowerSiloSystem
     /// </summary>
     private int CachedConnectedSolarPanelCount;
 
+    /// <summary>MOD: added. How many connected Solar Panels grant +1 capacity at the solar tier — shared with <see cref="PowerSiloMenu"/> so its own display math can't drift from the actual capacity calculation below.</summary>
+    internal const int SolarPanelsPerCapacityPoint = 5;
+
     /// <summary>The <see cref="Building.modData"/> key storing which tier a Power Silo has reached (an index into <see cref="GetTiers"/>).</summary>
     private const string CapacityTierModDataKey = "luisMint.AutomatePowerPipes/CapacityTier";
 
@@ -223,11 +226,12 @@ internal class PowerSiloSystem
                 int granted = tierConfig.CapacityGranted;
 
                 // MOD: added — a Silo at the solar tier also contributes the connected-Solar-Panel
-                // bonus on top of its own flat CapacityGranted (every 3 connected panels add 1 more).
-                // Reads the CACHED count (see RefreshConnectedSolarPanelCount's remarks) rather than
-                // rescanning here, since this method is deliberately cheap and called every tick.
+                // bonus on top of its own flat CapacityGranted (every SolarPanelsPerCapacityPoint
+                // connected panels add 1 more). Reads the CACHED count (see
+                // RefreshConnectedSolarPanelCount's remarks) rather than rescanning here, since this
+                // method is deliberately cheap and called every tick.
                 if (tierConfig.GrantsSolarBonus)
-                    granted += this.CachedConnectedSolarPanelCount / 3;
+                    granted += this.CachedConnectedSolarPanelCount / PowerSiloSystem.SolarPanelsPerCapacityPoint;
 
                 total += granted;
             }

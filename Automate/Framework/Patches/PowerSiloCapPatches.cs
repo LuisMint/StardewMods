@@ -140,6 +140,17 @@ internal static class PowerSiloCapPatches
             postfix: new HarmonyMethod(typeof(PowerSiloCapPatches), nameof(Draw_Postfix))
         );
 
+        // MOD: added — the cap is only ever drawn by the postfix above, which only fires for an actual
+        // placed Building.draw call; the carpenter menu's blueprint icon/held-cursor preview instead
+        // calls Building.drawInMenu, which only knows about data-driven Data/Buildings DrawLayers (which
+        // the Silo doesn't use, precisely because the cap's rise animation can't be expressed that way —
+        // see this class's own remarks) — so without this, the menu only ever showed the body. Draws the
+        // cap at its resting tier-0 position, since a blueprint preview has no real tier/rise state.
+        harmony.Patch(
+            original: AccessTools.Method(typeof(Building), nameof(Building.drawInMenu), [typeof(SpriteBatch), typeof(int), typeof(int)]),
+            postfix: new HarmonyMethod(typeof(PowerSiloCapPatches), nameof(DrawInMenu_Postfix))
+        );
+
         // MOD: added — the shared conversion every draw call inside Building.draw funnels through; see
         // IsShakingCurrentBuilding's remarks for why patching this (rather than Building.draw itself) is
         // what makes the shake reach the whole building.
@@ -510,5 +521,30 @@ internal static class PowerSiloCapPatches
         {
             PowerSiloCapPatches.IsShakingCurrentBuilding = false;
         }
+    }
+
+    /// <summary>
+    /// MOD: added. Draw the Silo's cap alongside <see cref="Building.drawInMenu(SpriteBatch, int, int)"/>'s
+    /// own body — the carpenter menu's blueprint icon/held-cursor preview, in already-converted screen
+    /// pixel space (unlike <see cref="Draw_Postfix"/>'s world-space math). Always at the resting tier-0
+    /// gap, since there's no real placed building (or tier) behind a blueprint preview to animate toward.
+    /// </summary>
+    /// <param name="__instance">The building whose preview is being drawn.</param>
+    /// <param name="b">The sprite batch being drawn to.</param>
+    /// <param name="x">The screen X position the body was drawn at.</param>
+    /// <param name="y">The screen Y position the body was drawn at.</param>
+    private static void DrawInMenu_Postfix(Building __instance, SpriteBatch b, int x, int y)
+    {
+        if (PowerSiloCapPatches.GetSiloBuildingNames is not { } getSiloBuildingNames || !getSiloBuildingNames().Contains(__instance.buildingType.Value))
+            return;
+
+        Texture2D capTexture = Game1.content.Load<Texture2D>(PowerSiloCapPatches.CapAssetName);
+
+        // MOD: the body's own art bottom edge is its "ground" line, matching Draw_Postfix's own
+        // world-space ground anchor — see this method's own remarks.
+        float groundY = y + __instance.getSourceRect().Height * 4f;
+        float capY = groundY - PowerSiloCapPatches.BaseGapTiles * 64f - capTexture.Height * 4f;
+
+        b.Draw(capTexture, new Vector2(x, capY), new Rectangle(0, 0, capTexture.Width, capTexture.Height), __instance.color, 0f, Vector2.Zero, 4f, SpriteEffects.None, 1f);
     }
 }

@@ -20,6 +20,7 @@ using StardewModdingAPI.Events;
 using StardewModdingAPI.Utilities;
 using StardewValley;
 using StardewValley.GameData.BigCraftables;
+using StardewValley.Objects;
 using StardewValley.TerrainFeatures;
 
 namespace Pathoschild.Stardew.Automate;
@@ -318,6 +319,15 @@ internal class ModEntry : Mod
         // MOD: added — gives the Dwarf a "build a Power Silo" option alongside their normal shop, reusing
         // vanilla's own carpenter menu (see DwarfBuildMenuPatches's own remarks).
         DwarfBuildMenuPatches.Apply(harmony);
+
+        // MOD: added — reskins the under-construction/upgrading visual for Dwarf-built structures only,
+        // per direct user request (see DwarfConstructionSpritePatches's own remarks).
+        DwarfConstructionSpritePatches.Apply(harmony);
+
+        // MOD: added — clicking an active Dwarf construction site spits a random item out of the ladder
+        // hole, once per building per day, per direct user request (see
+        // DwarfConstructionSiteInteractionPatches's own remarks).
+        DwarfConstructionSiteInteractionPatches.Apply(harmony);
 
         // hook events
         helper.Events.Content.AssetRequested += this.OnAssetRequested;
@@ -787,7 +797,7 @@ internal class ModEntry : Mod
             {
                 this.RunOrScheduleDelayedPass(() =>
                 {
-                    this.EnqueueForAutomation(group, machine, "MachineReadyPatches");
+                    this.EnqueueForAutomation(group, machine);
                     this.TryScheduleGroupBatch(group);
                 }, this.Config.EventBasedPushPullDelaySeconds, group);
             }
@@ -841,7 +851,12 @@ internal class ModEntry : Mod
 
         try
         {
-            this.ScheduleInputFeedsFor(e.Location, e.Chest.TileLocation);
+            // MOD: added — a Junimo Chest's inventory is shared across every instance in the save, so a
+            // change to ANY of them (even a standalone one with no adjacent machines, not part of any
+            // tracked group at all) needs to unconditionally wake the aggregate Junimo group — see
+            // ScheduleInputFeedsFor's own remarks for why the tile-narrowed lookup alone can miss it.
+            bool isJunimoChest = e.Chest.SpecialChestType == Chest.SpecialChestTypes.JunimoChest;
+            this.ScheduleInputFeedsFor(e.Location, e.Chest.TileLocation, isJunimoChest);
 
             // MOD: added — this event fires the moment the chest's contents change, which for a
             // player editing it through an open menu is BEFORE the menu closes, while its mutex is
@@ -919,7 +934,7 @@ internal class ModEntry : Mod
                 foreach (IMachine machine in group.Machines)
                 {
                     if (machine.GetState() is MachineState.Done or MachineState.Empty)
-                        this.EnqueueForAutomation(group, machine, "IntervalScan");
+                        this.EnqueueForAutomation(group, machine);
                 }
 
                 this.TryScheduleGroupBatch(group);
@@ -977,24 +992,18 @@ internal class ModEntry : Mod
     /// </summary>
     /// <param name="group">The machine's owning group.</param>
     /// <param name="machine">The machine believed ready for a push/pull.</param>
-    /// <param name="source">MOD: added. A short tag identifying which trigger called this, purely for the diagnostic trace log below (e.g. "IntervalScan", "MachineReadyPatches", "ChestInventoryChanged", "NewGroupMember").</param>
-    private void EnqueueForAutomation(IMachineGroup group, IMachine machine, string source)
+    private void EnqueueForAutomation(IMachineGroup group, IMachine machine)
     {
         if (this.Config.ActionDelaySeconds <= 0)
             return;
 
         if (!this.QueuedMachines.Add(machine))
-        {
-            this.Monitor.Log($"[pacing] ({source}) {this.DescribePacingMachine(machine)} already queued for {this.DescribePacingGroup(group)} — duplicate discovery skipped at t={this.UnpausedElapsedMs:0}ms.", LogLevel.Trace);
             return; // already queued — see QueuedMachines's own remarks
-        }
 
         if (!this.GroupActionQueues.TryGetValue(group, out Queue<IMachine>? queue))
             this.GroupActionQueues[group] = queue = new Queue<IMachine>();
 
         queue.Enqueue(machine);
-
-        this.Monitor.Log($"[pacing] ({source}) Enqueued {this.DescribePacingMachine(machine)} for {this.DescribePacingGroup(group)} — queue length now {queue.Count} at t={this.UnpausedElapsedMs:0}ms.", LogLevel.Trace);
     }
 
     /// <summary>
@@ -1029,12 +1038,8 @@ internal class ModEntry : Mod
             return; // nothing queued for this group — nothing to prime for
 
         if (!this.ArmedGroupBatches.Add(group))
-        {
-            this.Monitor.Log($"[pacing] {this.DescribePacingGroup(group)} already priming — not re-arming (queue length {queue.Count}) at t={this.UnpausedElapsedMs:0}ms.", LogLevel.Trace);
             return; // already priming — it'll drain the queue (including anything just added to it) when it fires
-        }
 
-        this.Monitor.Log($"[pacing] Arming {this.DescribePacingGroup(group)} to fire in {this.Config.ActionDelaySeconds}s (queue length {queue.Count}) at t={this.UnpausedElapsedMs:0}ms.", LogLevel.Trace);
         this.RunOrScheduleDelayedPass(() => this.RunGroupBatch(group), this.Config.ActionDelaySeconds, group);
     }
 
@@ -1051,86 +1056,71 @@ internal class ModEntry : Mod
     /// <param name="group">The group whose batch just came due.</param>
     private void RunGroupBatch(IMachineGroup group)
     {
-        double fireTimeMs = this.UnpausedElapsedMs;
-
         if (!this.ArmedGroupBatches.Remove(group))
-        {
-            this.Monitor.Log($"[pacing] Stale batch fire for {this.DescribePacingGroup(group)} ignored (not armed) at t={fireTimeMs:0}ms.", LogLevel.Trace);
-            return;
-        }
+            return; // stale fire for a group whose pacing state was since purged/reset — nothing to do
 
         if (!this.GroupActionQueues.TryGetValue(group, out Queue<IMachine>? queue))
             return;
 
         int committed = 0;
-        int attempted = 0;
         bool unlimited = this.Config.ActionsPerDelayWindow <= 0;
 
         while (queue.Count > 0 && (unlimited || committed < this.Config.ActionsPerDelayWindow))
         {
             IMachine machine = queue.Dequeue();
             this.QueuedMachines.Remove(machine);
-            attempted++;
 
-            bool didSomething = this.AutomateMachine(group, machine);
-            this.Monitor.Log($"[pacing] {this.DescribePacingGroup(group)} batch @t={fireTimeMs:0}ms: {this.DescribePacingMachine(machine)} -> {(didSomething ? "COMMITTED" : "no-op")}.", LogLevel.Trace);
-
-            if (didSomething)
+            if (this.AutomateMachine(group, machine))
                 committed++;
         }
-
-        this.Monitor.Log($"[pacing] {this.DescribePacingGroup(group)} batch @t={fireTimeMs:0}ms done: attempted {attempted}, committed {committed}, {queue.Count} left in queue.", LogLevel.Trace);
 
         if (queue.Count > 0)
             this.TryScheduleGroupBatch(group);
     }
 
-    /// <summary>MOD: added. A short, stable-enough-for-one-session tag identifying a group in the diagnostic trace log (see <see cref="EnqueueForAutomation"/>/<see cref="TryScheduleGroupBatch"/>/<see cref="RunGroupBatch"/>) — NOT meant to survive a rebuild (a rebuilt group is a new object, and thus a new tag), just to let separate log lines about the SAME group instance be visually correlated.</summary>
-    /// <param name="group">The group to describe.</param>
-    private string DescribePacingGroup(IMachineGroup group)
-    {
-        return $"group#{group.GetHashCode():X} ({group.Machines.Length} machines, {group.LocationKey ?? "Junimo aggregate"})";
-    }
-
-    /// <summary>MOD: added. A short tag identifying a machine in the diagnostic trace log (see <see cref="EnqueueForAutomation"/>/<see cref="RunGroupBatch"/>) — its type and tile position, which is stable and recognizable even across a rebuild (unlike the machine's own object identity).</summary>
-    /// <param name="machine">The machine to describe.</param>
-    private string DescribePacingMachine(IMachine machine)
-    {
-        return $"{machine.MachineTypeID}@({machine.TileArea.X},{machine.TileArea.Y})";
-    }
-
     /// <summary>
     /// Schedule an independent, separately-delayed <see cref="EnqueueForAutomation"/> for every machine
-    /// that's CURRENTLY empty in a location's active groups — used by <see cref="OnChestInventoryChanged"/>/
+    /// that's CURRENTLY Done or Empty in a location's active groups — used by <see cref="OnChestInventoryChanged"/>/
     /// <see cref="OnMenuChanged"/> instead of one shared pass covering the whole location, so several
     /// machines fed by the same chest restock each get their own independent reveal pacing rather than all
     /// resolving in one synchronized burst. The candidate list is captured now (at the moment the chest
     /// changed), but each individual feed re-validates the machine's state itself right before acting, so a
-    /// machine that's no longer empty by the time its own delay elapses is safely skipped instead of
+    /// machine that's no longer Done/Empty by the time its own delay elapses is safely skipped instead of
     /// double-fed.
+    ///
+    /// MOD: fixed — checks BOTH Done and Empty (previously Empty only), delegating the actual per-machine
+    /// scheduling to <see cref="ScheduleGroupCheck"/> so the two never drift apart again. A chest's
+    /// contents changing isn't just "input became available" (relevant to an Empty machine) — it's also
+    /// "output space may have freed up" (relevant to a Done machine blocked on a full destination).
+    ///
+    /// MOD: fixed — <paramref name="isJunimoChest"/> unconditionally also wakes the aggregate
+    /// <see cref="MachineManager.JunimoMachineGroup"/>, bypassing the tile-narrowed lookup for it
+    /// specifically. A Junimo Chest's inventory is shared across every instance in the save, so a change
+    /// to ANY of them can unblock a machine elsewhere using a completely different instance — but the
+    /// tile-narrowed lookup only matches a group whose OWN tracked footprint covers the changed chest's
+    /// tile, which misses this entirely for a Junimo Chest that isn't itself adjacent to any machine (not
+    /// part of any tracked group at all, so no footprint contains its tile) even though its contents are
+    /// still part of the same shared inventory every Junimo-touching machine reads from.
     /// </summary>
-    /// <param name="location">The location whose active groups to scan for empty machines.</param>
+    /// <param name="location">The location whose active groups to scan for Done/Empty machines.</param>
     /// <param name="originTile">MOD: added. The specific tile whose container just changed, if known — narrows the scan to just the group(s) covering that tile instead of every active group in the location (see <see cref="OnChestInventoryChanged"/>'s own remarks for why that narrowing matters). Left <c>null</c> for <see cref="OnMenuChanged"/>'s locked-container retry, which no longer has a specific tile to narrow to by the time it fires — that path keeps scanning the whole location as a broader backstop.</param>
-    private void ScheduleInputFeedsFor(GameLocation location, Vector2? originTile = null)
+    /// <param name="isJunimoChest">MOD: added. Whether the container that changed is a Junimo Chest — see this method's own remarks for why that unconditionally wakes the aggregate Junimo group regardless of <paramref name="originTile"/>.</param>
+    private void ScheduleInputFeedsFor(GameLocation location, Vector2? originTile = null, bool isJunimoChest = false)
     {
         IEnumerable<IMachineGroup> groups = originTile.HasValue
             ? this.MachineManager.GetActiveMachineGroupsFor(location, originTile.Value)
             : this.MachineManager.GetActiveMachineGroupsFor(location);
 
         foreach (IMachineGroup group in groups)
-        {
-            foreach (IMachine machine in group.Machines)
-            {
-                if (machine.GetState() != MachineState.Empty)
-                    continue;
+            this.ScheduleGroupCheck(group);
 
-                this.RunOrScheduleDelayedPass(() =>
-                {
-                    this.EnqueueForAutomation(group, machine, "ChestInventoryChanged");
-                    this.TryScheduleGroupBatch(group);
-                }, this.Config.EventBasedPushPullDelaySeconds, group);
-            }
-        }
+        // MOD: added — see this method's own remarks for why a Junimo Chest change needs this even when
+        // the tile-narrowed lookup above didn't already include the aggregate group (e.g. the changed
+        // chest isn't itself adjacent to any machine). Only needed when originTile narrowed the lookup —
+        // the unnarrowed overload already includes the Junimo group unconditionally. Safe to schedule
+        // again even if it WAS already included above; EnqueueForAutomation's own dedup absorbs it.
+        if (isJunimoChest && originTile.HasValue && this.MachineManager.JunimoMachineGroup.HasInternalAutomation)
+            this.ScheduleGroupCheck(this.MachineManager.JunimoMachineGroup);
     }
 
     /// <summary>
@@ -1140,11 +1130,11 @@ internal class ModEntry : Mod
     /// newly-joined machine fires any of event-based mode's other triggers on its own: a container coming
     /// into range doesn't fire <see cref="OnChestInventoryChanged"/> (nothing was stored/removed, it just
     /// became reachable), and a machine joining isn't itself "becoming ready" for
-    /// <see cref="Patches.MachineReadyPatches"/> to notice. Checks BOTH states (not just Empty, unlike
-    /// <see cref="ScheduleInputFeedsFor"/>) since a machine could already have been sitting Done with
-    /// nowhere to push before the new member arrived. Schedules each machine independently, with the same
-    /// <see cref="ModConfig.EventBasedPushPullDelaySeconds"/> pacing as every other event-based trigger,
-    /// rather than automating the whole group synchronously in one call.
+    /// <see cref="Patches.MachineReadyPatches"/> to notice. Checks BOTH states, since a machine could
+    /// already have been sitting Done with nowhere to push before the new member arrived — also shared by
+    /// <see cref="ScheduleInputFeedsFor"/> for the same reason. Schedules each machine independently, with
+    /// the same <see cref="ModConfig.EventBasedPushPullDelaySeconds"/> pacing as every other event-based
+    /// trigger, rather than automating the whole group synchronously in one call.
     /// </summary>
     /// <param name="group">The group to check.</param>
     private void ScheduleGroupCheck(IMachineGroup group)
@@ -1156,7 +1146,7 @@ internal class ModEntry : Mod
 
             this.RunOrScheduleDelayedPass(() =>
             {
-                this.EnqueueForAutomation(group, machine, "NewGroupMember");
+                this.EnqueueForAutomation(group, machine);
                 this.TryScheduleGroupBatch(group);
             }, this.Config.EventBasedPushPullDelaySeconds, group);
         }

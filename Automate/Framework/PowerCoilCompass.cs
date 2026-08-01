@@ -12,13 +12,15 @@ namespace Pathoschild.Stardew.Automate.Framework;
 /// <summary>
 /// MOD: added. Draws an animated compass arrow — the same "continue"/bring-row arrow sprite used in
 /// <see cref="PowerSiloMenu"/>'s own bring-request rows — pointing toward every Power Coil in the
-/// player's CURRENT location that's currently off-screen, while <see cref="PowerCoilMapMarkerPatches.ShowMarkers"/>
-/// is toggled on. Modeled on the "LocationCompass" mod's own on-screen-edge-clamped-arrow approach, but
-/// simpler: a single ray-to-rectangle clamp instead of per-quadrant branching, and only ever shown for
-/// the player's own current location — a coil on a different map wouldn't have a meaningful screen-space
-/// direction to point in anyway (see <see cref="PowerCoilMapMarkerPatches"/>'s own remarks for why this
-/// whole feature is built independently of, rather than integrated with, the NPCMapLocations/LocationCompass
-/// mods it takes visual inspiration from).
+/// player's CURRENT location that's currently off-screen, while <see cref="ShowCompass"/> is toggled
+/// on (independently of <see cref="PowerCoilMapMarkerPatches.ShowMapMarkers"/> — the two used to share a
+/// single toggle, but per direct user request each now has its own button/state in
+/// <see cref="PowerSiloMenu"/>). Modeled on the "LocationCompass" mod's own on-screen-edge-clamped-arrow
+/// approach, but simpler: a single ray-to-rectangle clamp instead of per-quadrant branching, and only
+/// ever shown for the player's own current location — a coil on a different map wouldn't have a
+/// meaningful screen-space direction to point in anyway (see <see cref="PowerCoilMapMarkerPatches"/>'s
+/// own remarks for why this whole feature is built independently of, rather than integrated with, the
+/// NPCMapLocations/LocationCompass mods it takes visual inspiration from).
 /// </summary>
 internal static class PowerCoilCompass
 {
@@ -27,6 +29,9 @@ internal static class PowerCoilCompass
     *********/
     /// <summary>Get the item names/IDs that count as a Power Coil for capacity purposes.</summary>
     private static Func<HashSet<string>>? GetSourceNames;
+
+    /// <summary>MOD: added. Whether the compass arrows (and the matching Power Coil sprite tint — see <see cref="Patches.PowerCoilPatches.Draw_Prefix"/>) are currently shown — toggled by <see cref="PowerSiloMenu"/>'s "Show/Hide Power Coil markers" button. Independent of <see cref="PowerCoilMapMarkerPatches.ShowMapMarkers"/>.</summary>
+    public static bool ShowCompass { get; private set; }
 
     /// <summary>How close to the screen edge the arrow is allowed to get, in pixels — 2.5x the original 64px margin, per feedback.</summary>
     private const int ScreenMargin = 160;
@@ -37,7 +42,10 @@ internal static class PowerCoilCompass
     /// <summary>MOD: added. The arrow's draw scale — bigger than the default 4x <see cref="Utility.drawWithShadow"/> otherwise falls back to, matching PowerSiloMenu's own bring-row arrow.</summary>
     private const float ArrowScale = 6f;
 
-    /// <summary>MOD: added. The tint for an unpowered coil's arrow, so it stands out from a normal (white) powered one.</summary>
+    /// <summary>MOD: added. The tint for a powered coil's arrow, per direct user request — was previously untinted white.</summary>
+    private static readonly Color PoweredTint = Color.Yellow;
+
+    /// <summary>The tint for an unpowered coil's arrow, so it stands out from the powered one.</summary>
     private static readonly Color UnpoweredTint = Color.Red;
 
     /// <summary>
@@ -86,11 +94,18 @@ internal static class PowerCoilCompass
         PowerCoilCompass.GetSourceNames = getSourceNames;
     }
 
+    /// <summary>Toggle whether the compass arrows (and matching coil tint) are currently shown.</summary>
+    /// <returns>Returns the new state (<c>true</c> if the compass is now shown).</returns>
+    public static bool ToggleCompass()
+    {
+        return PowerCoilCompass.ShowCompass = !PowerCoilCompass.ShowCompass;
+    }
+
     /// <summary>Draw a compass arrow toward every off-screen Power Coil in the player's current location.</summary>
     /// <param name="b">The sprite batch being drawn to.</param>
     public static void Draw(SpriteBatch b)
     {
-        if (!PowerCoilMapMarkerPatches.ShowMarkers || !Context.IsWorldReady || Game1.activeClickableMenu != null || PowerCoilCompass.GetSourceNames is not { } getSourceNames)
+        if (!PowerCoilCompass.ShowCompass || !Context.IsWorldReady || Game1.activeClickableMenu != null || PowerCoilCompass.GetSourceNames is not { } getSourceNames)
             return;
 
         HashSet<string> sourceNames = getSourceNames();
@@ -121,7 +136,7 @@ internal static class PowerCoilCompass
 
         foreach (SObject obj in PowerCoilCompass.CachedCoils)
         {
-            Color tint = PowerCoilPatches.IsPowered(obj) ? Color.White : PowerCoilCompass.UnpoweredTint;
+            Color tint = PowerCoilPatches.IsPowered(obj) ? PowerCoilCompass.PoweredTint : PowerCoilCompass.UnpoweredTint;
 
             Vector2 coilWorldCenter = obj.TileLocation * 64f + new Vector2(32f, 32f);
             Vector2 coilScreenPos = Game1.GlobalToLocal(Game1.viewport, coilWorldCenter);

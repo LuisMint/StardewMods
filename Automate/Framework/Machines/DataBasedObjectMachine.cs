@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Microsoft.Xna.Framework;
 using StardewValley;
 using StardewValley.GameData.Machines;
+using StardewValley.Inventories;
 using StardewValley.TerrainFeatures;
 using SObject = StardewValley.Object;
 
@@ -61,6 +63,16 @@ internal class DataBasedObjectMachine : GenericObjectMachine<SObject>
         bool addedInput = false;
         foreach (IContainer container in input.OutputContainers)
         {
+            // MOD: added — vanilla's own AttemptAutoLoad checks a recipe's required count against ONE
+            // inventory slot's own Stack at a time; it never combines several slots holding the same
+            // item (e.g. a chest with four 999-count Copper Ore stacks after hitting the 999 cap). Once
+            // a stack drains below whatever a recipe needs, vanilla just skips it forever and moves to
+            // the next full stack — leaving a trail of small "orphaned" stacks (4, 4, 4, 4...) that
+            // individually never meet the requirement even though they total more than enough. Merging
+            // same-item stacks together first (up to each item's own max stack size) before vanilla's
+            // check runs means it always sees as much of that item as physically fits in one slot.
+            DataBasedObjectMachine.ConsolidateFragmentedStacks(container.Inventory);
+
             bool loaded = container is ItemFilteredContainer filtered
                 ? filtered.AttemptAutoLoad(machine, Game1.player)
                 : machine.AttemptAutoLoad(container.Inventory, Game1.player);
@@ -159,6 +171,62 @@ internal class DataBasedObjectMachine : GenericObjectMachine<SObject>
                         if (int.TryParse(expSplit[i + 1], out int amount))
                             Game1.player.gainExperience(skill, amount);
                     }
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// MOD: added. Merge fragmented stacks of the same item together (up to each item's own max stack
+    /// size), so a single slot ends up holding as much of that item as physically fits — see this
+    /// class's own remarks on <see cref="SetInput"/> for why this matters ahead of vanilla's own
+    /// <c>AttemptAutoLoad</c> check. Merges toward the EARLIEST matching slot(s) first, nulling out any
+    /// slot that's fully drained into another.
+    /// </summary>
+    /// <param name="inventory">The inventory to consolidate.</param>
+    private static void ConsolidateFragmentedStacks(IInventory inventory)
+    {
+        Dictionary<string, List<int>> slotIndexesByItemId = [];
+        for (int i = 0; i < inventory.Count; i++)
+        {
+            Item? item = inventory[i];
+            if (item == null || item.maximumStackSize() <= 1)
+                continue; // not a stackable item — nothing to consolidate
+
+            if (!slotIndexesByItemId.TryGetValue(item.QualifiedItemId, out List<int>? slotIndexes))
+                slotIndexesByItemId[item.QualifiedItemId] = slotIndexes = [];
+            slotIndexes.Add(i);
+        }
+
+        foreach (List<int> slotIndexes in slotIndexesByItemId.Values)
+        {
+            if (slotIndexes.Count < 2)
+                continue; // only one stack of this item — nothing to merge it with
+
+            for (int a = 0; a < slotIndexes.Count; a++)
+            {
+                Item? target = inventory[slotIndexes[a]];
+                if (target == null)
+                    continue;
+
+                int maxStack = target.maximumStackSize();
+
+                for (int b = slotIndexes.Count - 1; b > a; b--)
+                {
+                    Item? source = inventory[slotIndexes[b]];
+                    if (source == null || source.Stack <= 0)
+                        continue;
+
+                    int room = maxStack - target.Stack;
+                    if (room <= 0)
+                        break; // target is full — move on to the next target slot
+
+                    int move = Math.Min(room, source.Stack);
+                    target.Stack += move;
+                    source.Stack -= move;
+
+                    if (source.Stack <= 0)
+                        inventory[slotIndexes[b]] = null!;
                 }
             }
         }

@@ -62,6 +62,16 @@
         },
         {
             "Action": "Load",
+            "Target": "Mods/{{ModId}}/Cursors_Dwarf",
+            "FromFile": "Pipes/Cursors_Dwarf.png"
+        },
+        {
+            "Action": "Load",
+            "Target": "Mods/{{ModId}}/DwarfLadder",
+            "FromFile": "Pipes/DwarfLadder.png"
+        },
+        {
+            "Action": "Load",
             "Target": "Mods/{{ModId}}/PowerSiloBody",
             "FromFile": "Pipes/PowerSiloBody.png"
         },

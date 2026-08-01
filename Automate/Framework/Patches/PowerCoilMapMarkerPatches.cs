@@ -14,7 +14,9 @@ namespace Pathoschild.Stardew.Automate.Framework.Patches;
 /// <summary>
 /// MOD: added. Marks every Power Coil's location on the world map (the big map opened via the pause
 /// menu's map tab, or the M key) when the player toggles it on from <see cref="PowerSiloMenu"/>'s
-/// "Mark/Hide Power Coils" button — the same idea as the NPCMapLocations mod's own NPC markers, but
+/// "Show/Hide Power Coils on map" button — independent of <see cref="PowerCoilCompass.ShowCompass"/>
+/// (the two used to share a single toggle, but per direct user request each now has its own
+/// button/state) — the same idea as the NPCMapLocations mod's own NPC markers, but
 /// fully independent of it (no reference, dependency, or compatibility risk either way): rather than
 /// subclassing/replacing <see cref="MapPage"/> the way that mod does (which would fight over
 /// ownership of <c>GameMenu</c>'s page instance if both mods tried it at once), this is a Harmony
@@ -39,8 +41,8 @@ internal static class PowerCoilMapMarkerPatches
     /// <summary>The draw scale for each marker icon — the craft icon's native size (16x32) is a bit large for a map marker, so this shrinks it down.</summary>
     private const float MarkerScale = 0.5f;
 
-    /// <summary>Whether markers are currently shown — toggled by <see cref="PowerSiloMenu"/>'s "Mark/Hide Power Coils" button.</summary>
-    public static bool ShowMarkers { get; private set; }
+    /// <summary>Whether markers are currently shown — toggled by <see cref="PowerSiloMenu"/>'s "Show/Hide Power Coils on map" button.</summary>
+    public static bool ShowMapMarkers { get; private set; }
 
     /// <summary>MOD: added. How many draw calls to go between re-scanning every location for Power Coils — see <see cref="RefreshMarkerCacheIfNeeded"/>'s remarks for why this exists.</summary>
     private const int RescanIntervalFrames = 60;
@@ -77,21 +79,21 @@ internal static class PowerCoilMapMarkerPatches
 
     /// <summary>Toggle whether Power Coil markers are currently shown on the world map.</summary>
     /// <returns>Returns the new state (<c>true</c> if markers are now shown).</returns>
-    public static bool ToggleMarkers()
+    public static bool ToggleMapMarkers()
     {
-        return PowerCoilMapMarkerPatches.ShowMarkers = !PowerCoilMapMarkerPatches.ShowMarkers;
+        return PowerCoilMapMarkerPatches.ShowMapMarkers = !PowerCoilMapMarkerPatches.ShowMapMarkers;
     }
 
 
     /*********
     ** Private methods
     *********/
-    /// <summary>Draw a small icon over every Power Coil's location on the world map, once <see cref="ShowMarkers"/> is toggled on — the ordinary craft icon for a powered coil, or its dedicated unpowered variant for one that's currently over the Power Silo capacity, so the player can spot coils they left unpowered.</summary>
+    /// <summary>Draw a small icon over every Power Coil's location on the world map, once <see cref="ShowMapMarkers"/> is toggled on — the ordinary craft icon for a powered coil, or its dedicated unpowered variant for one that's currently over the Power Silo capacity, so the player can spot coils they left unpowered.</summary>
     /// <param name="__instance">The map page being drawn.</param>
     /// <param name="b">The sprite batch being drawn to.</param>
     private static void Draw_Postfix(MapPage __instance, SpriteBatch b)
     {
-        if (!PowerCoilMapMarkerPatches.ShowMarkers || PowerCoilMapMarkerPatches.GetSourceNames is not { } getSourceNames)
+        if (!PowerCoilMapMarkerPatches.ShowMapMarkers || PowerCoilMapMarkerPatches.GetSourceNames is not { } getSourceNames)
             return;
 
         HashSet<string> sourceNames = getSourceNames();

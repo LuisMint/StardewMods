@@ -1,4 +1,4 @@
-{
+﻿{
     "Changes": [
         {
             "Action": "EditData",
@@ -22,7 +22,7 @@
                     "AdditionalPlacementTiles": null,
                     "Builder": "Dwarf",
                     "BuildCondition": null,
-                    "BuildDays": 2,
+                    "BuildDays": 4,
                     "BuildCost": 2000,
                     "BuildMaterials": [
                         { "ItemId": "(O)334", "Amount": 25 },
