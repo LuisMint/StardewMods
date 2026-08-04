@@ -270,6 +270,7 @@ internal class MachineManager
             powerRequiredMachineSystem: powerRequiredMachineSystem, // MOD: added
             powerSiloSystem: powerSiloSystem, // MOD: added
             buildStorage: this.BuildStorage,
+            isContainerCategoryEnabled: this.IsContainerCategoryEnabled, // MOD: added
             monitor: monitor
         );
         this.Factory.Add(defaultFactory);

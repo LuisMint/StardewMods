@@ -280,6 +280,46 @@ internal class ModConfig
     ];
 
     /// <summary>
+    /// MOD: added. Whether the Power Relay mechanic is enabled — when true, each Prismatic Shard
+    /// delivered to a Power Relay building (up to <see cref="PowerRelaySystem.MaxShards"/> per Relay)
+    /// subtracts <see cref="PowerRelayActionDelayReductionPerShardSeconds"/> from
+    /// <see cref="ActionDelaySeconds"/>, and each Radioactive Bar delivered (up to
+    /// <see cref="PowerRelaySystem.MaxBars"/> per Relay) adds <see cref="PowerRelayActionsPerDelayWindowBonusPerBar"/>
+    /// to <see cref="ActionsPerDelayWindow"/>, summed across every Relay in the save (global, like
+    /// <see cref="PowerSiloSystemEnabled"/>'s capacity mechanic). Delivery is one-way, like a Power Silo
+    /// tier — see <see cref="PowerRelaySystem"/>.
+    /// </summary>
+    public bool PowerRelaySystemEnabled { get; set; } = true;
+
+    /// <summary>MOD: added. The <c>buildingType</c> ID(s) that count as a Power Relay for the efficiency-bonus mechanic (see <see cref="PowerRelaySystemEnabled"/>) — the Power Relay, by default.</summary>
+    [JsonProperty("PowerRelayBuildingNames")]
+    public HashSet<string> PowerRelayBuildingNames { get; set; } = new(StringComparer.OrdinalIgnoreCase) { "luisMint.AutomatePowerPipes_PowerRelay" };
+
+    /// <summary>MOD: added. The qualified/unqualified item ID delivered to a Power Relay for the delay-reduction track — Prismatic Shard, by default.</summary>
+    public string PowerRelayShardItemId { get; set; } = "(O)74";
+
+    /// <summary>MOD: added. The qualified/unqualified item ID delivered to a Power Relay for the actions-per-window bonus track — Radioactive Bar, by default. MOD: fixed — (O)909 is actually Radioactive Ore (the raw/unsmelted item); Radioactive Bar (the smelted one) is (O)910, confirmed via the Stardew Valley Wiki after this defaulted to the wrong item.</summary>
+    public string PowerRelayBarItemId { get; set; } = "(O)910";
+
+    /// <summary>MOD: added. How much a single delivered shard subtracts from <see cref="ActionDelaySeconds"/>, in seconds, summed across every shard delivered to every Relay in the save (each Relay accepts up to <see cref="PowerRelaySystem.MaxShards"/>). The effective delay is floored at <see cref="PowerRelayMinimumActionDelaySeconds"/> regardless of how many are delivered.</summary>
+    public float PowerRelayActionDelayReductionPerShardSeconds { get; set; } = 0.4f;
+
+    /// <summary>
+    /// MOD: added. The lowest <see cref="ActionDelaySeconds"/> can ever be pushed down to by Power Relay
+    /// shard deliveries, globally across every Relay in the save — per direct user request, a hard floor
+    /// distinct from <see cref="ActionDelaySeconds"/> itself possibly already being lower (in which case
+    /// this has no effect either way). Once the effective delay has been pushed down to this floor, EVERY
+    /// Relay's shard track stops accepting further deliveries entirely (see <see cref="PowerRelaySystem.IsGlobalSpeedCapped"/>)
+    /// — deliberately no equivalent cap on the actions-per-window side, which the player can keep
+    /// upgrading without limit.
+    /// </summary>
+    public float PowerRelayMinimumActionDelaySeconds { get; set; } = 0.6f;
+
+    /// <summary>MOD: added. How much a single delivered bar adds to <see cref="ActionsPerDelayWindow"/>, summed across every bar delivered to every Relay in the save (each Relay accepts up to <see cref="PowerRelaySystem.MaxBars"/>).</summary>
+    public int PowerRelayActionsPerDelayWindowBonusPerBar { get; set; } = 2;
+
+
+    /// <summary>
     /// MOD: added. Maps a connector's <c>Data/FloorsAndPaths</c> ID to the Alternative Textures
     /// texture ID (in the form <c>{Owner}.{ModelName}</c>, e.g.
     /// <c>luisMint.ATAutomatePowerPipes.Flooring_luisMint.AutomatePowerPipes_PullPushPipe</c>)
@@ -453,6 +493,17 @@ internal class ModConfig
         this.PowerSiloTiers.RemoveAll(tier => tier is null);
         foreach (PowerSiloTierConfig tier in this.PowerSiloTiers)
             tier.RequiredItems?.RemoveAll(item => item is null);
+
+        // MOD: added — normalize the power relay building set the same way, and guard against
+        // nonsensical (hand-edited) bonus values.
+        this.PowerRelayBuildingNames = this.PowerRelayBuildingNames.ToNonNullCaseInsensitive();
+        this.PowerRelayBuildingNames.RemoveWhere(string.IsNullOrWhiteSpace);
+        if (this.PowerRelayActionsPerDelayWindowBonusPerBar < 0)
+            this.PowerRelayActionsPerDelayWindowBonusPerBar = 0;
+        if (this.PowerRelayActionDelayReductionPerShardSeconds < 0)
+            this.PowerRelayActionDelayReductionPerShardSeconds = 0;
+        if (this.PowerRelayMinimumActionDelaySeconds < 0)
+            this.PowerRelayMinimumActionDelaySeconds = 0;
 
         // MOD: added — guard against a nonsensical animation speed/hold multiplier.
         if (this.PoweredFloorAnimationFps <= 0)

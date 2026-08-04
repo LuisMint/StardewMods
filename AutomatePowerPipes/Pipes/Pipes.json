@@ -82,6 +82,11 @@
         },
         {
             "Action": "Load",
+            "Target": "Mods/{{ModId}}/PowerRelay",
+            "FromFile": "Pipes/PowerRelay.png"
+        },
+        {
+            "Action": "Load",
             "Target": "Mods/{{ModId}}/PowerCoil_UnPowered",
             "FromFile": "Pipes/PowerCoil_UnPowered.png"
         },

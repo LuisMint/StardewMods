@@ -7,7 +7,7 @@
                 "{{ModId}}_PowerCoil": {
                     "Name": "{{ModId}}_PowerCoil",
                     "DisplayName": "Power Coil",
-                    "Description": "Provides power to nearby connectors and machines, just like a Lightning Rod.",
+                    "Description": "Provides power to nearby connectors and machines.",
                     "Price": 50,
                     "Fragility": 0,
                     "CanBePlacedOutdoors": true,
@@ -22,7 +22,7 @@
                 "{{ModId}}_WhitelistSign": {
                     "Name": "{{ModId}}_WhitelistSign",
                     "DisplayName": "Whitelist Sign",
-                    "Description": "Place an item on this sign to let only that item pass through a touching connector group.",
+                    "Description": "Use an item on this sign to let only that item pass through a touching connector group. The item won't be consumed.",
                     "Price": 25,
                     "Fragility": 0,
                     "CanBePlacedOutdoors": true,
@@ -37,7 +37,7 @@
                 "{{ModId}}_BlacklistSign": {
                     "Name": "{{ModId}}_BlacklistSign",
                     "DisplayName": "Blacklist Sign",
-                    "Description": "Place an item on this sign to block that item from passing through a touching connector group.",
+                    "Description": "Use an item on this sign to block that item from passing through a touching connector group. The item won't be consumed.",
                     "Price": 25,
                     "Fragility": 0,
                     "CanBePlacedOutdoors": true,
@@ -52,7 +52,7 @@
                 "{{ModId}}_WhitelistCategorySign": {
                     "Name": "{{ModId}}_WhitelistCategorySign",
                     "DisplayName": "Whitelist Category Sign",
-                    "Description": "Place an item on this sign to let only that item's CATEGORY pass through a touching connector group.",
+                    "Description": "Use an item on this sign to let only that item's CATEGORY pass through a touching connector group. The item won't be consumed.",
                     "Price": 25,
                     "Fragility": 0,
                     "CanBePlacedOutdoors": true,
@@ -67,7 +67,7 @@
                 "{{ModId}}_BlacklistCategorySign": {
                     "Name": "{{ModId}}_BlacklistCategorySign",
                     "DisplayName": "Blacklist Category Sign",
-                    "Description": "Place an item on this sign to block that item's CATEGORY from passing through a touching connector group.",
+                    "Description": "Use an item on this sign to block that item's CATEGORY from passing through a touching connector group. The item won't be consumed.",
                     "Price": 25,
                     "Fragility": 0,
                     "CanBePlacedOutdoors": true,
@@ -82,7 +82,7 @@
                 "{{ModId}}_PoweredChest": {
                     "Name": "{{ModId}}_PoweredChest",
                     "DisplayName": "Powered Chest",
-                    "Description": "A chest that passively powers its own tile and the 4 tiles touching it, and can pull/push items to and from neighboring chests through one-directional pipes.",
+                    "Description": "A chest that can automate items via powered conduits. Passively powers itself and adjacent tiles.",
                     "Price": 100,
                     "Fragility": 0,
                     "CanBePlacedOutdoors": true,

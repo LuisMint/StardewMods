@@ -7,7 +7,7 @@
                 "{{ModId}}_PullPushPipe": {
                     "Name": "{{ModId}}_PullPushPipe",
                     "DisplayName": "Omni Conduit",
-                    "Description": "Lets automation both push and pull items from machines and containers connected by this conduit, as long as it's within power range.",
+                    "Description": "Lets automation both push and pull items from machines, as long as it's within power range.",
                     "Type": "Crafting",
                     "Category": -24,
                     "Price": 1,
@@ -29,7 +29,7 @@
                 "{{ModId}}_InputPipe": {
                     "Name": "{{ModId}}_InputPipe",
                     "DisplayName": "Input Conduit",
-                    "Description": "Lets automation to pull items from machines and containers connected by this conduit, as long as it's within power range.",
+                    "Description": "Lets automation pull items from machines and containers, as long as it's within power range.",
                     "Type": "Crafting",
                     "Category": -24,
                     "Price": 1,
@@ -51,7 +51,7 @@
                 "{{ModId}}_OutputPipe": {
                     "Name": "{{ModId}}_OutputPipe",
                     "DisplayName": "Output Conduit",
-                    "Description": "Lets automation push items into machines and containers connected by this conduit, as long as it's within power range.",
+                    "Description": "Lets automation push items into machines and containers, as long as it's within power range.",
                     "Type": "Crafting",
                     "Category": -24,
                     "Price": 1,

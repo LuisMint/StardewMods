@@ -49,6 +49,12 @@ internal class ModEntry : Mod
     /// <summary>MOD: added. Plays a passive dust-puff ambient effect on placed Power Coils.</summary>
     private readonly PowerCoilAmbientEffect PowerCoilAmbientEffect = new();
 
+    /// <summary>MOD: added. The Power Relay efficiency-bonus mechanic, used both to read the save-wide bonus (see <see cref="GetEffectiveActionDelaySeconds"/>/<see cref="GetEffectiveActionsPerDelayWindow"/>) and by <see cref="PowerRelayInteraction"/>/<see cref="PowerRelayMenu"/> to read/write a Relay's own slot state.</summary>
+    private PowerRelaySystem PowerRelaySystem = null!; // set in Entry
+
+    /// <summary>MOD: added. Plays a passive shimmering-glint ambient effect on placed Power Relays.</summary>
+    private PowerRelayAmbientEffect PowerRelayAmbientEffect = null!; // set in Entry
+
     /// <summary>Whether to automate machines for the current save.</summary>
     private bool EnableAutomation => this.Config.Enabled && Context.IsMainPlayer;
 
@@ -234,6 +240,25 @@ internal class ModEntry : Mod
 
         this.CommandHandler = new CommandHandler(this.Monitor, () => this.Config, this.MachineManager);
 
+        // MOD: added — the Power Relay's global efficiency-bonus mechanic (see PowerRelaySystem's own
+        // remarks). Deliberately NOT owned by MachineManager.Factory like PowerSiloSystem is — unlike a
+        // Power Silo (which gates Power Coil range, feeding directly into machine group formation), a
+        // Power Relay has no relationship to grouping at all; it only ever needs to be read by this
+        // class's own pacing code and written by PowerRelayInteraction/PowerRelayMenu.
+        this.PowerRelaySystem = new PowerRelaySystem(
+            getEnabled: () => this.Config.PowerRelaySystemEnabled,
+            getRelayBuildingNames: () => this.Config.PowerRelayBuildingNames,
+            getActionDelayReductionPerShard: () => this.Config.PowerRelayActionDelayReductionPerShardSeconds,
+            getActionsPerDelayWindowBonusPerBar: () => this.Config.PowerRelayActionsPerDelayWindowBonusPerBar,
+            getBaseActionDelaySeconds: () => this.Config.ActionDelaySeconds,
+            getMinimumActionDelaySeconds: () => this.Config.PowerRelayMinimumActionDelaySeconds
+        );
+
+        // MOD: added — the Power Relay's passive shimmering-glint ambient effect, purely cosmetic.
+        this.PowerRelayAmbientEffect = new PowerRelayAmbientEffect(
+            getRelayBuildingNames: () => this.Config.PowerRelayBuildingNames
+        );
+
         // apply Harmony patches
         Harmony harmony = new(this.ModManifest.UniqueID);
         PowerCoilPatches.Apply(harmony);
@@ -315,6 +340,23 @@ internal class ModEntry : Mod
             powerSiloSystem: this.MachineManager.Factory.PowerSiloSystem,
             getTiers: () => this.Config.PowerSiloTiers
         ).Register();
+
+        // MOD: added — registers the Power Relay's click interaction the same way (see
+        // PowerRelayInteraction's own remarks).
+        new PowerRelayInteraction(
+            this.PowerRelaySystem,
+            getShardItemId: () => this.Config.PowerRelayShardItemId,
+            getBarItemId: () => this.Config.PowerRelayBarItemId,
+            getBaseActionsPerDelayWindow: () => this.Config.ActionsPerDelayWindow
+        ).Register();
+
+        // MOD: added — a static lamppost light on every Power Relay, plus a one-shot whole-building
+        // shake whenever one levels up (see PowerRelayEffectPatches's own remarks). Tick() is called
+        // every game tick below; Reset() clears it on day start.
+        PowerRelayEffectPatches.Initialize(
+            getRelayBuildingNames: () => this.Config.PowerRelayBuildingNames
+        );
+        PowerRelayEffectPatches.Apply(harmony);
 
         // MOD: added — gives the Dwarf a "build a Power Silo" option alongside their normal shop, reusing
         // vanilla's own carpenter menu (see DwarfBuildMenuPatches's own remarks).
@@ -515,6 +557,9 @@ internal class ModEntry : Mod
 
             // MOD: added — clears the Power Silo cap's cached animation state, mirroring MachineManager.Reset() above.
             PowerSiloCapPatches.Reset();
+
+            // MOD: added — clears the Power Relay's cached light/shake state, mirroring PowerSiloCapPatches.Reset() above.
+            PowerRelayEffectPatches.Reset();
         }
 
         // reset overlay
@@ -751,6 +796,19 @@ internal class ModEntry : Mod
             }
         }
 
+        // MOD: added — passive shimmering-glint ambient effect on placed Power Relays, purely cosmetic.
+        if (Context.IsWorldReady)
+        {
+            try
+            {
+                this.PowerRelayAmbientEffect.Tick();
+            }
+            catch (Exception ex)
+            {
+                this.HandleError(ex, "animating Power Relay ambient effect");
+            }
+        }
+
         // MOD: added — advances the Power Silo's animated cap height, purely cosmetic.
         if (Context.IsWorldReady)
         {
@@ -761,6 +819,19 @@ internal class ModEntry : Mod
             catch (Exception ex)
             {
                 this.HandleError(ex, "animating Power Silo cap");
+            }
+        }
+
+        // MOD: added — advances the Power Relay's light/shake state, purely cosmetic.
+        if (Context.IsWorldReady)
+        {
+            try
+            {
+                PowerRelayEffectPatches.Tick();
+            }
+            catch (Exception ex)
+            {
+                this.HandleError(ex, "animating Power Relay light/shake effects");
             }
         }
     }
@@ -914,11 +985,38 @@ internal class ModEntry : Mod
     /// Done/Empty machines are queued via <see cref="EnqueueForAutomation"/> instead, exactly like the
     /// fine-grained event-based hooks do, so it doesn't matter which trigger found a machine.
     /// </summary>
+    /// <summary>
+    /// MOD: added. Get <see cref="ModConfig.ActionDelaySeconds"/> after applying the Power Relay's
+    /// global efficiency bonus, floored at <see cref="ModConfig.PowerRelayMinimumActionDelaySeconds"/>
+    /// (see <see cref="PowerRelaySystem.GetEffectiveActionDelaySeconds"/>, the actual source of truth —
+    /// this is a thin wrapper so every pacing call site below reads through the same method name it
+    /// already used before the Relay mechanic existed). If that floor is ever configured to 0 or below,
+    /// enough Relay levels can still reach the instant/unbatched fast path every call site below already
+    /// has for a literal 0 config value.
+    /// </summary>
+    private float GetEffectiveActionDelaySeconds()
+    {
+        return this.PowerRelaySystem.GetEffectiveActionDelaySeconds();
+    }
+
+    /// <summary>
+    /// MOD: added. Get <see cref="ModConfig.ActionsPerDelayWindow"/> after applying the Power Relay's
+    /// global efficiency bonus (see <see cref="PowerRelaySystem.GetActionsPerDelayWindowBonus"/>). A
+    /// configured value of 0 or less already means "unlimited" and stays that way regardless of the
+    /// bonus — there's no more "unlimited" to add to.
+    /// </summary>
+    private int GetEffectiveActionsPerDelayWindow()
+    {
+        return this.Config.ActionsPerDelayWindow <= 0
+            ? this.Config.ActionsPerDelayWindow
+            : this.Config.ActionsPerDelayWindow + this.PowerRelaySystem.GetActionsPerDelayWindowBonus();
+    }
+
     private void TryRunAutomationPass()
     {
         IMachineGroup[] activeGroups = this.MachineManager.GetActiveMachineGroups().ToArray();
 
-        if (this.Config.ActionDelaySeconds <= 0)
+        if (this.GetEffectiveActionDelaySeconds() <= 0)
         {
             foreach (IMachineGroup group in activeGroups)
             {
@@ -994,7 +1092,7 @@ internal class ModEntry : Mod
     /// <param name="machine">The machine believed ready for a push/pull.</param>
     private void EnqueueForAutomation(IMachineGroup group, IMachine machine)
     {
-        if (this.Config.ActionDelaySeconds <= 0)
+        if (this.GetEffectiveActionDelaySeconds() <= 0)
             return;
 
         if (!this.QueuedMachines.Add(machine))
@@ -1028,7 +1126,8 @@ internal class ModEntry : Mod
     /// <param name="group">The group to schedule a batch for.</param>
     private void TryScheduleGroupBatch(IMachineGroup group)
     {
-        if (this.Config.ActionDelaySeconds <= 0)
+        float effectiveActionDelaySeconds = this.GetEffectiveActionDelaySeconds();
+        if (effectiveActionDelaySeconds <= 0)
         {
             group.Automate();
             return;
@@ -1040,7 +1139,7 @@ internal class ModEntry : Mod
         if (!this.ArmedGroupBatches.Add(group))
             return; // already priming — it'll drain the queue (including anything just added to it) when it fires
 
-        this.RunOrScheduleDelayedPass(() => this.RunGroupBatch(group), this.Config.ActionDelaySeconds, group);
+        this.RunOrScheduleDelayedPass(() => this.RunGroupBatch(group), effectiveActionDelaySeconds, group);
     }
 
     /// <summary>
@@ -1063,9 +1162,10 @@ internal class ModEntry : Mod
             return;
 
         int committed = 0;
-        bool unlimited = this.Config.ActionsPerDelayWindow <= 0;
+        int effectiveActionsPerDelayWindow = this.GetEffectiveActionsPerDelayWindow();
+        bool unlimited = effectiveActionsPerDelayWindow <= 0;
 
-        while (queue.Count > 0 && (unlimited || committed < this.Config.ActionsPerDelayWindow))
+        while (queue.Count > 0 && (unlimited || committed < effectiveActionsPerDelayWindow))
         {
             IMachine machine = queue.Dequeue();
             this.QueuedMachines.Remove(machine);

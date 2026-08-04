@@ -178,7 +178,8 @@ internal class MachineGroup : IMachineGroup
 
     /// <summary>Get whether a machine is "chest-like" (see <see cref="IChestLikeMachine"/>), unwrapping a <see cref="MachineWrapper"/> if needed.</summary>
     /// <param name="machine">The machine to check.</param>
-    private static bool IsChestLikeMachine(IMachine machine)
+    /// <remarks>MOD: changed from <c>private</c> to <c>internal</c> so <see cref="MachineGroupFactory"/> can reuse the exact same "is this a REAL (non-chest-like) machine" test during group formation — see that class's own remarks for why.</remarks>
+    internal static bool IsChestLikeMachine(IMachine machine)
     {
         return MachineGroup.Unwrap(machine) is IChestLikeMachine;
     }
