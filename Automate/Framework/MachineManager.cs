@@ -190,7 +190,8 @@ internal class MachineManager
     /// <param name="data">The internal mod data.</param>
     /// <param name="defaultFactory">The default automation factory to registry.</param>
     /// <param name="monitor">Encapsulates monitoring and logging.</param>
-    public MachineManager(Func<ModConfig> config, DataModel data, IAutomationFactory defaultFactory, IMonitor monitor)
+    /// <param name="powerSiloTierRoller">MOD: added. Resolves <see cref="ModConfig.PowerSiloTierPools"/> into this save's rolled Power Silo tier requirements — constructed by the caller (see its own remarks for why) rather than here, so it's the same shared instance used elsewhere.</param>
+    public MachineManager(Func<ModConfig> config, DataModel data, IAutomationFactory defaultFactory, IMonitor monitor, PowerSiloTierRoller powerSiloTierRoller)
     {
         this.Config = config;
         this.Data = data;
@@ -219,7 +220,7 @@ internal class MachineManager
         PowerSiloSystem powerSiloSystem = new(
             getEnabled: () => this.Config().PowerSiloSystemEnabled,
             getSiloBuildingNames: () => this.Config().PowerSiloBuildingNames,
-            getTiers: () => this.Config().PowerSiloTiers,
+            getTiers: () => powerSiloTierRoller.GetEffectiveTiers(),
             getBaseCapacity: () => this.Config().PowerSiloBaseCapacity,
             getSourceNames: () => this.Config().PowerSourceNames,
             getSolarPanelNames: () => this.Config().PowerSiloSolarPanelNames, // MOD: added

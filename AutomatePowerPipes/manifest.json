@@ -8,5 +8,11 @@
   "ContentPackFor": {
     "UniqueID": "Pathoschild.ContentPatcher",
     "MinimumVersion": "2.0.0"
-  }
+  },
+  "Dependencies": [
+    {
+      "UniqueID": "ichortower.SecretNoteFramework",
+      "IsRequired": false
+    }
+  ]
 }

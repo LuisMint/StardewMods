@@ -52,6 +52,9 @@ internal class ModEntry : Mod
     /// <summary>MOD: added. The Power Relay efficiency-bonus mechanic, used both to read the save-wide bonus (see <see cref="GetEffectiveActionDelaySeconds"/>/<see cref="GetEffectiveActionsPerDelayWindow"/>) and by <see cref="PowerRelayInteraction"/>/<see cref="PowerRelayMenu"/> to read/write a Relay's own slot state.</summary>
     private PowerRelaySystem PowerRelaySystem = null!; // set in Entry
 
+    /// <summary>MOD: added. Resolves <see cref="ModConfig.PowerSiloTierPools"/> into this save's rolled Power Silo tier requirements — shared by <see cref="MachineManager"/> (which builds <see cref="PowerSiloSystem"/> from it), <see cref="PowerSiloInteraction"/>, and <see cref="Patches.PowerSiloCapPatches"/>, so all three always agree on the same rolled result.</summary>
+    private PowerSiloTierRoller PowerSiloTierRoller = null!; // set in Entry
+
     /// <summary>MOD: added. Plays a passive shimmering-glint ambient effect on placed Power Relays.</summary>
     private PowerRelayAmbientEffect PowerRelayAmbientEffect = null!; // set in Entry
 
@@ -106,11 +109,8 @@ internal class ModEntry : Mod
     private const int FullBackstopScanIntervalTicks = 6;
 
     /// <summary>
-    /// MOD: added. Automation passes queued to run after <see cref="ModConfig.EventBasedPushPullDelaySeconds"/>
-    /// has passed, instead of immediately — purely cosmetic, so a machine/chest interaction is easier to
-    /// actually see happening instead of resolving instantly. Used by <see cref="OnTimeChanged"/>'s
-    /// per-machine output pushes and <see cref="OnChestInventoryChanged"/>/<see cref="OnMenuChanged"/>'s
-    /// per-machine input feeds.
+    /// MOD: added. Group batches queued to run after <see cref="ModConfig.ActionDelaySeconds"/> has passed,
+    /// instead of immediately — see <see cref="TryScheduleGroupBatch"/>/<see cref="RunGroupBatch"/>.
     ///
     /// MOD: added — <c>Group</c> records which <see cref="IMachineGroup"/> (if any) the pass is scoped to,
     /// purely so <see cref="PurgeRemovedGroupsPacingState"/> can cancel a still-pending pass for a group
@@ -173,7 +173,7 @@ internal class ModEntry : Mod
     /// </summary>
     private double UnpausedElapsedMs;
 
-    /// <summary>MOD: added. How long the most recent delayed per-machine push/pull actually waited (in milliseconds) before firing, for the perf overlay to show — lets <see cref="ModConfig.EventBasedPushPullDelaySeconds"/> be verified against real measured timing instead of going on feel alone.</summary>
+    /// <summary>MOD: added. How long the most recent delayed group batch actually waited (in milliseconds) before firing, for the perf overlay to show — lets <see cref="ModConfig.ActionDelaySeconds"/> be verified against real measured timing instead of going on feel alone.</summary>
     private double? LastActualDelayMs;
 
     /// <summary>The number of ticks until the config UI is registered with Generic Mod Config Menu.</summary>
@@ -226,6 +226,14 @@ internal class ModEntry : Mod
         // read config
         this.Config = this.Helper.ReadConfig<ModConfig>();
 
+        // MOD: added — constructed before MachineManager (which needs it to build PowerSiloSystem) and
+        // kept as its own field so PowerSiloInteraction/PowerSiloCapPatches below share this EXACT same
+        // instance, rather than each rolling independently.
+        this.PowerSiloTierRoller = new PowerSiloTierRoller(
+            getBaseTiers: () => this.Config.PowerSiloTiers,
+            getTierPools: () => this.Config.PowerSiloTierPools
+        );
+
         // init
         this.MachineManager = new MachineManager(
             config: () => this.Config,
@@ -235,7 +243,8 @@ internal class ModEntry : Mod
                 monitor: this.Monitor,
                 reflection: this.Helper.Reflection
             ),
-            monitor: this.Monitor
+            monitor: this.Monitor,
+            powerSiloTierRoller: this.PowerSiloTierRoller
         );
 
         this.CommandHandler = new CommandHandler(this.Monitor, () => this.Config, this.MachineManager);
@@ -329,7 +338,7 @@ internal class ModEntry : Mod
         // tick below; Reset() clears it on day start.
         PowerSiloCapPatches.Initialize(
             getSiloBuildingNames: () => this.Config.PowerSiloBuildingNames,
-            getTiers: () => this.Config.PowerSiloTiers,
+            getTiers: () => this.PowerSiloTierRoller.GetEffectiveTiers(),
             powerSiloSystem: this.MachineManager.Factory.PowerSiloSystem
         );
         PowerSiloCapPatches.Apply(harmony);
@@ -338,7 +347,7 @@ internal class ModEntry : Mod
         // not a Harmony patch (see PowerSiloInteraction's own remarks for why).
         new PowerSiloInteraction(
             powerSiloSystem: this.MachineManager.Factory.PowerSiloSystem,
-            getTiers: () => this.Config.PowerSiloTiers
+            getTiers: () => this.PowerSiloTierRoller.GetEffectiveTiers()
         ).Register();
 
         // MOD: added — registers the Power Relay's click interaction the same way (see
@@ -346,7 +355,9 @@ internal class ModEntry : Mod
         new PowerRelayInteraction(
             this.PowerRelaySystem,
             getShardItemId: () => this.Config.PowerRelayShardItemId,
+            getFirstShardItemId: () => this.Config.PowerRelayFirstShardItemId,
             getBarItemId: () => this.Config.PowerRelayBarItemId,
+            getFirstBarItemId: () => this.Config.PowerRelayFirstBarItemId,
             getBaseActionsPerDelayWindow: () => this.Config.ActionsPerDelayWindow
         ).Register();
 
@@ -370,6 +381,20 @@ internal class ModEntry : Mod
         // hole, once per building per day, per direct user request (see
         // DwarfConstructionSiteInteractionPatches's own remarks).
         DwarfConstructionSiteInteractionPatches.Apply(harmony);
+
+        // MOD: added — reading Dwarf Research Note #4 unlocks a one-time hidden Power Coil at a specific
+        // Mine level 120 tile, per direct user request (see DwarfNoteTreasureTilePatches's own remarks).
+        DwarfNoteTreasureTilePatches.Apply(harmony);
+
+        // MOD: added — reading Dwarf Research Note #7 unlocks a nightly Diamond-for-Dwarf-Gadget trade
+        // at the vanilla Statue Of The Dwarf King, per direct user request (see
+        // DwarfKingStatueTradePatches's own remarks).
+        DwarfKingStatueTradePatches.Apply(harmony);
+
+        // MOD: added — reading Dwarf Research Notes #1-#3 unlocks a one-time gem drop at a specific
+        // Mountain spot, consuming a held Dwarf Scroll, per direct user request (see
+        // DwarfNoteGemScrollPatches's own remarks).
+        DwarfNoteGemScrollPatches.Apply(harmony);
 
         // hook events
         helper.Events.Content.AssetRequested += this.OnAssetRequested;
@@ -498,6 +523,11 @@ internal class ModEntry : Mod
         // objects. OnDayStarted already does this for the same reason (a day transition also fully
         // rebuilds every group) — this covers the broader "entirely different save" case.
         this.ResetDelayQueueState();
+
+        // MOD: added — same reasoning: a cached rolled tier list from a PREVIOUS save must not leak into
+        // this one. Reset() just clears the cache; the next GetEffectiveTiers() call re-reads (or rolls
+        // fresh for) THIS save's own persisted result.
+        this.PowerSiloTierRoller.Reset();
 
         // disable if secondary player
         if (!this.EnableAutomation)
@@ -758,8 +788,7 @@ internal class ModEntry : Mod
                     this.TryRunAutomationPass();
                 }
 
-                // MOD: added — flush any event-based passes whose cosmetic delay (see
-                // ModConfig.EventBasedPushPullDelaySeconds) has elapsed.
+                // MOD: added — flush any group batches whose ModConfig.ActionDelaySeconds has elapsed.
                 this.RunDuePendingPasses();
             }
             catch (Exception ex)
@@ -859,18 +888,17 @@ internal class ModEntry : Mod
 
         try
         {
-            // MOD: fixed — schedule each ready machine's OUTPUT push as its own independent delayed pass,
-            // rather than bundling everything flagged this tick into one shared pass/delay. See
-            // MachineReadyPatches' own remarks: bundling made every machine that became ready in the same
-            // tick resolve in one synchronized visual burst instead of each being paced independently from
-            // its own detection moment, which is what ModConfig.EventBasedPushPullDelaySeconds is meant to show.
+            // MOD: removed — this used to schedule each ready machine's OUTPUT push behind
+            // ModConfig.EventBasedPushPullDelaySeconds, a purely cosmetic reveal delay. Per direct user
+            // request, that's gone now that ActionDelaySeconds/ActionsPerDelayWindow (paced via
+            // TryScheduleGroupBatch below) is a real progression-driven pacing system in its own right —
+            // stacking the old cosmetic delay on top of that just made the very start of a save feel
+            // doubly slow for no benefit. Each flagged machine is enqueued immediately instead; its own
+            // group batch is still paced independently by ActionDelaySeconds as before.
             foreach ((IMachineGroup group, IMachine machine) in MachineReadyPatches.TakePendingReadyMachines())
             {
-                this.RunOrScheduleDelayedPass(() =>
-                {
-                    this.EnqueueForAutomation(group, machine);
-                    this.TryScheduleGroupBatch(group);
-                }, this.Config.EventBasedPushPullDelaySeconds, group);
+                this.EnqueueForAutomation(group, machine);
+                this.TryScheduleGroupBatch(group);
             }
 
             if (++this.TicksSinceFullBackstopScan >= ModEntry.FullBackstopScanIntervalTicks)
@@ -1232,9 +1260,10 @@ internal class ModEntry : Mod
     /// became reachable), and a machine joining isn't itself "becoming ready" for
     /// <see cref="Patches.MachineReadyPatches"/> to notice. Checks BOTH states, since a machine could
     /// already have been sitting Done with nowhere to push before the new member arrived — also shared by
-    /// <see cref="ScheduleInputFeedsFor"/> for the same reason. Schedules each machine independently, with
-    /// the same <see cref="ModConfig.EventBasedPushPullDelaySeconds"/> pacing as every other event-based
-    /// trigger, rather than automating the whole group synchronously in one call.
+    /// <see cref="ScheduleInputFeedsFor"/> for the same reason. Each machine is enqueued immediately (see
+    /// <see cref="OnTimeChanged"/>'s own remarks for why the old cosmetic per-machine delay is gone); its
+    /// own group batch is still paced independently by <see cref="ModConfig.ActionDelaySeconds"/> via
+    /// <see cref="TryScheduleGroupBatch"/>, rather than automating the whole group synchronously in one call.
     /// </summary>
     /// <param name="group">The group to check.</param>
     private void ScheduleGroupCheck(IMachineGroup group)
@@ -1244,11 +1273,8 @@ internal class ModEntry : Mod
             if (machine.GetState() is not (MachineState.Done or MachineState.Empty))
                 continue;
 
-            this.RunOrScheduleDelayedPass(() =>
-            {
-                this.EnqueueForAutomation(group, machine);
-                this.TryScheduleGroupBatch(group);
-            }, this.Config.EventBasedPushPullDelaySeconds, group);
+            this.EnqueueForAutomation(group, machine);
+            this.TryScheduleGroupBatch(group);
         }
     }
 
@@ -1343,10 +1369,10 @@ internal class ModEntry : Mod
 
         // MOD: added — shows the REAL measured delay of the most recent fired pass next to the
         // configured target, so it can be verified against actual timing instead of going on feel alone.
-        if (this.Config.EventBasedPushPullDelaySeconds > 0)
+        if (this.Config.ActionDelaySeconds > 0)
         {
             string actual = this.LastActualDelayMs is { } lastActualDelayMs ? $"{lastActualDelayMs:0}ms" : "none fired yet";
-            lines.Add($"Last push/pull delay: {actual} (configured {this.Config.EventBasedPushPullDelaySeconds * 1000:0}ms)");
+            lines.Add($"Last group batch delay: {actual} (configured {this.Config.ActionDelaySeconds * 1000:0}ms)");
         }
 
         return [.. lines];
@@ -1357,31 +1383,81 @@ internal class ModEntry : Mod
     {
         // MOD: added — draws the automation performance overlay (see AutomationPerfTracker's own
         // remarks) while toggled on; a temporary diagnostic aid, not meant to ship long-term.
-        if (!this.ShowPerfOverlay)
-            return;
-
-        try
+        if (this.ShowPerfOverlay)
         {
-            SpriteBatch b = e.SpriteBatch;
-            SpriteFont font = Game1.smallFont;
+            try
+            {
+                SpriteBatch b = e.SpriteBatch;
+                SpriteFont font = Game1.smallFont;
 
-            string[] lines = this.BuildPerfSummaryLines();
+                string[] lines = this.BuildPerfSummaryLines();
 
-            Vector2 position = new(16, 16);
-            float lineHeight = font.MeasureString("A").Y + 2;
-            float maxWidth = 0;
-            foreach (string line in lines)
-                maxWidth = Math.Max(maxWidth, font.MeasureString(line).X);
+                Vector2 position = new(16, 16);
+                float lineHeight = font.MeasureString("A").Y + 2;
+                float maxWidth = 0;
+                foreach (string line in lines)
+                    maxWidth = Math.Max(maxWidth, font.MeasureString(line).X);
 
-            Rectangle background = new((int)position.X - 8, (int)position.Y - 8, (int)maxWidth + 16, (int)(lineHeight * lines.Length) + 16);
-            b.Draw(Game1.staminaRect, background, Color.Black * 0.75f);
+                Rectangle background = new((int)position.X - 8, (int)position.Y - 8, (int)maxWidth + 16, (int)(lineHeight * lines.Length) + 16);
+                b.Draw(Game1.staminaRect, background, Color.Black * 0.75f);
 
-            for (int i = 0; i < lines.Length; i++)
-                b.DrawString(font, lines[i], position + new Vector2(0, lineHeight * i), Color.White);
+                for (int i = 0; i < lines.Length; i++)
+                    b.DrawString(font, lines[i], position + new Vector2(0, lineHeight * i), Color.White);
+            }
+            catch (Exception ex)
+            {
+                this.HandleError(ex, "drawing automation performance overlay");
+            }
         }
-        catch (Exception ex)
+
+        // MOD: fixed — this used to sit after an early `if (!this.ShowPerfOverlay) return;` above, which
+        // meant it could only ever draw while the PERF overlay ("P") was also on, instead of showing
+        // whenever the "U" automate overlay was open like it's actually meant to — the two toggles are
+        // independent, so this is now its own separate condition rather than sharing the perf overlay's
+        // early return. A small bottom-left info panel (Power Grid capacity, automation delay, actions
+        // per automation), styled the same way as the perf overlay above (translucent black box, white
+        // text lines), just anchored to the opposite corner so the two never overlap if both are on at once.
+        if (this.CurrentOverlay.Value != null)
         {
-            this.HandleError(ex, "drawing automation performance overlay");
+            try
+            {
+                SpriteBatch b = e.SpriteBatch;
+                SpriteFont font = Game1.smallFont;
+
+                (int totalCoils, int capacity) = this.MachineManager.Factory.PowerSiloSystem.GetUsage();
+                string capacityText = capacity == int.MaxValue
+                    ? $"Power Grid: {totalCoils}/Unlimited"
+                    : $"Power Grid: {totalCoils}/{capacity}";
+
+                float effectiveDelay = this.GetEffectiveActionDelaySeconds();
+                string delayText = effectiveDelay <= 0
+                    ? "Automation Delay: Instant"
+                    : $"Automation Delay: {effectiveDelay:0.##}s";
+
+                int actionsPerWindow = this.GetEffectiveActionsPerDelayWindow();
+                string actionsText = actionsPerWindow <= 0
+                    ? "Actions per Automation: Unlimited"
+                    : $"Actions per Automation: {actionsPerWindow}";
+
+                string[] lines = [capacityText, delayText, actionsText];
+
+                float lineHeight = font.MeasureString("A").Y + 2;
+                float maxWidth = 0;
+                foreach (string line in lines)
+                    maxWidth = Math.Max(maxWidth, font.MeasureString(line).X);
+
+                Vector2 position = new(16, Game1.uiViewport.Height - 16 - lineHeight * lines.Length);
+
+                Rectangle background = new((int)position.X - 8, (int)position.Y - 8, (int)maxWidth + 16, (int)(lineHeight * lines.Length) + 16);
+                b.Draw(Game1.staminaRect, background, Color.Black * 0.75f);
+
+                for (int i = 0; i < lines.Length; i++)
+                    b.DrawString(font, lines[i], position + new Vector2(0, lineHeight * i), Color.White);
+            }
+            catch (Exception ex)
+            {
+                this.HandleError(ex, "drawing automation overlay info panel");
+            }
         }
     }
 
@@ -1473,8 +1549,8 @@ internal class ModEntry : Mod
         // group/machine instance currently in use — see ResetDelayQueueState's own remarks for why this
         // mod's own delay/queue bookkeeping needs clearing right alongside that. This is very likely the
         // MOST frequently hit of the three places this reset is needed, since it fires on every single
-        // Generic Mod Config Menu save — including every time EventBasedPushPullDelaySeconds itself gets
-        // tuned while testing.
+        // Generic Mod Config Menu save — including every time ActionDelaySeconds itself gets tuned while
+        // testing.
         this.ResetDelayQueueState();
 
         if (!this.Config.Enabled)

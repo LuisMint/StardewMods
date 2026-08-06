@@ -13,6 +13,16 @@ namespace Pathoschild.Stardew.Automate.Framework.Models;
 internal class ModConfig
 {
     /*********
+    ** Fields
+    *********/
+    /// <summary>MOD: added. The fixed value <see cref="ActionDelaySeconds"/> is reset to on load unless <see cref="OverwriteAutomationSettings"/> is <c>true</c>.</summary>
+    private const float DefaultActionDelaySeconds = 7f;
+
+    /// <summary>MOD: added. The fixed value <see cref="ActionsPerDelayWindow"/> is reset to on load unless <see cref="OverwriteAutomationSettings"/> is <c>true</c>.</summary>
+    private const int DefaultActionsPerDelayWindow = 1;
+
+
+    /*********
     ** Accessors
     *********/
     /// <summary>Whether Automate is enabled.</summary>
@@ -27,39 +37,6 @@ internal class ModConfig
     /// polling if your setup doesn't get along with it.
     /// </summary>
     public bool UseEventBasedAutomation { get; set; } = true;
-
-    /// <summary>
-    /// MOD: added. How many real-time seconds to wait after a machine/chest is found ready before
-    /// actually pushing/pulling its item, when <see cref="UseEventBasedAutomation"/> is on — purely
-    /// cosmetic, so items don't seem to teleport instantly and the player has a moment to see what's
-    /// happening. 0 disables the delay entirely (acts the instant it's found ready).
-    /// </summary>
-    public float EventBasedPushPullDelaySeconds { get; set; } = 0.1f;
-
-    /// <summary>
-    /// MOD: added. How many real-time seconds a group waits before each batch of push/pull actions (see
-    /// <see cref="ActionsPerDelayWindow"/>), including the very first batch for a freshly-active group —
-    /// applies in BOTH interval mode and event-based mode, unlike <see cref="EventBasedPushPullDelaySeconds"/>
-    /// which only applies to event-based mode's fine-grained per-machine reveal. 0 disables this entirely
-    /// (the original instant, whole-group-at-once behavior).
-    ///
-    /// Paced per group via <c>ModEntry.GroupActionQueues</c> — a FIFO queue of that group's own machines,
-    /// drained a batch at a time. Deliberately does NOT try to carry a group's pacing forward across a
-    /// rebuild that recreates its wrapper instance; per direct user feedback, a rebuild just resets the
-    /// affected group's pacing to fresh (its machines get rediscovered and re-queued from scratch by the
-    /// normal triggers) rather than trying to bridge old-to-new group instances, which is what caused most
-    /// of the fragility in earlier attempts at this feature. A separate group's own queue and pacing always
-    /// runs fully independently.
-    /// </summary>
-    public float ActionDelaySeconds { get; set; } = 0f;
-
-    /// <summary>
-    /// MOD: added. How many machines a group may drain from the FRONT of its action queue (see
-    /// <see cref="ActionDelaySeconds"/>) in one batch, before the rest have to wait for the next one.
-    /// Defaults to 1 (one action at a time). <c>0</c> (or less) means unlimited — drain the group's entire
-    /// queue in one batch. Has no effect when <see cref="ActionDelaySeconds"/> is 0.
-    /// </summary>
-    public int ActionsPerDelayWindow { get; set; } = 1;
 
     /// <summary>The number of ticks between each automation process (60 = once per second). Only used when <see cref="UseEventBasedAutomation"/> is disabled.</summary>
     public int AutomationInterval { get; set; } = 60;
@@ -243,7 +220,7 @@ internal class ModConfig
     /// all — a small free allowance so early automation isn't hard-gated behind constructing one. Every
     /// Power Silo adds on top of this (see <see cref="PowerSiloTiers"/>).
     /// </summary>
-    public int PowerSiloBaseCapacity { get; set; } = 2;
+    public int PowerSiloBaseCapacity { get; set; } = 3;
 
     /// <summary>
     /// MOD: added. The in-game objects that count as a Solar Panel for the power silo's solar tier
@@ -280,6 +257,175 @@ internal class ModConfig
     ];
 
     /// <summary>
+    /// MOD: added. Per direct user request, randomized alternatives to <see cref="PowerSiloTiers"/>'s
+    /// fixed <see cref="PowerSiloTierConfig.RequiredItems"/> — index-aligned with <see cref="PowerSiloTiers"/>,
+    /// each entry's <see cref="PowerSiloTierPool.Slots"/> is rolled ONCE per save (one random option per
+    /// slot, with a random count within that option's own range — see <see cref="PowerSiloTierRoller"/>)
+    /// into that tier's actual required items, so upgrade costs feel varied between saves without being
+    /// fully random every time. A gem-family option (<see cref="PowerSiloItemOption.ItemIds"/>) is itself
+    /// a nested random pick — e.g. tier 2 asks for ONE random non-Diamond gem, tier 4 for 3-5 of ONE
+    /// random gem including Diamond. This list only has 5 entries (tiers 0-4) — a tier index BEYOND the
+    /// end of this list (like tier 5, the solar tier, which has no <see cref="PowerSiloTierConfig.RequiredItems"/>
+    /// to roll in the first place) simply keeps using its fixed <see cref="PowerSiloTierConfig.RequiredItems"/> unchanged.
+    /// </summary>
+    public List<PowerSiloTierPool> PowerSiloTierPools { get; set; } =
+    [
+        // tier 1 (unlocks tier 2)
+        new()
+        {
+            Slots =
+            [
+                new() // basic ore/mineral
+                {
+                    Options =
+                    [
+                        new() { ItemId = "(O)334", MinCount = 3, MaxCount = 5 },   // Copper Bar
+                        new() { ItemId = "(O)378", MinCount = 20, MaxCount = 30 }, // Copper Ore
+                        new() { ItemId = "(O)382", MinCount = 5, MaxCount = 5 },   // Coal
+                        new() { ItemId = "(O)330", MinCount = 5, MaxCount = 10 },   // Clay (substituted for "Mud", which isn't a real item)
+                        new() { ItemId = "(O)390", MinCount = 30, MaxCount = 50 }, // Stone
+                        new() { ItemId = "(O)86", MinCount = 1, MaxCount = 3 }     // Earth Crystal
+                    ]
+                },
+                new() // cave carrot family
+                {
+                    Options =
+                    [
+                        new() { ItemId = "(O)78", MinCount = 1, MaxCount = 3 }  // Cave Carrot
+                    ]
+                }
+            ]
+        },
+
+        // tier 2 (unlocks tier 3)
+        new()
+        {
+            Slots =
+            [
+                new() // ore/bar/gem
+                {
+                    Options =
+                    [
+                        new() { ItemId = "(O)334", MinCount = 5, MaxCount = 10 },   // Copper Bar
+                        new() { ItemId = "(O)335", MinCount = 4, MaxCount = 8 },    // Iron Bar
+                        new() { ItemId = "(O)390", MinCount = 65, MaxCount = 80 },  // Stone
+                        new() { ItemIds = ["(O)60", "(O)62", "(O)64", "(O)66", "(O)68", "(O)70"], MinCount = 1, MaxCount = 1 }, // any gem except Diamond/Prismatic Shard
+                        new() { ItemId = "(O)86", MinCount = 3, MaxCount = 5 }      // Earth Crystal
+                    ]
+                },
+                new() // cave carrot family
+                {
+                    Options =
+                    [
+                        new() { ItemId = "(O)78", MinCount = 3, MaxCount = 5 }  // Cave Carrot
+                    ]
+                }
+            ]
+        },
+
+        // tier 3 (unlocks tier 4)
+        new()
+        {
+            Slots =
+            [
+                new() // battery/quartz
+                {
+                    Options =
+                    [
+                        new() { ItemId = "(O)787", MinCount = 2, MaxCount = 3 },   // Battery Pack
+                        new() { ItemId = "(O)338", MinCount = 10, MaxCount = 20 }   // Refined Quartz
+                    ]
+                },
+                new() // ore/bar
+                {
+                    Options =
+                    [
+                        new() { ItemId = "(O)334", MinCount = 10, MaxCount = 15 },   // Copper Bar
+                        new() { ItemId = "(O)335", MinCount = 7, MaxCount = 10 },   // Iron Bar
+                        new() { ItemId = "(O)380", MinCount = 50, MaxCount = 60 }, // Iron Ore
+                        new() { ItemId = "(O)384", MinCount = 20, MaxCount = 40 }   // Gold Ore
+                    ]
+                },
+                new() // cave carrot family
+                {
+                    Options =
+                    [
+                        new() { ItemId = "(O)78", MinCount = 5, MaxCount = 8 },                                              // Cave Carrot
+                        new() { ItemId = "(O)186", MinCount = 2, MaxCount = 2 },                                             // Large Milk
+                        new() { ItemId = "(O)749", MinCount = 2, MaxCount = 5 }                                              // Omni Geode
+                    ]
+                }
+            ]
+        },
+
+        // tier 4 (unlocks tier 5)
+        new()
+        {
+            Slots =
+            [
+                new() // battery/quartz
+                {
+                    Options =
+                    [
+                        new() { ItemId = "(O)787", MinCount = 2, MaxCount = 8 },   // Battery Pack
+                        new() { ItemId = "(O)338", MinCount = 20, MaxCount = 30 }   // Refined Quartz
+                    ]
+                },
+                new() // bar/coal/gem
+                {
+                    Options =
+                    [
+                        new() { ItemId = "(O)336", MinCount = 9, MaxCount = 14 },   // Gold Bar
+                        new() { ItemId = "(O)382", MinCount = 35, MaxCount = 58 }, // Coal
+                        new() { ItemIds = ["(O)60", "(O)62", "(O)64", "(O)66", "(O)68", "(O)70", "(O)72"], MinCount = 3, MaxCount = 5 }, // any gem including Diamond, except Prismatic Shard
+                        new() { ItemId = "(O)386", MinCount = 5, MaxCount = 10 }   // Iridium Ore 
+                    ]
+                },
+                new() // cave carrot family
+                {
+                    Options =
+                    [
+                        new() { ItemId = "(O)78", MinCount = 5, MaxCount = 10 },                                              // Cave Carrot
+                        new() { ItemId = "(O)186", MinCount = 2, MaxCount = 5 },                                             // Large Milk
+                        new() { ItemId = "(O)749", MinCount = 5, MaxCount = 10 },                                             // Omni Geode
+                        new() { ItemId = "(O)158", MinCount = 1, MaxCount = 1 }                                              // Stonefish
+                    ]
+                }
+            ]
+        },
+
+        // tier 5 (unlocks the solar tier)
+        new()
+        {
+            Slots =
+            [
+                new() // solar panel
+                {
+                    Options = [new() { ItemId = "(BC)231", MinCount = 1, MaxCount = 1 }] // Solar Panel
+                },
+                new() // ore/essence
+                {
+                    Options =
+                    [
+                        new() { ItemId = "(O)909", MinCount = 1, MaxCount = 1 },   // Radioactive Ore
+                        new() { ItemId = "(O)768", MinCount = 15, MaxCount = 20 }, // Solar Essence
+                        new() { ItemId = "(O)386", MinCount = 10, MaxCount = 20 }  // Iridium Ore — MOD: deliberately NOT scaled, per direct user request
+                    ]
+                },
+                new() // cave carrot family
+                {
+                    Options =
+                    [
+                        new() { ItemId = "(O)78", MinCount = 15, MaxCount = 30 },                                              // Cave Carrot
+                        new() { ItemId = "(O)CaveJelly", MinCount = 1, MaxCount = 2 },                                       // Cave Jelly (substituted for "Dehydrated Cave Carrot", which isn't a real item) — MOD: deliberately NOT scaled, per direct user request. Unverified ID, couldn't confirm against the wiki; fix this if it turns out wrong
+                        new() { ItemId = "(O)749", MinCount = 15, MaxCount = 30 }                                              // Omni Geode
+                    ]
+                }
+            ]
+        }
+    ];
+
+    /// <summary>
     /// MOD: added. Whether the Power Relay mechanic is enabled — when true, each Prismatic Shard
     /// delivered to a Power Relay building (up to <see cref="PowerRelaySystem.MaxShards"/> per Relay)
     /// subtracts <see cref="PowerRelayActionDelayReductionPerShardSeconds"/> from
@@ -295,11 +441,17 @@ internal class ModConfig
     [JsonProperty("PowerRelayBuildingNames")]
     public HashSet<string> PowerRelayBuildingNames { get; set; } = new(StringComparer.OrdinalIgnoreCase) { "luisMint.AutomatePowerPipes_PowerRelay" };
 
-    /// <summary>MOD: added. The qualified/unqualified item ID delivered to a Power Relay for the delay-reduction track — Prismatic Shard, by default.</summary>
+    /// <summary>MOD: added. The qualified/unqualified item ID delivered to a Power Relay for the delay-reduction track — Prismatic Shard, by default. Only accepted from level 1 onward; the very first delivery (level 0→1) instead asks for <see cref="PowerRelayFirstShardItemId"/>.</summary>
     public string PowerRelayShardItemId { get; set; } = "(O)74";
 
-    /// <summary>MOD: added. The qualified/unqualified item ID delivered to a Power Relay for the actions-per-window bonus track — Radioactive Bar, by default. MOD: fixed — (O)909 is actually Radioactive Ore (the raw/unsmelted item); Radioactive Bar (the smelted one) is (O)910, confirmed via the Stardew Valley Wiki after this defaulted to the wrong item.</summary>
+    /// <summary>MOD: added. Per direct user request, the qualified/unqualified item ID accepted for the delay-reduction track's very FIRST delivery only (level 0→1) — Diamond, by default. Every delivery from level 1 onward reverts to <see cref="PowerRelayShardItemId"/>.</summary>
+    public string PowerRelayFirstShardItemId { get; set; } = "(O)72";
+
+    /// <summary>MOD: added. The qualified/unqualified item ID delivered to a Power Relay for the actions-per-window bonus track — Radioactive Bar, by default. MOD: fixed — (O)909 is actually Radioactive Ore (the raw/unsmelted item); Radioactive Bar (the smelted one) is (O)910, confirmed via the Stardew Valley Wiki after this defaulted to the wrong item. Only accepted from level 1 onward; the very first delivery (level 0→1) instead asks for <see cref="PowerRelayFirstBarItemId"/>.</summary>
     public string PowerRelayBarItemId { get; set; } = "(O)910";
+
+    /// <summary>MOD: added. Per direct user request, the qualified/unqualified item ID accepted for the actions-per-window track's very FIRST delivery only (level 0→1) — Radioactive Ore, by default. Every delivery from level 1 onward reverts to <see cref="PowerRelayBarItemId"/>.</summary>
+    public string PowerRelayFirstBarItemId { get; set; } = "(O)909";
 
     /// <summary>MOD: added. How much a single delivered shard subtracts from <see cref="ActionDelaySeconds"/>, in seconds, summed across every shard delivered to every Relay in the save (each Relay accepts up to <see cref="PowerRelaySystem.MaxShards"/>). The effective delay is floored at <see cref="PowerRelayMinimumActionDelaySeconds"/> regardless of how many are delivered.</summary>
     public float PowerRelayActionDelayReductionPerShardSeconds { get; set; } = 0.4f;
@@ -415,6 +567,54 @@ internal class ModConfig
     /// <summary>The minimum machine processing time in minutes for which to apply fairy dust.</summary>
     public int MinMinutesForFairyDust { get; set; } = 20;
 
+    /// <summary>
+    /// MOD: added. Whether <see cref="ActionDelaySeconds"/> in this file takes effect. Per direct user
+    /// request, in-game progression (delivering Prismatic Shards to a Power Relay — see
+    /// <see cref="PowerRelaySystemEnabled"/>) is meant to be the main way automation pacing improves, not
+    /// a config edit — so while this is <c>false</c> (the default), <see cref="ActionDelaySeconds"/> is
+    /// reset to <see cref="DefaultActionDelaySeconds"/> every time the config loads, regardless of what's
+    /// written here. Set to <c>true</c> to let your own value below actually take effect instead.
+    /// </summary>
+    public bool OverwriteAutomationDelay { get; set; } = false;
+
+    /// <summary>
+    /// MOD: added. Whether <see cref="ActionsPerDelayWindow"/> in this file takes effect. Per direct user
+    /// request, in-game progression (delivering Radioactive Bars to a Power Relay — see
+    /// <see cref="PowerRelaySystemEnabled"/>) is meant to be the main way automation pacing improves, not
+    /// a config edit — so while this is <c>false</c> (the default), <see cref="ActionsPerDelayWindow"/> is
+    /// reset to <see cref="DefaultActionsPerDelayWindow"/> every time the config loads, regardless of
+    /// what's written here. Set to <c>true</c> to let your own value below actually take effect instead.
+    /// </summary>
+    public bool OverwriteAutomationActions { get; set; } = false;
+
+    /// <summary>
+    /// MOD: added. How many real-time seconds a group waits before each batch of push/pull actions (see
+    /// <see cref="ActionsPerDelayWindow"/>), including the very first batch for a freshly-active group —
+    /// applies in BOTH interval mode and event-based mode. 0 disables this entirely (the original instant,
+    /// whole-group-at-once behavior). Only takes effect if
+    /// <see cref="OverwriteAutomationDelay"/> is <c>true</c> — otherwise always resets to
+    /// <see cref="DefaultActionDelaySeconds"/> on load.
+    ///
+    /// Paced per group via <c>ModEntry.GroupActionQueues</c> — a FIFO queue of that group's own machines,
+    /// drained a batch at a time. Deliberately does NOT try to carry a group's pacing forward across a
+    /// rebuild that recreates its wrapper instance; per direct user feedback, a rebuild just resets the
+    /// affected group's pacing to fresh (its machines get rediscovered and re-queued from scratch by the
+    /// normal triggers) rather than trying to bridge old-to-new group instances, which is what caused most
+    /// of the fragility in earlier attempts at this feature. A separate group's own queue and pacing always
+    /// runs fully independently.
+    /// </summary>
+    public float ActionDelaySeconds { get; set; } = ModConfig.DefaultActionDelaySeconds;
+
+    /// <summary>
+    /// MOD: added. How many machines a group may drain from the FRONT of its action queue (see
+    /// <see cref="ActionDelaySeconds"/>) in one batch, before the rest have to wait for the next one.
+    /// <c>0</c> (or less) means unlimited — drain the group's entire queue in one batch. Has no effect
+    /// when <see cref="ActionDelaySeconds"/> is 0. Only takes effect if
+    /// <see cref="OverwriteAutomationActions"/> is <c>true</c> — otherwise always resets to
+    /// <see cref="DefaultActionsPerDelayWindow"/> on load.
+    /// </summary>
+    public int ActionsPerDelayWindow { get; set; } = ModConfig.DefaultActionsPerDelayWindow;
+
 
     /*********
     ** Public methods
@@ -428,6 +628,14 @@ internal class ModConfig
     public void OnDeserialized(StreamingContext context)
     {
         this.Controls ??= new ModConfigKeys();
+
+        // MOD: added — per direct user request, ActionDelaySeconds/ActionsPerDelayWindow are each locked
+        // to their own fixed default unless the player opts in via the matching Overwrite flag, so
+        // in-game progression (the Power Relay) stays the main way automation pacing improves.
+        if (!this.OverwriteAutomationDelay)
+            this.ActionDelaySeconds = ModConfig.DefaultActionDelaySeconds;
+        if (!this.OverwriteAutomationActions)
+            this.ActionsPerDelayWindow = ModConfig.DefaultActionsPerDelayWindow;
 
         // MOD: added — guard against a nonsensical (hand-edited) negative delay/batch size; 0 is valid for both (0 batch size means unlimited).
         if (this.ActionDelaySeconds < 0)
@@ -493,6 +701,18 @@ internal class ModConfig
         this.PowerSiloTiers.RemoveAll(tier => tier is null);
         foreach (PowerSiloTierConfig tier in this.PowerSiloTiers)
             tier.RequiredItems?.RemoveAll(item => item is null);
+
+        // MOD: added — normalize PowerSiloTierPools the same way, and drop any slot/option that's
+        // missing entirely (a malformed/empty entry from hand-edited JSON) rather than letting the
+        // roller trip over a null later.
+        this.PowerSiloTierPools ??= [];
+        this.PowerSiloTierPools.RemoveAll(pool => pool is null);
+        foreach (PowerSiloTierPool pool in this.PowerSiloTierPools)
+        {
+            pool.Slots?.RemoveAll(slot => slot is null);
+            foreach (PowerSiloSlotPool slot in pool.Slots ?? [])
+                slot.Options?.RemoveAll(option => option is null);
+        }
 
         // MOD: added — normalize the power relay building set the same way, and guard against
         // nonsensical (hand-edited) bonus values.

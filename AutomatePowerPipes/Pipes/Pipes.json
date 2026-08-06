@@ -94,6 +94,16 @@
             "Action": "Load",
             "Target": "Mods/{{ModId}}/MarkPowerCoilsIcon",
             "FromFile": "Pipes/markPowerCoils.png"
+        },
+        {
+            "Action": "Load",
+            "Target": "Mods/{{ModId}}/DwarfResearchNoteIcon",
+            "FromFile": "Pipes/noteIcon.png"
+        },
+        {
+            "Action": "Load",
+            "Target": "Mods/{{ModId}}/DwarfResearchNotesSheet",
+            "FromFile": "Pipes/DwarfResearchNotesSheet.png"
         }
     ]
 }

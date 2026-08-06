@@ -1,0 +1,139 @@
+{
+    "Changes": [
+        {
+            "Action": "EditData",
+            "Target": "Data/Objects",
+            "When": {
+                "HasMod": "ichortower.SecretNoteFramework"
+            },
+            "Entries": {
+                "{{ModId}}_DwarfResearchNote": {
+                    "Name": "{{ModId}}_DwarfResearchNote",
+                    "DisplayName": "Dwarf Research Note",
+                    "Description": "A loose page of research on Dwarf technology. The notation is illegible, but at least the drawings are neat.",
+                    "Type": "asdf",
+                    "Category": 0,
+                    "Price": 1,
+                    "Texture": "Mods/{{ModId}}/DwarfResearchNoteIcon",
+                    "SpriteIndex": 0,
+                    "Edibility": -300,
+                    "IsDrink": false,
+                    "Buffs": null,
+                    "GeodeDropsDefaultItems": false,
+                    "GeodeDrops": null,
+                    "ArtifactSpotChances": null,
+                    "ExcludeFromFishingCollection": false,
+                    "ExcludeFromShippingCollection": true,
+                    "ExcludeFromRandomSale": true,
+                    "ContextTags": null,
+                    "CustomFields": null
+                }
+            }
+        },
+
+        {
+            "Action": "EditData",
+            "Target": "Data/Shops",
+            "TargetField": ["Dwarf", "Items"],
+            "When": {
+                "HasMod": "ichortower.SecretNoteFramework"
+            },
+            "Entries": {
+                "{{ModId}}_DwarfResearchNote": {
+                    "ActionsOnPurchase": null,
+                    "CustomFields": null,
+                    "TradeItemId": null,
+                    "TradeItemAmount": 1,
+                    "Price": 50,
+                    "ApplyProfitMargins": null,
+                    "AvailableStock": 7,
+                    "AvailableStockLimit": "Player",
+                    "AvoidRepeat": false,
+                    "UseObjectDataPrice": false,
+                    "IgnoreShopPriceModifiers": false,
+                    "PriceModifiers": null,
+                    "PriceModifierMode": "Stack",
+                    "AvailableStockModifiers": null,
+                    "AvailableStockModifierMode": "Stack",
+                    "Condition": null,
+                    "Id": "(O){{ModId}}_DwarfResearchNote",
+                    "ItemId": "(O){{ModId}}_DwarfResearchNote",
+                    "RandomItemId": null,
+                    "MaxItems": null,
+                    "MinStack": 1,
+                    "MaxStack": -1,
+                    "Quality": -1,
+                    "ObjectInternalName": null,
+                    "ObjectDisplayName": null,
+                    "ToolUpgradeLevel": -1,
+                    "IsRecipe": false,
+                    "StackModifiers": null,
+                    "StackModifierMode": "Stack",
+                    "QualityModifiers": null,
+                    "QualityModifierMode": "Stack",
+                    "ModData": null,
+                    "PerItemCondition": null
+                }
+            }
+        },
+
+        {
+            "Action": "EditData",
+            "Target": "Mods/ichortower.SecretNoteFramework/Notes",
+            "When": {
+                "HasMod": "ichortower.SecretNoteFramework"
+            },
+            "Entries": {
+                "{{ModId}}_DwarfNote_InputConduit": {
+                    "Title": "Dwarf Research Note #1: Input Conduit",
+                    "Contents": " ",
+                    "ObjectId": "{{ModId}}_DwarfResearchNote",
+                    "NoteTexture": "Mods/{{ModId}}/DwarfResearchNotesSheet",
+                    "NoteTextureIndex": 0
+                },
+                "{{ModId}}_DwarfNote_OutputConduit": {
+                    "Title": "Dwarf Research Note #2: Output Conduit",
+                    "Contents": " ",
+                    "ObjectId": "{{ModId}}_DwarfResearchNote",
+                    "NoteTexture": "Mods/{{ModId}}/DwarfResearchNotesSheet",
+                    "NoteTextureIndex": 1
+                },
+                "{{ModId}}_DwarfNote_OmniConduit": {
+                    "Title": "Dwarf Research Note #3: Omni Conduit",
+                    "Contents": " ",
+                    "ObjectId": "{{ModId}}_DwarfResearchNote",
+                    "NoteTexture": "Mods/{{ModId}}/DwarfResearchNotesSheet",
+                    "NoteTextureIndex": 2
+                },
+                "{{ModId}}_DwarfNote_PoweredSystems": {
+                    "Title": "Dwarf Research Note #4: Powered Chest - Power Coil",
+                    "Contents": " ",
+                    "ObjectId": "{{ModId}}_DwarfResearchNote",
+                    "NoteTexture": "Mods/{{ModId}}/DwarfResearchNotesSheet",
+                    "NoteTextureIndex": 3
+                },
+                "{{ModId}}_DwarfNote_FilterSignsOutput": {
+                    "Title": "Dwarf Research Note #5: White/Black List Sign on Output Conduit",
+                    "Contents": " ",
+                    "ObjectId": "{{ModId}}_DwarfResearchNote",
+                    "NoteTexture": "Mods/{{ModId}}/DwarfResearchNotesSheet",
+                    "NoteTextureIndex": 4
+                },
+                "{{ModId}}_DwarfNote_FilterSignsInput": {
+                    "Title": "Dwarf Research Note #6: White/Black List Sign on Input Conduit",
+                    "Contents": " ",
+                    "ObjectId": "{{ModId}}_DwarfResearchNote",
+                    "NoteTexture": "Mods/{{ModId}}/DwarfResearchNotesSheet",
+                    "NoteTextureIndex": 5
+                },
+                "{{ModId}}_DwarfNote_CategorySign": {
+                    "Title": "Dwarf Research Note #7: White/Black List Category Sign",
+                    "Contents": " ",
+                    "ObjectId": "{{ModId}}_DwarfResearchNote",
+                    "NoteTexture": "Mods/{{ModId}}/DwarfResearchNotesSheet",
+                    "NoteTextureIndex": 6
+                }
+            }
+        }
+    ]
+}

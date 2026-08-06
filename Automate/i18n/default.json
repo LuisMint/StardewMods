@@ -7,13 +7,15 @@
     "config.enabled.name": "Enabled",
     "config.enabled.desc": "Whether to enable Automate features. If this is disabled, no machines will be automated and the overlay won't appear.",
     "config.use-event-based-automation.name": "Event-based automation",
-    "config.use-event-based-automation.desc": "If enabled (recommended), automation runs in response to game events (time passing, chest contents changing) instead of a fixed interval — usually faster and much less overhead on dense farms. Disable to fall back to the fixed interval below if your setup doesn't get along with it.",
-    "config.event-based-push-pull-delay-seconds.name": "Event-based push/pull delay (seconds)",
-    "config.event-based-push-pull-delay-seconds.desc": "Only used when event-based automation above is enabled. How many real-time seconds to wait after a machine/chest is found ready before actually moving its item, purely so it's easier to see what's happening instead of items seeming to move instantly. Set to 0 to disable the delay.",
+    "config.use-event-based-automation.desc": "If enabled (recommended), automation runs in response to game events (machine requests, chest contents changing) instead of a fixed interval — usually faster and much less overhead on dense farms. Disable to fall back to the fixed interval below if your setup doesn't get along with it.",
+    "config.overwrite-automation-delay.name": "Overwrite automation delay",
+    "config.overwrite-automation-delay.desc": "Whether Action delay (seconds) below actually takes effect. If disabled (default), it's locked to 7 seconds regardless of what you set, so upgrading a Power Relay stays the main way to speed up automation. Enable to set your own value instead.",
     "config.action-delay-seconds.name": "Action delay (seconds)",
-    "config.action-delay-seconds.desc": "How many real-time seconds a group waits between committing each machine/container's own push or pull, once it's already committed as many as Actions per delay window allows. Applies in BOTH interval mode and event-based mode. The first action for a group always commits instantly; only later ones in the same window wait. Set to 0 to disable (acts instantly instead).",
+    "config.action-delay-seconds.desc": "Only takes effect if Overwrite automation delay above is enabled. How many real-time seconds a group waits between committing each machine/container's own push or pull, once it's already committed as many as Actions per delay window allows. Applies in BOTH interval mode and event-based mode. Set to 0 to disable (acts instantly instead).",
+    "config.overwrite-automation-actions.name": "Overwrite automation actions",
+    "config.overwrite-automation-actions.desc": "Whether Actions per delay window below actually takes effect. If disabled (default), it's locked to 1 regardless of what you set, so upgrading a Power Relay stays the main way to increase it. Enable to set your own value instead.",
     "config.actions-per-delay-window.name": "Actions per delay window",
-    "config.actions-per-delay-window.desc": "How many machine/container actions a group may commit within one Action Delay window before the rest have to wait for the next one. Set to 0 for unlimited. Has no effect when Action Delay is 0.",
+    "config.actions-per-delay-window.desc": "Only takes effect if Overwrite automation actions above is enabled. How many machine/container actions a group may commit within one Action Delay window before the rest have to wait for the next one. Set to 0 for unlimited. Has no effect when Action Delay is 0.",
     "config.automation-interval.name": "Automation interval",
     "config.automation-interval.desc": "Only used when event-based automation above is disabled. The number of ticks between each automation process (60 for once per second, 120 for every two seconds, etc).",
     "config.min-minutes-for-fairy-dust.name": "Min minutes for fairy dust",
@@ -22,12 +24,8 @@
     "config.toggle-overlay-key.desc": "The keys which toggle the automation overlay.",
     "config.warn-for-missing-bridge-mod.name": "Warn for missing bridge mod",
     "config.warn-for-missing-bridge-mod.desc": "Whether to log a warning on startup if you installed a custom-machine mod that requires a separate compatibility patch which isn't installed.",
-
-    // connectors
-    "config.title.connectors": "Enabled connectors",
-    "config.connector.desc": "Whether {{itemName}} links machines and chests together.",
-    "config.custom-connectors.name": "Custom connectors",
-    "config.custom-connectors.desc": "The items which connect adjacent machines together. You can specify either the internal English name (like \"Wood Path\") or qualified item ID (like \"(O)405\"), and list multiple items with commas.", // note: connector names must be English even when playing in other languages
+    "config.power-required-machines-enabled.name": "Power-required machines",
+    "config.power-required-machines-enabled.desc": "Whether certain high-value machines (Crystalarium, Auto-Grabber, Auto-Petter, Heavy Furnace, and others listed in the mod's config file) only automate while their own tile is within power range, instead of automating anywhere like other machines. Enabled by default as a deliberate balance choice.",
 
     // per-chest settings
     "config.title.chest-settings": "Chest settings",

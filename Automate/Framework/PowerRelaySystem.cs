@@ -16,8 +16,12 @@ namespace Pathoschild.Stardew.Automate.Framework;
 /// held/reversible item slot (an earlier version of this class supported pulling delivered items back
 /// out; per direct user request, delivery is now one-way, same as a Power Silo tier).
 ///
-/// MOD: each level costs progressively more raw items than the last — level 1 costs 1 item, level 2
-/// costs 2 MORE (3 total), level 3 costs 3 more (6 total), and so on, so <see cref="ShardsDeliveredModDataKey"/>/
+/// MOD: each level costs progressively more raw items than the last — level 1 costs 1 item (delivered
+/// as the track's special first-delivery item, see <see cref="ModConfig.PowerRelayFirstShardItemId"/>/
+/// <see cref="ModConfig.PowerRelayFirstBarItemId"/>), level 2 costs 1 MORE (2 total), level 3 costs 2
+/// more (4 total), level 4 costs 3 more (7 total) — per direct user request, the SAME 1/2/3 sequence
+/// the track's normal item (Prismatic Shard/Radioactive Bar) always used, just shifted to start at
+/// level 2 instead of level 1, now that level 1 is a different item entirely. <see cref="ShardsDeliveredModDataKey"/>/
 /// <see cref="BarsDeliveredModDataKey"/> actually store the RAW cumulative item count (0-<see cref="MaxCumulativeShards"/>/<see cref="MaxCumulativeBars"/>),
 /// not the level directly — <see cref="GetShardLevel"/>/<see cref="GetBarLevel"/> derive the level (0-<see cref="MaxShards"/>/<see cref="MaxBars"/>,
 /// one per icon) from that cumulative count, per direct user request.
@@ -217,13 +221,31 @@ internal class PowerRelaySystem
 
 
     /*********
+    ** Public methods (continued)
+    *********/
+    /// <summary>MOD: added. Get how many raw items a single level (1-indexed) costs by itself — 1 for level 1, or (level - 1) for every level after that (1, 1, 2, 3, ... — see this class's own remarks for why). Used to show "x/y" progress toward a level's own cost, e.g. in <see cref="PowerRelayInteraction"/>'s delivery HUD message and <see cref="PowerRelayMenu"/>'s per-slot cost label.</summary>
+    /// <param name="level">The level to get the cost of (1-indexed).</param>
+    public static int GetLevelCost(int level)
+    {
+        return PowerRelaySystem.GetCumulativeRequiredForLevel(level) - PowerRelaySystem.GetCumulativeRequiredForLevel(level - 1);
+    }
+
+
+    /*********
     ** Private methods
     *********/
-    /// <summary>Get how many raw items are needed in total to reach a given level (1-indexed) from scratch — the Nth triangular number (1, 3, 6, 10, 15, ...), since level N alone costs N more than the level before it.</summary>
+    /// <summary>
+    /// Get how many raw items are needed in total to reach a given level (1-indexed) from scratch —
+    /// per direct user request: 1 for level 1 (delivered as the track's special first-delivery item),
+    /// then the Nth triangular number shifted to start counting from level 2 (1, 2, 4, 7, 11, ...),
+    /// since level 1 no longer follows the plain triangular curve the rest of the levels still do.
+    /// </summary>
     /// <param name="level">The level to reach (1-indexed).</param>
     private static int GetCumulativeRequiredForLevel(int level)
     {
-        return level * (level + 1) / 2;
+        return level <= 0
+            ? 0
+            : 1 + (level - 1) * level / 2;
     }
 
     /// <summary>Get the level (0-<paramref name="maxLevel"/>) reached for a given raw cumulative delivered count.</summary>

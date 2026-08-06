@@ -21,9 +21,7 @@ namespace Pathoschild.Stardew.Automate.Framework;
 /// machine (<see cref="Patches.MachineReadyPatches"/> reporting it ready, a chest restock making it
 /// feedable, or the bulk scan finding it Done/Empty): pushes its output if Done, AND feeds it fresh input if
 /// Empty. Each group drains up to <see cref="Models.ModConfig.ActionsPerDelayWindow"/> machines from the
-/// FRONT of its queue every <see cref="Models.ModConfig.ActionDelaySeconds"/> if configured, on top of the
-/// fine-grained hooks' own <see cref="Models.ModConfig.EventBasedPushPullDelaySeconds"/> cosmetic reveal
-/// delay before a machine is even queued.</item>
+/// FRONT of its queue every <see cref="Models.ModConfig.ActionDelaySeconds"/> if configured.</item>
 /// </list>
 /// Separately, <b>flagged machines</b> is a plain counter of individual <see cref="Patches.MachineReadyPatches"/>
 /// detections (output-ready only) — lower than the flagged-machine batch count above whenever feeds or the

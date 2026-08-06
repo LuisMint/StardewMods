@@ -25,7 +25,7 @@
                     "BuildDays": 4,
                     "BuildCost": 10000,
                     "BuildMaterials": [
-                        { "ItemId": "(O)334", "Amount": 25 },
+                        { "ItemId": "(O)334", "Amount": 20 },
                         { "ItemId": "(O)122", "Amount": 1 },
                         { "ItemId": "(O)787", "Amount": 5 }
                     ],

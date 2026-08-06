@@ -60,14 +60,11 @@ internal class GenericModConfigMenuIntegrationForAutomate : IGenericModConfigMen
                 get: config => config.UseEventBasedAutomation,
                 set: (config, value) => config.UseEventBasedAutomation = value
             )
-            .AddNumberField(
-                name: I18n.Config_EventBasedPushPullDelaySeconds_Name,
-                tooltip: I18n.Config_EventBasedPushPullDelaySeconds_Desc,
-                get: config => config.EventBasedPushPullDelaySeconds,
-                set: (config, value) => config.EventBasedPushPullDelaySeconds = value,
-                min: 0f,
-                max: 2f,
-                interval: 0.05f
+            .AddCheckbox(
+                name: I18n.Config_OverwriteAutomationDelay_Name,
+                tooltip: I18n.Config_OverwriteAutomationDelay_Desc,
+                get: config => config.OverwriteAutomationDelay,
+                set: (config, value) => config.OverwriteAutomationDelay = value
             )
             .AddNumberField(
                 name: I18n.Config_ActionDelaySeconds_Name,
@@ -77,6 +74,12 @@ internal class GenericModConfigMenuIntegrationForAutomate : IGenericModConfigMen
                 min: 0f,
                 max: 10f,
                 interval: 0.1f
+            )
+            .AddCheckbox(
+                name: I18n.Config_OverwriteAutomationActions_Name,
+                tooltip: I18n.Config_OverwriteAutomationActions_Desc,
+                get: config => config.OverwriteAutomationActions,
+                set: (config, value) => config.OverwriteAutomationActions = value
             )
             .AddNumberField(
                 name: I18n.Config_ActionsPerDelayWindow_Name,
@@ -114,30 +117,19 @@ internal class GenericModConfigMenuIntegrationForAutomate : IGenericModConfigMen
                 tooltip: I18n.Config_WarnForMissingBridgeMod_Desc,
                 get: config => config.WarnForMissingBridgeMod,
                 set: (config, value) => config.WarnForMissingBridgeMod = value
+            )
+            .AddCheckbox(
+                name: I18n.Config_PowerRequiredMachinesEnabled_Name,
+                tooltip: I18n.Config_PowerRequiredMachinesEnabled_Desc,
+                get: config => config.PowerRequiredMachinesEnabled,
+                set: (config, value) => config.PowerRequiredMachinesEnabled = value
             );
 
-        // connectors
-        menu.AddSectionTitle(I18n.Config_Title_Connectors);
-        foreach (FloorPathData entry in Game1.floorPathData.Values.OrderBy(p => GameI18n.GetObjectName(p.ItemId), StringComparer.OrdinalIgnoreCase)) // sort by English display name; it's not ideal, but we can't re-sort when the language is loaded
-        {
-            string itemId = entry.ItemId;
-            ParsedItemData? itemData = ItemRegistry.GetData(entry.ItemId);
-            if (itemData is null)
-                continue;
-
-            menu.AddCheckbox(
-                name: () => GameI18n.GetObjectName(itemId),
-                tooltip: () => I18n.Config_Connector_Desc(itemName: GameI18n.GetObjectName(itemId)),
-                get: config => this.HasConnector(config, itemData),
-                set: (config, value) => this.SetConnector(config, itemData, value)
-            );
-        }
-        menu.AddTextbox(
-            name: I18n.Config_CustomConnectors_Name,
-            tooltip: I18n.Config_CustomConnectors_Desc,
-            get: config => string.Join(", ", config.Connectors.Where(this.IsCustomConnector)),
-            set: (config, value) => this.SetCustomConnectors(config, value.Split(',').Select(p => p.Trim()))
-        );
+        // MOD: removed the "connectors" section — a per-vanilla-path checkbox list plus a custom-IDs
+        // textbox — per direct user request. This mod only ever uses its own three conduits (Input,
+        // Output, Omni) as connectors, so exposing every vanilla path as a togglable connector was
+        // unnecessary clutter. Config.Connectors/ChestInputConnectors/ChestOutputConnectors are
+        // untouched otherwise — still hand-editable in the config file, just no longer surfaced here.
 
         // storage settings
         menu.AddSectionTitle(I18n.Config_Title_ChestSettings);
@@ -233,68 +225,6 @@ internal class GenericModConfigMenuIntegrationForAutomate : IGenericModConfigMen
     /*********
     ** Private methods
     *********/
-    /****
-    ** Connectors
-    ****/
-    /// <summary>Get whether the given item name isn't one of the connectors listed in <see cref="Game1.floorPathData"/>.</summary>
-    /// <param name="idOrName">The item name.</param>
-    private bool IsCustomConnector(string idOrName)
-    {
-        foreach (FloorPathData floor in Game1.floorPathData.Values)
-        {
-            ParsedItemData? itemData = ItemRegistry.GetData(floor.ItemId);
-
-            if (itemData is null)
-                continue;
-
-            if (idOrName.EqualsIgnoreCase(itemData.QualifiedItemId) || idOrName.EqualsIgnoreCase(itemData.InternalName))
-                return false;
-        }
-
-        return true;
-    }
-
-    /// <summary>Get whether the given item name is enabled as a connector.</summary>
-    /// <param name="config">The mod configuration to check.</param>
-    /// <param name="itemData">The item data.</param>
-    private bool HasConnector(ModConfig config, ParsedItemData itemData)
-    {
-        return
-            config.Connectors.Contains(itemData.QualifiedItemId)
-            || config.Connectors.Contains(itemData.InternalName);
-    }
-
-    /// <summary>Set whether the given item name is enabled as a connector.</summary>
-    /// <param name="config">The mod configuration to check.</param>
-    /// <param name="itemData">The item data.</param>
-    /// <param name="enable">Whether the item should be enabled; else it should be disabled.</param>
-    private void SetConnector(ModConfig config, ParsedItemData itemData, bool enable)
-    {
-        config.Connectors.Toggle(itemData.QualifiedItemId, enable);
-
-        config.Connectors.Remove(itemData.InternalName);
-    }
-
-    /// <summary>Set whether the given item name is enabled as a connector.</summary>
-    /// <param name="config">The mod configuration to check.</param>
-    /// <param name="rawValues">The raw connector names to set.</param>
-    private void SetCustomConnectors(ModConfig config, IEnumerable<string> rawValues)
-    {
-        var values = new HashSet<string>(rawValues);
-
-        foreach (string idOrName in config.Connectors)
-        {
-            if (!values.Contains(idOrName) && this.IsCustomConnector(idOrName))
-                config.Connectors.Remove(idOrName);
-        }
-
-        foreach (string idOrName in values)
-        {
-            if (!string.IsNullOrWhiteSpace(idOrName))
-                config.Connectors.Add(idOrName);
-        }
-    }
-
     /****
     ** Chest overrides
     ****/

@@ -468,11 +468,11 @@ internal class MachineGroup : IMachineGroup
     /// <remarks>
     /// MOD: added. The input-side counterpart to <see cref="TryPushMachineOutput"/> — split into its own
     /// method (rather than an immediate chained call right after a successful push, as an earlier version
-    /// of this class did) specifically so feeding a machine can be scheduled as its OWN independent,
-    /// separately-delayed event. Confirmed, via direct user feedback, that chaining the two together
-    /// instantly defeated the point of <see cref="Models.ModConfig.EventBasedPushPullDelaySeconds"/>: a
-    /// push immediately followed by an undelayed pull looked identical to one instantaneous action instead
-    /// of two independently-paced ones.
+    /// of this class did) specifically so feeding a machine can be scheduled as its OWN independent event,
+    /// paced separately via <see cref="Models.ModConfig.ActionDelaySeconds"/>. Confirmed, via direct user
+    /// feedback, that chaining the two together instantly defeated the point of that pacing: a push
+    /// immediately followed by an undelayed pull looked identical to one instantaneous action instead of
+    /// two independently-paced ones.
     ///
     /// MOD: fixed — now returns <see cref="IMachine.SetInput"/>'s own result instead of discarding it. A
     /// caller inferring "did this do anything" by comparing <see cref="IMachine.GetState"/> before and after

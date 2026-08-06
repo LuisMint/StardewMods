@@ -30,11 +30,12 @@ namespace Pathoschild.Stardew.Automate.Framework.Patches;
 /// anything that stays stuck relies on <c>ChestInventoryChanged</c>/<c>MenuChanged</c> or the periodic
 /// backstop scan to eventually retry it, same as the cases this hook can't see at all.</item>
 /// <item>The postfix only ever records the flagged <c>(group, machine)</c> pair — it never calls into the
-/// group's own automation logic directly. Beyond keeping per-flag overhead minimal (letting
-/// <see cref="ModEntry"/> pace the actual work via <see cref="Models.ModConfig.EventBasedPushPullDelaySeconds"/>),
-/// this also avoids reentrancy: a machine's output collection can trigger a nested call back into
-/// <see cref="SObject.minutesElapsed"/> (confirmed via a real stack-overflow crash during development), and
-/// a plain, side-effect-free list add can't recurse the way calling back into automation logic could.</item>
+/// group's own automation logic directly, letting <see cref="ModEntry.OnTimeChanged"/> process the whole
+/// tick's flagged machines afterward, once the entire <see cref="SObject.minutesElapsed"/> sweep has
+/// finished. Beyond keeping per-flag overhead minimal, this also avoids reentrancy: a machine's output
+/// collection can trigger a nested call back into <see cref="SObject.minutesElapsed"/> (confirmed via a
+/// real stack-overflow crash during development), and a plain, side-effect-free list add can't recurse the
+/// way calling back into automation logic could.</item>
 /// </list>
 /// </summary>
 internal static class MachineReadyPatches

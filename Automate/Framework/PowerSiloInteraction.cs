@@ -89,8 +89,7 @@ internal class PowerSiloInteraction
                 if (remaining <= 0)
                     continue; // already fully delivered — nothing left to accept for this one
 
-                bool matches = held.QualifiedItemId == requirement.ItemId || held.ItemId == requirement.ItemId;
-                if (!matches)
+                if (!requirement.Matches(held))
                     continue;
 
                 int delivering = Math.Min(held.Stack, remaining);
@@ -144,7 +143,7 @@ internal class PowerSiloInteraction
                 }
                 else
                 {
-                    string itemName = ItemRegistry.GetDataOrErrorItem(requirement.ItemId).DisplayName;
+                    string itemName = requirement.GetDisplayName();
                     Game1.addHUDMessage(new HUDMessage($"Delivered {delivering}x {itemName} ({newDelivered}/{requirement.Count})", HUDMessage.newQuest_type));
                 }
                 return true;

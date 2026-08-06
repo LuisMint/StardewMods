@@ -78,20 +78,32 @@ internal class PowerRelayMenu : IClickableMenu
     /// <summary>The power relay system, used to read delivered counts and the save-wide bonus.</summary>
     private readonly PowerRelaySystem PowerRelaySystem;
 
-    /// <summary>Get the qualified/unqualified item ID delivered for the delay-reduction track.</summary>
+    /// <summary>Get the qualified/unqualified item ID delivered for the delay-reduction track, from level 1 onward.</summary>
     private readonly Func<string> GetShardItemId;
 
-    /// <summary>Get the qualified/unqualified item ID delivered for the actions-per-window bonus track.</summary>
+    /// <summary>MOD: added. Get the qualified/unqualified item ID delivered for the delay-reduction track's very first delivery only (level 0→1).</summary>
+    private readonly Func<string> GetFirstShardItemId;
+
+    /// <summary>Get the qualified/unqualified item ID delivered for the actions-per-window bonus track, from level 1 onward.</summary>
     private readonly Func<string> GetBarItemId;
+
+    /// <summary>MOD: added. Get the qualified/unqualified item ID delivered for the actions-per-window bonus track's very first delivery only (level 0→1).</summary>
+    private readonly Func<string> GetFirstBarItemId;
 
     /// <summary>Get the current base <see cref="ModConfig.ActionsPerDelayWindow"/>, before the Power Relay bonus is applied.</summary>
     private readonly Func<int> GetBaseActionsPerDelayWindow;
 
-    /// <summary>A throwaway instance of the shard item, used purely to draw its icon.</summary>
+    /// <summary>A throwaway instance of the shard item, used purely to draw its icon (slots 1+ of the icon row).</summary>
     private readonly SObject ShardIcon;
 
-    /// <summary>A throwaway instance of the bar item, used purely to draw its icon.</summary>
+    /// <summary>MOD: added. A throwaway instance of the delay-reduction track's first-delivery item, used purely to draw its icon (slot 0 of the icon row).</summary>
+    private readonly SObject FirstShardIcon;
+
+    /// <summary>A throwaway instance of the bar item, used purely to draw its icon (slots 1+ of the icon row).</summary>
     private readonly SObject BarIcon;
+
+    /// <summary>MOD: added. A throwaway instance of the actions-per-window track's first-delivery item, used purely to draw its icon (slot 0 of the icon row).</summary>
+    private readonly SObject FirstBarIcon;
 
     /// <summary>The button that closes this menu.</summary>
     private readonly ClickableTextureComponent OkButton;
@@ -112,10 +124,12 @@ internal class PowerRelayMenu : IClickableMenu
     /// <summary>Construct an instance.</summary>
     /// <param name="relay">The Power Relay this menu displays.</param>
     /// <param name="powerRelaySystem">The power relay system, used to read delivered counts and the save-wide bonus.</param>
-    /// <param name="getShardItemId">Get the qualified/unqualified item ID delivered for the delay-reduction track.</param>
-    /// <param name="getBarItemId">Get the qualified/unqualified item ID delivered for the actions-per-window bonus track.</param>
+    /// <param name="getShardItemId">Get the qualified/unqualified item ID delivered for the delay-reduction track, from level 1 onward.</param>
+    /// <param name="getFirstShardItemId">MOD: added. Get the qualified/unqualified item ID delivered for the delay-reduction track's very first delivery only (level 0→1).</param>
+    /// <param name="getBarItemId">Get the qualified/unqualified item ID delivered for the actions-per-window bonus track, from level 1 onward.</param>
+    /// <param name="getFirstBarItemId">MOD: added. Get the qualified/unqualified item ID delivered for the actions-per-window bonus track's very first delivery only (level 0→1).</param>
     /// <param name="getBaseActionsPerDelayWindow">Get the current base <see cref="ModConfig.ActionsPerDelayWindow"/>, before the Power Relay bonus is applied.</param>
-    public PowerRelayMenu(Building relay, PowerRelaySystem powerRelaySystem, Func<string> getShardItemId, Func<string> getBarItemId, Func<int> getBaseActionsPerDelayWindow)
+    public PowerRelayMenu(Building relay, PowerRelaySystem powerRelaySystem, Func<string> getShardItemId, Func<string> getFirstShardItemId, Func<string> getBarItemId, Func<string> getFirstBarItemId, Func<int> getBaseActionsPerDelayWindow)
         : base(
             Game1.uiViewport.Width / 2 - PowerRelayMenu.MenuWidth / 2,
             Game1.uiViewport.Height / 2 - PowerRelayMenu.ComputeHeight() / 2,
@@ -126,10 +140,14 @@ internal class PowerRelayMenu : IClickableMenu
         this.Relay = relay;
         this.PowerRelaySystem = powerRelaySystem;
         this.GetShardItemId = getShardItemId;
+        this.GetFirstShardItemId = getFirstShardItemId;
         this.GetBarItemId = getBarItemId;
+        this.GetFirstBarItemId = getFirstBarItemId;
         this.GetBaseActionsPerDelayWindow = getBaseActionsPerDelayWindow;
         this.ShardIcon = ItemRegistry.Create<SObject>(getShardItemId());
+        this.FirstShardIcon = ItemRegistry.Create<SObject>(getFirstShardItemId());
         this.BarIcon = ItemRegistry.Create<SObject>(getBarItemId());
+        this.FirstBarIcon = ItemRegistry.Create<SObject>(getFirstBarItemId());
 
         Game1.player.Halt();
 
@@ -239,9 +257,9 @@ internal class PowerRelayMenu : IClickableMenu
 
         // icon rows — always IconsPerRow slots each; filled (reached level) draws at full opacity, the
         // next level pulses, and everything beyond that is dimmed with a full black tint.
-        this.DrawIconRow(b, this.ShardIcon, shardLevel, PowerRelaySystem.MaxShards, cursorY);
+        this.DrawIconRow(b, this.ShardIcon, this.FirstShardIcon, shardLevel, PowerRelaySystem.MaxShards, cursorY);
         cursorY += PowerRelayMenu.IconSlotSpacing * 4f + PowerRelayMenu.IconRowGap;
-        this.DrawIconRow(b, this.BarIcon, barLevel, PowerRelaySystem.MaxBars, cursorY);
+        this.DrawIconRow(b, this.BarIcon, this.FirstBarIcon, barLevel, PowerRelaySystem.MaxBars, cursorY);
         cursorY += PowerRelayMenu.IconSlotSpacing * 4f + PowerRelayMenu.ElementGap;
 
         string flavorText = bothMaxed ? PowerRelayMenu.FullyPoweredFlavorText : PowerRelayMenu.DefaultFlavorText;
@@ -273,7 +291,8 @@ internal class PowerRelayMenu : IClickableMenu
         else if (!shardsMaxed)
         {
             int shardsNeeded = this.PowerRelaySystem.GetShardsNeededForNextLevel(this.Relay);
-            this.DrawBringRow(b, this.GetShardItemId(), shardsNeeded, "(-0.4s automation delay)", leftX, iconX, bringText, bringTextSize, rowCenterY);
+            string currentShardItemId = shardLevel == 0 ? this.GetFirstShardItemId() : this.GetShardItemId();
+            this.DrawBringRow(b, currentShardItemId, shardsNeeded, "(-0.4s automation delay)", leftX, iconX, bringText, bringTextSize, rowCenterY);
         }
         else
             this.DrawCenteredStatusLine(b, "[Reached max speed on Automation Relay]", rowCenterY);
@@ -284,7 +303,8 @@ internal class PowerRelayMenu : IClickableMenu
         if (!barsMaxed)
         {
             int barsNeeded = this.PowerRelaySystem.GetBarsNeededForNextLevel(this.Relay);
-            this.DrawBringRow(b, this.GetBarItemId(), barsNeeded, "(+2 automation actions)", leftX, iconX, bringText, bringTextSize, rowCenterY);
+            string currentBarItemId = barLevel == 0 ? this.GetFirstBarItemId() : this.GetBarItemId();
+            this.DrawBringRow(b, currentBarItemId, barsNeeded, "(+2 automation actions)", leftX, iconX, bringText, bringTextSize, rowCenterY);
         }
         else
             this.DrawCenteredStatusLine(b, "[Reached max actions on Automation Relay]", rowCenterY);
@@ -348,11 +368,12 @@ internal class PowerRelayMenu : IClickableMenu
 
     /// <summary>Draw one row of item icons, filled up to <paramref name="deliveredCount"/> at full opacity and the rest dimmed.</summary>
     /// <param name="b">The sprite batch to draw to.</param>
-    /// <param name="icon">A throwaway instance of the item to draw.</param>
+    /// <param name="icon">A throwaway instance of the track's normal item (slots 1+), used purely to draw its icon.</param>
+    /// <param name="firstIcon">MOD: added. A throwaway instance of the track's special first-delivery item (slot 0 only), used purely to draw its icon.</param>
     /// <param name="deliveredCount">How many of this row's slots are filled.</param>
     /// <param name="totalCount">How many slots this row has in total.</param>
     /// <param name="rowY">The row's top Y position.</param>
-    private void DrawIconRow(SpriteBatch b, SObject icon, int deliveredCount, int totalCount, float rowY)
+    private void DrawIconRow(SpriteBatch b, SObject icon, SObject firstIcon, int deliveredCount, int totalCount, float rowY)
     {
         for (int i = 0; i < totalCount; i++)
         {
@@ -360,6 +381,11 @@ internal class PowerRelayMenu : IClickableMenu
                 this.xPositionOnScreen + this.width / 2f - PowerRelayMenu.IconSlotSpacing * totalCount * 4f * 0.5f + PowerRelayMenu.IconSlotSpacing * 4f * i - 12f,
                 rowY
             );
+
+            // MOD: added — slot 0 always represents the track's special first-delivery item (see
+            // ModConfig.PowerRelayFirstShardItemId/PowerRelayFirstBarItemId's own remarks), regardless of
+            // how many raw items have actually been delivered so far.
+            SObject slotIcon = i == 0 ? firstIcon : icon;
 
             // MOD: three-tier visual matching PowerSiloMenu's own capacity grid, per direct user
             // request — delivered slots are full opacity/untinted; the NEXT slot to be filled pulses
@@ -384,15 +410,17 @@ internal class PowerRelayMenu : IClickableMenu
                 alpha = 0.5f;
             }
 
-            icon.drawInMenu(b, iconPosition, 0.75f, alpha, 0f, StackDrawType.Hide, tint, drawShadow: false);
+            slotIcon.drawInMenu(b, iconPosition, 0.75f, alpha, 0f, StackDrawType.Hide, tint, drawShadow: false);
 
-            // MOD: a per-slot cost label (this slot's level costs i+1 raw items, per the progressive
-            // cost curve — see PowerRelaySystem's own remarks), per direct user request. The first slot
-            // has no number since its cost (1) is implicit. Only drawn once a slot has actually come up
-            // (filled, or the current pulsing "next" slot) — a slot still fully black-tinted (i.e. not
-            // reached yet) shows no number at all.
-            if (i > 0 && i <= deliveredCount)
-                Utility.drawTinyDigits(i + 1, b, iconPosition + new Vector2(40f, 38f), 3f, 1f, Color.White);
+            // MOD: a per-slot cost label (this slot's own level cost — see PowerRelaySystem.GetLevelCost),
+            // per direct user request. MOD: fixed — checks the actual cost rather than just "i > 0": with
+            // the 1/1/2/3 cost curve, slot 1 (level 2) now costs 1 too, same as slot 0, so it needs the
+            // same "no badge for a cost of 1" treatment rather than showing a redundant "1". Only drawn
+            // once a slot has actually come up (filled, or the current pulsing "next" slot) — a slot
+            // still fully black-tinted (i.e. not reached yet) shows no number at all.
+            int slotCost = PowerRelaySystem.GetLevelCost(i + 1);
+            if (slotCost > 1 && i <= deliveredCount)
+                Utility.drawTinyDigits(slotCost, b, iconPosition + new Vector2(40f, 38f), 3f, 1f, Color.White);
         }
     }
 

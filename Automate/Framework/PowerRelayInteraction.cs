@@ -28,11 +28,17 @@ internal class PowerRelayInteraction
     /// <summary>The power relay system, used to read/write a Relay's delivered counts.</summary>
     private readonly PowerRelaySystem PowerRelaySystem;
 
-    /// <summary>Get the qualified/unqualified item ID delivered for the delay-reduction track.</summary>
+    /// <summary>Get the qualified/unqualified item ID delivered for the delay-reduction track, from level 1 onward.</summary>
     private readonly Func<string> GetShardItemId;
 
-    /// <summary>Get the qualified/unqualified item ID delivered for the actions-per-window bonus track.</summary>
+    /// <summary>MOD: added. Get the qualified/unqualified item ID delivered for the delay-reduction track's very first delivery only (level 0→1) — see <see cref="ModConfig.PowerRelayFirstShardItemId"/>.</summary>
+    private readonly Func<string> GetFirstShardItemId;
+
+    /// <summary>Get the qualified/unqualified item ID delivered for the actions-per-window bonus track, from level 1 onward.</summary>
     private readonly Func<string> GetBarItemId;
+
+    /// <summary>MOD: added. Get the qualified/unqualified item ID delivered for the actions-per-window bonus track's very first delivery only (level 0→1) — see <see cref="ModConfig.PowerRelayFirstBarItemId"/>.</summary>
+    private readonly Func<string> GetFirstBarItemId;
 
     /// <summary>Get the current base <see cref="ModConfig.ActionsPerDelayWindow"/>, before the Power Relay bonus is applied.</summary>
     private readonly Func<int> GetBaseActionsPerDelayWindow;
@@ -43,15 +49,28 @@ internal class PowerRelayInteraction
     *********/
     /// <summary>Construct an instance.</summary>
     /// <param name="powerRelaySystem">The power relay system, used to read/write a Relay's delivered counts.</param>
-    /// <param name="getShardItemId">Get the qualified/unqualified item ID delivered for the delay-reduction track.</param>
-    /// <param name="getBarItemId">Get the qualified/unqualified item ID delivered for the actions-per-window bonus track.</param>
+    /// <param name="getShardItemId">Get the qualified/unqualified item ID delivered for the delay-reduction track, from level 1 onward.</param>
+    /// <param name="getFirstShardItemId">MOD: added. Get the qualified/unqualified item ID delivered for the delay-reduction track's very first delivery only (level 0→1).</param>
+    /// <param name="getBarItemId">Get the qualified/unqualified item ID delivered for the actions-per-window bonus track, from level 1 onward.</param>
+    /// <param name="getFirstBarItemId">MOD: added. Get the qualified/unqualified item ID delivered for the actions-per-window bonus track's very first delivery only (level 0→1).</param>
     /// <param name="getBaseActionsPerDelayWindow">Get the current base <see cref="ModConfig.ActionsPerDelayWindow"/>, before the Power Relay bonus is applied.</param>
-    public PowerRelayInteraction(PowerRelaySystem powerRelaySystem, Func<string> getShardItemId, Func<string> getBarItemId, Func<int> getBaseActionsPerDelayWindow)
+    public PowerRelayInteraction(PowerRelaySystem powerRelaySystem, Func<string> getShardItemId, Func<string> getFirstShardItemId, Func<string> getBarItemId, Func<string> getFirstBarItemId, Func<int> getBaseActionsPerDelayWindow)
     {
         this.PowerRelaySystem = powerRelaySystem;
         this.GetShardItemId = getShardItemId;
+        this.GetFirstShardItemId = getFirstShardItemId;
         this.GetBarItemId = getBarItemId;
+        this.GetFirstBarItemId = getFirstBarItemId;
         this.GetBaseActionsPerDelayWindow = getBaseActionsPerDelayWindow;
+    }
+
+    /// <summary>MOD: added. Get the qualified/unqualified item ID currently accepted for a track, given its current level — the track's normal item from level 1 onward, or its special first-delivery item while still at level 0.</summary>
+    /// <param name="level">The track's current level.</param>
+    /// <param name="getNormalItemId">Get the track's normal item ID (level 1 onward).</param>
+    /// <param name="getFirstItemId">Get the track's special first-delivery item ID (level 0 only).</param>
+    private static string GetCurrentItemId(int level, Func<string> getNormalItemId, Func<string> getFirstItemId)
+    {
+        return level == 0 ? getFirstItemId() : getNormalItemId();
     }
 
     /// <summary>Register this interaction with the game, so clicking a Power Relay's action tile invokes <see cref="Handle"/>.</summary>
@@ -79,8 +98,11 @@ internal class PowerRelayInteraction
         SObject? held = who.ActiveObject;
         if (held is not null)
         {
-            string shardItemId = this.GetShardItemId();
-            string barItemId = this.GetBarItemId();
+            // MOD: added — per direct user request, each track's very first delivery (level 0→1) asks
+            // for a different item (see GetFirstShardItemId/GetFirstBarItemId's own remarks) before
+            // reverting to the track's normal item from level 1 onward.
+            string shardItemId = PowerRelayInteraction.GetCurrentItemId(this.PowerRelaySystem.GetShardLevel(relay), this.GetShardItemId, this.GetFirstShardItemId);
+            string barItemId = PowerRelayInteraction.GetCurrentItemId(this.PowerRelaySystem.GetBarLevel(relay), this.GetBarItemId, this.GetFirstBarItemId);
 
             // MOD: added — once the effective delay has been pushed down to its global floor, per direct
             // user request no Relay's shard track accepts further deliveries at all (not just this one),
@@ -102,7 +124,7 @@ internal class PowerRelayInteraction
         // otherwise, open the Power Relay's status menu — matches how a Power Silo opens
         // PowerSiloMenu instead of showing plain dialogue when you're not actively feeding it.
         Game1.playSound("bigSelect");
-        Game1.activeClickableMenu = new PowerRelayMenu(relay, this.PowerRelaySystem, this.GetShardItemId, this.GetBarItemId, this.GetBaseActionsPerDelayWindow);
+        Game1.activeClickableMenu = new PowerRelayMenu(relay, this.PowerRelaySystem, this.GetShardItemId, this.GetFirstShardItemId, this.GetBarItemId, this.GetFirstBarItemId, this.GetBaseActionsPerDelayWindow);
         return true;
     }
 
@@ -163,10 +185,10 @@ internal class PowerRelayInteraction
         else
         {
             // MOD: matches PowerSiloInteraction's own delivery message format exactly — "x/y" here is
-            // progress toward the CURRENT level's own cost (oldLevel + 1, since each level costs exactly
-            // one more than its own level number), not the track's overall cumulative total.
+            // progress toward the CURRENT level's own cost (see PowerRelaySystem.GetLevelCost), not the
+            // track's overall cumulative total.
             string itemName = ItemRegistry.GetDataOrErrorItem(requiredItemId).DisplayName;
-            int levelCost = oldLevel + 1;
+            int levelCost = PowerRelaySystem.GetLevelCost(oldLevel + 1);
             int progressWithinLevel = levelCost - getNeededForNextLevel(relay);
             Game1.addHUDMessage(new HUDMessage($"Delivered {delivering}x {itemName} ({progressWithinLevel}/{levelCost})", HUDMessage.newQuest_type));
         }
