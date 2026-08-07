@@ -17,6 +17,51 @@
         },
         {
             "Action": "Load",
+            "Target": "Mods/{{ModId}}/Pipes_UnPowered",
+            "FromFile": "Pipes/Pipes_UnPowered.png"
+        },
+        {
+            "Action": "Load",
+            "Target": "Mods/{{ModId}}/Pipes_Dimmer",
+            "FromFile": "Pipes/Pipes_Dimmer.png"
+        },
+        {
+            "Action": "Load",
+            "Target": "Mods/{{ModId}}/Pipes_Dimmest",
+            "FromFile": "Pipes/Pipes_Dimmest.png"
+        },
+        {
+            "Action": "Load",
+            "Target": "Mods/{{ModId}}/PipesInput_UnPowered",
+            "FromFile": "Pipes/PipesInput_UnPowered.png"
+        },
+        {
+            "Action": "Load",
+            "Target": "Mods/{{ModId}}/PipesInput_Dimmer",
+            "FromFile": "Pipes/PipesInput_Dimmer.png"
+        },
+        {
+            "Action": "Load",
+            "Target": "Mods/{{ModId}}/PipesInput_Dimmest",
+            "FromFile": "Pipes/PipesInput_Dimmest.png"
+        },
+        {
+            "Action": "Load",
+            "Target": "Mods/{{ModId}}/PipesOutput_UnPowered",
+            "FromFile": "Pipes/PipesOutput_UnPowered.png"
+        },
+        {
+            "Action": "Load",
+            "Target": "Mods/{{ModId}}/PipesOutput_Dimmer",
+            "FromFile": "Pipes/PipesOutput_Dimmer.png"
+        },
+        {
+            "Action": "Load",
+            "Target": "Mods/{{ModId}}/PipesOutput_Dimmest",
+            "FromFile": "Pipes/PipesOutput_Dimmest.png"
+        },
+        {
+            "Action": "Load",
             "Target": "Mods/{{ModId}}/PowerCoil",
             "FromFile": "Pipes/PowerCoil.png"
         },
@@ -49,6 +94,26 @@
             "Action": "Load",
             "Target": "Mods/{{ModId}}/BlacklistCategorySign",
             "FromFile": "Pipes/BlacklistCatagorySign.png"
+        },
+        {
+            "Action": "Load",
+            "Target": "Mods/{{ModId}}/WhitelistSign_UnPowered",
+            "FromFile": "Pipes/WhitelistSign_UnPowered.png"
+        },
+        {
+            "Action": "Load",
+            "Target": "Mods/{{ModId}}/BlacklistSign_UnPowered",
+            "FromFile": "Pipes/BlacklistSign_UnPowered.png"
+        },
+        {
+            "Action": "Load",
+            "Target": "Mods/{{ModId}}/WhitelistCategorySign_UnPowered",
+            "FromFile": "Pipes/WhitelistCatagorySign_UnPowered.png"
+        },
+        {
+            "Action": "Load",
+            "Target": "Mods/{{ModId}}/BlacklistCategorySign_UnPowered",
+            "FromFile": "Pipes/BlacklistCatagorySign_UnPowered.png"
         },
         {
             "Action": "Load",

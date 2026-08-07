@@ -97,11 +97,6 @@ internal static class PowerSiloPatches
         );
 
         harmony.Patch(
-            original: AccessTools.Method(typeof(SObject), nameof(SObject.performToolAction)),
-            postfix: new HarmonyMethod(typeof(PowerSiloPatches), nameof(PerformToolAction_Postfix))
-        );
-
-        harmony.Patch(
             original: AccessTools.Method(typeof(SObject), nameof(SObject.checkForAction)),
             postfix: new HarmonyMethod(typeof(PowerSiloPatches), nameof(CheckForAction_Postfix))
         );
@@ -195,18 +190,6 @@ internal static class PowerSiloPatches
         // for that specific check.
     }
 
-    /// <summary>Refresh the whole save's coil allowance after a Power Coil is broken/removed by a tool, since one fewer coil can let the next-oldest excess one regain power.</summary>
-    /// <param name="__instance">The item being hit by a tool.</param>
-    private static void PerformToolAction_Postfix(SObject __instance)
-    {
-        if (PowerSiloPatches.PowerSiloSystem is not { } powerSiloSystem || !PowerSiloPatches.IsPowerCoil(__instance))
-            return;
-
-        IReadOnlySet<GameLocation> changedLocations = powerSiloSystem.RefreshCoilAllowance();
-        if (changedLocations.Count > 0)
-            PowerSiloPatches.RequeueLocations?.Invoke(changedLocations); // MOD: added — see RequeueLocations's own remarks for why locations OTHER than this one may also need to pick up the refresh
-    }
-
     /// <summary>MOD: added. Play a sound and show a capacity popup when a player interacts with a Power Coil directly.</summary>
     /// <param name="__instance">The object being interacted with.</param>
     /// <param name="justCheckingForActivity">Whether this is just a cursor-hover check rather than an actual click — no sound/popup should show for those.</param>
@@ -265,6 +248,18 @@ internal static class PowerSiloPatches
     /// added/removed objects is a Power Coil, Solar Panel, or local power source (e.g. a Powered Chest —
     /// see <see cref="IsLocalPowerSource"/>'s remarks), so unrelated object changes elsewhere in the
     /// location (crops harvested, items dropped, etc.) don't trigger a needless rescan.
+    ///
+    /// MOD: fixed — a Power Coil being ADDED or REMOVED now always re-ranks every coil (via
+    /// <see cref="PowerSiloSystem.RefreshCoilAllowance"/>), not just when it happens to change the total
+    /// capacity too. This used to be handled by a Harmony postfix on <c>performToolAction</c> for the
+    /// removal case specifically — but that postfix fires BEFORE the game actually removes the broken
+    /// coil from <see cref="GameLocation.Objects"/> (same timing trap <see cref="RefreshSolarConnectionAndNotify"/>'s
+    /// own remarks describe), so the refresh always still saw the about-to-be-removed coil as present and
+    /// re-ranked the OLD set — the remaining coils kept their stale ranks (e.g. breaking coil #1 of 4 left
+    /// the survivors labeled 2/3, 3/3, 4/3 instead of correctly becoming 1/3, 2/3, 3/3) and nothing else
+    /// ever corrected it, since a plain coil removal doesn't itself change total capacity (the only other
+    /// trigger for a re-rank). This method already fires with the object list correctly diffed — the
+    /// broken coil is truly gone by the time this runs — so re-ranking here is unconditionally accurate.
     /// </summary>
     /// <param name="location">The location whose object list changed.</param>
     /// <param name="added">The objects added to the location.</param>
@@ -274,29 +269,33 @@ internal static class PowerSiloPatches
         if (PowerSiloPatches.PowerSiloSystem is not { } powerSiloSystem)
             return;
 
-        bool isRelevantChange = false;
+        bool coilChanged = false;
+        bool otherRelevantChange = false;
+
         foreach (SObject obj in added)
         {
-            if (PowerSiloPatches.IsPowerCoil(obj) || PowerSiloPatches.IsSolarPanel(obj) || PowerSiloPatches.IsLocalPowerSource(obj))
-            {
-                isRelevantChange = true;
-                break;
-            }
+            if (PowerSiloPatches.IsPowerCoil(obj))
+                coilChanged = true;
+            else if (PowerSiloPatches.IsSolarPanel(obj) || PowerSiloPatches.IsLocalPowerSource(obj))
+                otherRelevantChange = true;
         }
-        if (!isRelevantChange)
+        foreach (SObject obj in removed)
         {
-            foreach (SObject obj in removed)
-            {
-                if (PowerSiloPatches.IsPowerCoil(obj) || PowerSiloPatches.IsSolarPanel(obj) || PowerSiloPatches.IsLocalPowerSource(obj))
-                {
-                    isRelevantChange = true;
-                    break;
-                }
-            }
+            if (PowerSiloPatches.IsPowerCoil(obj))
+                coilChanged = true;
+            else if (PowerSiloPatches.IsSolarPanel(obj) || PowerSiloPatches.IsLocalPowerSource(obj))
+                otherRelevantChange = true;
         }
 
-        if (isRelevantChange)
+        if (otherRelevantChange)
             PowerSiloPatches.RefreshSolarConnectionAndNotify(powerSiloSystem, location);
+
+        if (coilChanged)
+        {
+            IReadOnlySet<GameLocation> changedLocations = powerSiloSystem.RefreshCoilAllowance();
+            if (changedLocations.Count > 0)
+                PowerSiloPatches.RequeueLocations?.Invoke(changedLocations); // MOD: added — see RequeueLocations's own remarks for why locations OTHER than this one may also need to pick up the refresh
+        }
     }
 
     /// <summary>

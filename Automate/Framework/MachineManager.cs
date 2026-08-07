@@ -63,6 +63,9 @@ internal class MachineManager
     /// </summary>
     private readonly Dictionary<(string LocationKey, Vector2 Tile), (string ItemId, int? Number)?> LastKnownSignItems = new();
 
+    /// <summary>MOD: added. Every managed connector tile left "powered but not part of an active group" as of the last rebuild for a given location key (see <see cref="PoweredFloorSync.Sync"/>) — handed to <see cref="PoweredFloorAnimator"/> directly each frame so it never needs to rescan the location's full terrain feature collection itself.</summary>
+    private readonly Dictionary<string, HashSet<Vector2>> OrphanedConnectorTilesByLocation = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>MOD: added. How many ticks to wait between each check for sign content changes — doesn't need to be as frequent as automation itself, since it's just a convenience so players don't need to nudge the world to force a rescan.</summary>
     private const int SignCheckIntervalTicks = 30;
 
@@ -244,16 +247,15 @@ internal class MachineManager
 
         // MOD: added — swaps a connector's displayed appearance between its unpowered and "powered"
         // variant based on power range. See PoweredFloorSync.cs for details.
-        this.PoweredFloorSync = new PoweredFloorSync(getConnectorTextureIds: () => this.Config().ConnectorPoweredTextureIds);
+        this.PoweredFloorSync = new PoweredFloorSync();
 
         // MOD: added — swaps a whitelist/blacklist sign's displayed appearance between a valid and
         // invalid variant. See SignTextureSync.cs for details.
-        this.SignTextureSync = new SignTextureSync(getSignTextureIds: () => this.Config().SignTextureIds);
+        this.SignTextureSync = new SignTextureSync();
 
         // MOD: added — animates a connector's displayed appearance while it's powered but not part
         // of a valid automation group. See PoweredFloorAnimator.cs for details.
         this.PoweredFloorAnimator = new PoweredFloorAnimator(
-            getConnectorTextureIds: () => this.Config().ConnectorPoweredTextureIds,
             getFps: () => this.Config().PoweredFloorAnimationFps,
             getUnpoweredHoldMultiplier: () => this.Config().PoweredFloorUnpoweredHoldMultiplier
         );
@@ -287,7 +289,8 @@ internal class MachineManager
     /// <param name="location">The location to animate.</param>
     public void TickPoweredFloorAnimation(GameLocation location)
     {
-        this.PoweredFloorAnimator.Tick(location, this.GetMachineDataFor(location));
+        string locationKey = this.Factory.GetLocationKey(location);
+        this.PoweredFloorAnimator.Tick(location, this.OrphanedConnectorTilesByLocation.GetValueOrDefault(locationKey));
     }
 
     /****
@@ -684,6 +687,11 @@ internal class MachineManager
             foreach ((string LocationKey, Vector2 Tile) key in this.LastKnownSignItems.Keys.Where(k => locationKeys.Contains(k.LocationKey)).ToArray())
                 this.LastKnownSignItems.Remove(key);
 
+            // MOD: added — drop stale orphaned-connector-tile caches for locations being
+            // reloaded/removed; reseeded fresh below by PoweredFloorSync.Sync for anything still active.
+            foreach (string locationKey in locationKeys)
+                this.OrphanedConnectorTilesByLocation.Remove(locationKey);
+
             // MOD: added — drop stale "previously active" tile snapshots only for locations that are
             // actually gone, NOT ones simply being rescanned — unlike the caches above, this one needs
             // to survive a reload/rescan cycle so the "newly joined" diff below has something to
@@ -894,8 +902,9 @@ internal class MachineManager
             this.LocationsByKey[locationKey] = location; // MOD: added — keep the cache fresh for CheckForSignChanges
 
             // MOD: added — swap any managed connector's displayed appearance to match its current
-            // power and group state (needs the just-built locationData for its ActiveTiles).
-            this.PoweredFloorSync.Sync(location, locationData);
+            // power and group state (needs the just-built locationData for its ActiveTiles), and cache
+            // the tiles left "powered but orphaned" for PoweredFloorAnimator to use directly each frame.
+            this.OrphanedConnectorTilesByLocation[locationKey] = this.PoweredFloorSync.Sync(location, locationData);
 
             // MOD: added — swap any managed whitelist/blacklist sign's displayed appearance to match
             // whether it's currently valid (enforcing its filter) or not.

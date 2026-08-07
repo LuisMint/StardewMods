@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Microsoft.Xna.Framework;
 using StardewValley;
 using StardewValley.TerrainFeatures;
@@ -8,7 +7,7 @@ using StardewValley.TerrainFeatures;
 namespace Pathoschild.Stardew.Automate.Framework;
 
 /// <summary>
-/// MOD: added. Animates a connector's displayed appearance while it's powered but NOT part of a
+/// MOD: changed. Animates a connector's displayed appearance while it's powered but NOT part of a
 /// valid (active) automation group — a "flickering" ping-pong between the powered look and the
 /// unpowered look, as a visual cue that the tile is connected to power but isn't actually
 /// automating anything (e.g. it has no machine or chest attached). Connectors that are fully
@@ -16,10 +15,19 @@ namespace Pathoschild.Stardew.Automate.Framework;
 /// <see cref="PoweredFloorSync"/> instead — this class only touches tiles in the "powered but
 /// orphaned" state, so it never fights with that class over the same tile.
 ///
-/// Only the current location is animated (matching what's actually visible to the player), and the
-/// underlying tiles are only re-scanned when the animation frame actually changes — for the default
-/// 6fps/10-tick-per-frame timing, that's roughly 6 times a second rather than all 60 ticks — so this
-/// stays cheap even on maps with hundreds of unrelated floor tiles.
+/// MOD: per direct user request, no longer drives Alternative Textures' own <c>modData</c> keys — see
+/// <see cref="Patches.ConnectorTexturePatches"/>'s own remarks for why. The timing/ping-pong logic
+/// below is otherwise completely unchanged from the Alternative Textures version, so the animation's
+/// actual rhythm (frame timing, hold-on-unpowered pacing) stays identical; only WHAT gets written each
+/// frame change is different (this class's own <see cref="Patches.ConnectorTexturePatches.ConnectorVariantModDataKey"/>
+/// instead of AT's keys).
+///
+/// MOD: changed — no longer scans a location's full terrain feature collection itself; <see cref="MachineManager"/>
+/// hands over the already-computed "orphaned" connector tile set (built once per rebuild by
+/// <see cref="PoweredFloorSync.Sync"/>, which needs to scan every terrain feature anyway to resolve the
+/// two static states) instead, so this only ever touches the small set of tiles that actually need to
+/// animate — not every crop/path/other terrain feature in the location — even though it still runs up
+/// to 6 times a second while the player has the power system enabled.
 /// </summary>
 internal class PoweredFloorAnimator
 {
@@ -27,10 +35,13 @@ internal class PoweredFloorAnimator
     ** Fields
     *********/
     /// <summary>The appearance variations shown while "powered but not part of a valid group", from most to least powered.</summary>
-    private static readonly int[] PoweredToUnpoweredVariations = [PoweredFloorSync.PoweredVariation, 2, 3, PoweredFloorSync.UnpoweredVariation];
-
-    /// <summary>Get the configured mapping of a connector's floor ID to the Alternative Textures texture ID (in the form <c>{Owner}.{ModelName}</c>) providing its appearance variations.</summary>
-    private readonly Func<Dictionary<string, string>> GetConnectorTextureIds;
+    private static readonly int[] PoweredToUnpoweredVariations =
+    [
+        Patches.ConnectorTexturePatches.PoweredVariant,
+        Patches.ConnectorTexturePatches.DimmerVariant,
+        Patches.ConnectorTexturePatches.DimmestVariant,
+        Patches.ConnectorTexturePatches.UnpoweredVariant
+    ];
 
     /// <summary>Get the animation speed, in frames per second.</summary>
     private readonly Func<double> GetFps;
@@ -52,44 +63,34 @@ internal class PoweredFloorAnimator
     ** Public methods
     *********/
     /// <summary>Construct an instance.</summary>
-    /// <param name="getConnectorTextureIds">Get the configured mapping of a connector's floor ID to the Alternative Textures texture ID providing its appearance variations.</param>
     /// <param name="getFps">Get the animation speed, in frames per second.</param>
     /// <param name="getUnpoweredHoldMultiplier">Get how many times longer to hold the fully-unpowered frame, relative to the other frames.</param>
-    public PoweredFloorAnimator(Func<Dictionary<string, string>> getConnectorTextureIds, Func<double> getFps, Func<double> getUnpoweredHoldMultiplier)
+    public PoweredFloorAnimator(Func<double> getFps, Func<double> getUnpoweredHoldMultiplier)
     {
-        this.GetConnectorTextureIds = getConnectorTextureIds;
         this.GetFps = getFps;
         this.GetUnpoweredHoldMultiplier = getUnpoweredHoldMultiplier;
     }
 
     /// <summary>Advance the animation by one tick, and update any "powered but not part of a valid group" connectors in the given location if the frame changed.</summary>
     /// <param name="location">The location to animate — normally just the current player's location, since this is a purely visual effect.</param>
-    /// <param name="data">The location's tracked machine data, or <c>null</c> if it hasn't been scanned yet.</param>
-    public void Tick(GameLocation location, MachineDataForLocation? data)
+    /// <param name="orphanedTiles">The location's tiles left "powered but not part of an active group" as of the last rebuild (see <see cref="PoweredFloorSync.Sync"/>), or <c>null</c> if it hasn't been scanned yet.</param>
+    public void Tick(GameLocation location, IReadOnlySet<Vector2>? orphanedTiles)
     {
-        Dictionary<string, string> connectorTextureIds = this.GetConnectorTextureIds();
-        if (connectorTextureIds.Count == 0 || data is null)
+        if (orphanedTiles is null)
             return;
 
         if (!this.AdvanceFrame())
             return; // frame hasn't changed since the last tick — nothing to update
 
-        int variation = PoweredFloorAnimator.PoweredToUnpoweredVariations[this.CurrentFrame.Index];
+        if (orphanedTiles.Count == 0)
+            return; // nothing in this location needs animating right now
 
-        foreach ((Vector2 tile, TerrainFeature feature) in location.terrainFeatures.Pairs)
+        int variant = PoweredFloorAnimator.PoweredToUnpoweredVariations[this.CurrentFrame.Index];
+
+        foreach (Vector2 tile in orphanedTiles)
         {
-            if (feature is not Flooring floor)
-                continue;
-
-            if (!connectorTextureIds.TryGetValue(floor.whichFloor.Value, out string? textureId))
-                continue;
-
-            bool isPowered = data.PoweredTiles == null || data.PoweredTiles.Contains(tile);
-            if (!isPowered || data.ActiveTiles.ContainsKey(tile))
-                continue; // static state — PoweredFloorSync owns this tile instead
-
-            floor.modData["AlternativeTextureName"] = textureId;
-            floor.modData["AlternativeTextureVariation"] = variation.ToString();
+            if (location.terrainFeatures.TryGetValue(tile, out TerrainFeature? feature) && feature is Flooring floor)
+                floor.modData[Patches.ConnectorTexturePatches.ConnectorVariantModDataKey] = variant.ToString();
         }
     }
 

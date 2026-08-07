@@ -285,10 +285,17 @@ internal class ModEntry : Mod
         );
         CategorySignPatches.Apply(harmony);
 
-        SignColliderPatches.Initialize(
-            getSignTextureIds: () => this.Config.SignTextureIds
-        );
         SignColliderPatches.Apply(harmony);
+
+        // MOD: added — swaps a managed sign's world sprite to its dedicated "_UnPowered" texture while
+        // invalid, per direct user request replacing the previous Alternative Textures-driven swap (see
+        // SignValidityPatches' own remarks).
+        SignValidityPatches.Apply(harmony);
+
+        // MOD: added — swaps a managed connector's world sprite between its powered/unpowered/dimmer/
+        // dimmest variants, per direct user request replacing the previous Alternative Textures-driven
+        // swap (see ConnectorTexturePatches' own remarks).
+        ConnectorTexturePatches.Apply(harmony);
 
         PoweredChestPatches.Apply(harmony);
 
@@ -1778,23 +1785,21 @@ internal class ModEntry : Mod
                 break;
             }
 
-            // MOD: added — placing a connector that has a registered Alternative Textures powered
-            // look always forces a rescan too, regardless of power range, so its displayed texture
-            // gets assigned promptly instead of sitting on the vanilla look until some unrelated
-            // nearby change happens to trigger a rescan.
-            if (isAdded && entity is Flooring placedFloor && this.Config.ConnectorPoweredTextureIds.ContainsKey(placedFloor.whichFloor.Value))
+            // MOD: added — placing a managed connector always forces a rescan too, regardless of
+            // power range, so its displayed texture gets assigned promptly instead of sitting on the
+            // vanilla look until some unrelated nearby change happens to trigger a rescan.
+            if (isAdded && entity is Flooring placedFloor && ConnectorTexturePatches.IsManagedConnector(placedFloor.whichFloor.Value))
             {
                 shouldReload = true;
                 break;
             }
 
-            // MOD: added — placing a sign that has a registered Alternative Textures valid/invalid
-            // look always forces a rescan too, for the same reason as the connector case above: signs
-            // aren't machines, containers, or connectors, so they're never recognized as an
-            // automatable entity by the "ignore unknown entity" check just below, and would otherwise
-            // keep whatever texture it last had (or the content pack's default) until some unrelated
-            // nearby change happened to trigger a rescan.
-            if (isAdded && entity is StardewValley.Object placedSign && this.Config.SignTextureIds.ContainsKey(placedSign.QualifiedItemId))
+            // MOD: added — placing a managed sign always forces a rescan too, for the same reason as
+            // the connector case above: signs aren't machines, containers, or connectors, so they're
+            // never recognized as an automatable entity by the "ignore unknown entity" check just
+            // below, and would otherwise keep showing whatever validity texture it last had (or the
+            // content pack's default) until some unrelated nearby change happened to trigger a rescan.
+            if (isAdded && entity is StardewValley.Object placedSign && SignValidityPatches.IsManagedSign(placedSign.QualifiedItemId))
             {
                 shouldReload = true;
                 break;

@@ -470,28 +470,6 @@ internal class ModConfig
     /// <summary>MOD: added. How much a single delivered bar adds to <see cref="ActionsPerDelayWindow"/>, summed across every bar delivered to every Relay in the save (each Relay accepts up to <see cref="PowerRelaySystem.MaxBars"/>).</summary>
     public int PowerRelayActionsPerDelayWindowBonusPerBar { get; set; } = 2;
 
-
-    /// <summary>
-    /// MOD: added. Maps a connector's <c>Data/FloorsAndPaths</c> ID to the Alternative Textures
-    /// texture ID (in the form <c>{Owner}.{ModelName}</c>, e.g.
-    /// <c>luisMint.ATAutomatePowerPipes.Flooring_luisMint.AutomatePowerPipes_PullPushPipe</c>)
-    /// providing its four appearance variations: 0 = unpowered, 1 = powered, 2 = powered (dimmer),
-    /// 3 = powered (dimmest). Empty by default; populated for a custom connector that has a matching
-    /// Alternative Textures content pack installed. Requires the Alternative Textures mod — see
-    /// <see cref="PoweredFloorAnimator"/>.
-    /// </summary>
-    public Dictionary<string, string> ConnectorPoweredTextureIds { get; set; } = new(StringComparer.OrdinalIgnoreCase);
-
-    /// <summary>
-    /// MOD: added. Maps a whitelist/blacklist sign's qualified item ID to the Alternative Textures
-    /// texture ID (in the form <c>{Owner}.{ModelName}</c>, e.g.
-    /// <c>luisMint.ATAutomatePowerPipes.Craftable_luisMint.AutomatePowerPipes_WhitelistSign</c>)
-    /// providing its two appearance variations: 0 = invalid (not currently enforcing its filter), 1 =
-    /// valid. Empty by default; populated for a custom sign that has a matching Alternative Textures
-    /// content pack installed. Requires the Alternative Textures mod — see <see cref="SignTextureSync"/>.
-    /// </summary>
-    public Dictionary<string, string> SignTextureIds { get; set; } = new(StringComparer.OrdinalIgnoreCase);
-
     /// <summary>
     /// MOD: added. The animation speed, in frames per second, for a connector that's powered but not
     /// part of a valid (active) automation group — a "flickering" cue that it's connected to power
@@ -730,10 +708,6 @@ internal class ModConfig
             this.PoweredFloorAnimationFps = 6;
         if (this.PoweredFloorUnpoweredHoldMultiplier < 1)
             this.PoweredFloorUnpoweredHoldMultiplier = 1;
-
-        // MOD: added.
-        this.ConnectorPoweredTextureIds = this.ConnectorPoweredTextureIds.ToNonNullCaseInsensitive();
-        this.SignTextureIds = this.SignTextureIds.ToNonNullCaseInsensitive();
 
         this.ChestOverrides = this.ChestOverrides.ToNonNullCaseInsensitive();
         this.ChestOverrides.RemoveWhere(pair => pair.Value is null);
