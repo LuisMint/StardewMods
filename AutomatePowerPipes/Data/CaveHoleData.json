@@ -1,0 +1,24 @@
+{
+    "Changes": [
+        {
+            "Action": "Load",
+            "Target": "Mods/{{ModId}}/CaveHole",
+            "FromFile": "Pipes/CaveHole.png"
+        },
+        {
+            "Action": "Load",
+            "Target": "Maps/{{ModId}}_CaveHole1",
+            "FromFile": "Maps/CaveHole1.tmx"
+        },
+        {
+            "Action": "Load",
+            "Target": "Mods/{{ModId}}/BigCaveHole",
+            "FromFile": "Pipes/BigCaveHole.png"
+        },
+        {
+            "Action": "Load",
+            "Target": "Maps/{{ModId}}_CaveHole2",
+            "FromFile": "Maps/CaveHole2.tmx"
+        }
+    ]
+}

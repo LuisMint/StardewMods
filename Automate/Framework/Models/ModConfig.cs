@@ -444,14 +444,14 @@ internal class ModConfig
     /// <summary>MOD: added. The qualified/unqualified item ID delivered to a Power Relay for the delay-reduction track — Prismatic Shard, by default. Only accepted from level 1 onward; the very first delivery (level 0→1) instead asks for <see cref="PowerRelayFirstShardItemId"/>.</summary>
     public string PowerRelayShardItemId { get; set; } = "(O)74";
 
-    /// <summary>MOD: added. Per direct user request, the qualified/unqualified item ID accepted for the delay-reduction track's very FIRST delivery only (level 0→1) — Diamond, by default. Every delivery from level 1 onward reverts to <see cref="PowerRelayShardItemId"/>.</summary>
-    public string PowerRelayFirstShardItemId { get; set; } = "(O)72";
+    /// <summary>MOD: changed — reverted to Prismatic Shard (matching <see cref="PowerRelayShardItemId"/>) per direct user request, so the delay-reduction track is a plain "1 shard, 2 shards, 3 shards, 4 shards" progression across all 4 levels rather than a special first item.</summary>
+    public string PowerRelayFirstShardItemId { get; set; } = "(O)74";
 
     /// <summary>MOD: added. The qualified/unqualified item ID delivered to a Power Relay for the actions-per-window bonus track — Radioactive Bar, by default. MOD: fixed — (O)909 is actually Radioactive Ore (the raw/unsmelted item); Radioactive Bar (the smelted one) is (O)910, confirmed via the Stardew Valley Wiki after this defaulted to the wrong item. Only accepted from level 1 onward; the very first delivery (level 0→1) instead asks for <see cref="PowerRelayFirstBarItemId"/>.</summary>
     public string PowerRelayBarItemId { get; set; } = "(O)910";
 
-    /// <summary>MOD: added. Per direct user request, the qualified/unqualified item ID accepted for the actions-per-window track's very FIRST delivery only (level 0→1) — Radioactive Ore, by default. Every delivery from level 1 onward reverts to <see cref="PowerRelayBarItemId"/>.</summary>
-    public string PowerRelayFirstBarItemId { get; set; } = "(O)909";
+    /// <summary>MOD: changed — reverted to Radioactive Bar (matching <see cref="PowerRelayBarItemId"/>) per direct user request, so the actions-per-window track is a plain "1 bar, 2 bars, 3 bars, 4 bars" progression across all 4 levels rather than a special first item.</summary>
+    public string PowerRelayFirstBarItemId { get; set; } = "(O)910";
 
     /// <summary>MOD: added. How much a single delivered shard subtracts from <see cref="ActionDelaySeconds"/>, in seconds, summed across every shard delivered to every Relay in the save (each Relay accepts up to <see cref="PowerRelaySystem.MaxShards"/>). The effective delay is floored at <see cref="PowerRelayMinimumActionDelaySeconds"/> regardless of how many are delivered.</summary>
     public float PowerRelayActionDelayReductionPerShardSeconds { get; set; } = 0.4f;

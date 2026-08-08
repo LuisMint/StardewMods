@@ -15,8 +15,9 @@ namespace Pathoschild.Stardew.Automate.Framework.Patches;
 /// <list type="bullet">
 /// <item>A static lamppost-strength light on every fully-built Relay — reuses the exact same tint/radius
 /// convention <see cref="PowerSiloCapPatches"/> already established for its own cap light (<see cref="PowerCoilPatches.LightColor"/>
-/// at <see cref="LightRadius"/>), but never moves (unlike the Silo's cap, a Relay has no animated piece
-/// to track), so it's only ever created once per Relay and left alone.</item>
+/// at <see cref="LightRadius"/>). Repositioned every tick from the building's current tile (see
+/// <see cref="RelayLights"/>'s own remarks) so it follows a moved Relay, even though — unlike the Silo's
+/// cap — a Relay has no animated piece that otherwise needs a position recomputed every tick.</item>
 /// <item>A one-shot whole-building shake whenever a Relay levels up (see <see cref="TriggerLevelUpShake"/>,
 /// called from <see cref="PowerRelayInteraction"/>) — reuses <see cref="PowerSiloCapPatches"/>'s own
 /// "flag before Building.draw, react in a Game1.GlobalToLocal postfix, clear after" trick for reaching
@@ -48,7 +49,18 @@ internal static class PowerRelayEffectPatches
     /// <summary>How far the shake moves side to side at full strength, in screen pixels — matches <see cref="PowerSiloCapPatches.ShakeAmplitude"/>.</summary>
     private const float ShakeAmplitude = 1.25f;
 
-    /// <summary>Each known Power Relay's own light source (plus the location it's currently registered in), created once and left in place — see this class's own remarks for why a Relay's light never needs repositioning.</summary>
+    /// <summary>
+    /// MOD: changed. Each known Power Relay's own light source (plus the location it's currently
+    /// registered in) — created once per Relay, then repositioned every tick in <see cref="AddRelayLight"/>
+    /// exactly like <see cref="PowerSiloCapPatches.UpdateCapLight"/> already does for the Silo's cap
+    /// light. Originally created once and left alone (a Relay has no ANIMATED piece to track, unlike the
+    /// Silo's cap) — but a Relay can still be RELOCATED via the carpenter menu's "move buildings" flow,
+    /// which changes <see cref="Building.tileX"/>/<see cref="Building.tileY"/> on the same instance
+    /// without any dedicated event to hook (confirmed via direct user report: the light stayed behind at
+    /// the old position after moving a Relay). Recomputing position every tick from the building's
+    /// CURRENT tile — cheap, since it only runs over <see cref="KnownRelays"/>, not a world scan — fixes
+    /// that for free, the same way it already worked for the Silo.
+    /// </summary>
     private static readonly Dictionary<Building, (LightSource Light, GameLocation Location)> RelayLights = new();
 
     /// <summary>Each known Power Relay's remaining level-up shake time, in seconds — absent or 0 means settled/no shake.</summary>
@@ -59,6 +71,17 @@ internal static class PowerRelayEffectPatches
 
     /// <summary>The shake offset to apply while <see cref="IsShakingCurrentBuilding"/> is set.</summary>
     private static Vector2 ActiveShakeOffset;
+
+    /// <summary>
+    /// MOD: changed. Every currently-known Power Relay building (with the location it's in) — populated
+    /// entirely by events, mirroring <see cref="PowerSiloCapPatches.KnownSilos"/>'s own identical design:
+    /// <see cref="FinishConstruction_Postfix"/> adds one the moment it finishes building,
+    /// <see cref="DestroyStructure_Postfix"/> removes one the moment it's torn down, and <see cref="Reset"/>
+    /// does exactly ONE full-world scan (day start / save load only) as a correctness backstop. A moved
+    /// Relay stays valid in this list without any event at all — see <see cref="RelayLights"/>'s own
+    /// remarks for how repositioning is handled.
+    /// </summary>
+    private static readonly List<(Building Building, GameLocation Location)> KnownRelays = new();
 
 
     /*********
@@ -90,6 +113,21 @@ internal static class PowerRelayEffectPatches
             original: AccessTools.Method(typeof(Game1), nameof(Game1.GlobalToLocal), [typeof(xTile.Dimensions.Rectangle), typeof(Vector2)]),
             postfix: new HarmonyMethod(typeof(PowerRelayEffectPatches), nameof(GlobalToLocal_Postfix))
         );
+
+        // MOD: added — event-based discovery: adds a Relay to KnownRelays the moment it finishes building
+        // (see KnownRelays's own remarks for why this replaces a periodic scan). A second independent
+        // postfix on the same method PowerSiloCapPatches also patches — Harmony chains these fine.
+        harmony.Patch(
+            original: AccessTools.Method(typeof(Building), nameof(Building.FinishConstruction)),
+            postfix: new HarmonyMethod(typeof(PowerRelayEffectPatches), nameof(FinishConstruction_Postfix))
+        );
+
+        // MOD: added — event-based cleanup: removes a Relay from KnownRelays (and its light) the moment
+        // it's torn down.
+        harmony.Patch(
+            original: AccessTools.Method(typeof(GameLocation), nameof(GameLocation.destroyStructure), [typeof(Building)]),
+            postfix: new HarmonyMethod(typeof(PowerRelayEffectPatches), nameof(DestroyStructure_Postfix))
+        );
     }
 
     /// <summary>Advance every known Power Relay's shake timer, and make sure every fully-built Relay has its light — called once per tick from <c>ModEntry.OnUpdateTicked</c>.</summary>
@@ -105,31 +143,89 @@ internal static class PowerRelayEffectPatches
         float deltaSeconds = (float)Game1.currentGameTime.ElapsedGameTime.TotalSeconds;
         HashSet<Building> seenBuildings = new();
 
-        foreach (GameLocation location in CommonHelper.GetLocations())
+        foreach ((Building building, GameLocation location) in PowerRelayEffectPatches.KnownRelays)
         {
-            foreach (Building building in location.buildings)
-            {
-                if (!relayBuildingNames.Contains(building.buildingType.Value) || building.daysOfConstructionLeft.Value > 0)
-                    continue;
+            if (building.daysOfConstructionLeft.Value > 0)
+                continue;
 
-                seenBuildings.Add(building);
+            seenBuildings.Add(building);
 
-                if (PowerRelayEffectPatches.ShakeSecondsRemaining.TryGetValue(building, out float remaining) && remaining > 0f)
-                    PowerRelayEffectPatches.ShakeSecondsRemaining[building] = Math.Max(0f, remaining - deltaSeconds);
+            if (PowerRelayEffectPatches.ShakeSecondsRemaining.TryGetValue(building, out float remaining) && remaining > 0f)
+                PowerRelayEffectPatches.ShakeSecondsRemaining[building] = Math.Max(0f, remaining - deltaSeconds);
 
-                if (!PowerRelayEffectPatches.RelayLights.ContainsKey(building))
-                    PowerRelayEffectPatches.AddRelayLight(location, building);
-            }
+            // MOD: changed — now called every tick (not just once) so the light follows a moved Relay;
+            // see RelayLights's own remarks.
+            PowerRelayEffectPatches.AddRelayLight(location, building);
         }
 
         PowerRelayEffectPatches.CleanUpRemovedLights(seenBuildings);
     }
 
-    /// <summary>Clear all cached light/shake state — meant to be called on day start, mirroring <see cref="PowerSiloCapPatches.Reset"/>, so a Relay torn down (or a save reloaded) doesn't leave stale entries behind.</summary>
+    /// <summary>
+    /// MOD: added. Add a Power Relay to <see cref="KnownRelays"/> the moment it finishes building — the
+    /// event-based replacement for a periodic discovery scan (see <see cref="KnownRelays"/>'s own
+    /// remarks). Idempotent (checked via <see cref="RelayLights"/>'s own presence, since a building can
+    /// have <see cref="Building.FinishConstruction"/> called on it more than once).
+    /// </summary>
+    /// <param name="__instance">The building that just finished construction.</param>
+    private static void FinishConstruction_Postfix(Building __instance)
+    {
+        if (PowerRelayEffectPatches.GetRelayBuildingNames is not { } getRelayBuildingNames || !getRelayBuildingNames().Contains(__instance.buildingType.Value))
+            return;
+
+        if (PowerRelayEffectPatches.RelayLights.ContainsKey(__instance))
+            return; // already known — Tick() will just keep it lit as normal
+
+        if (__instance.GetParentLocation() is { } location)
+            PowerRelayEffectPatches.KnownRelays.Add((__instance, location));
+    }
+
+    /// <summary>Remove a Power Relay from <see cref="KnownRelays"/> (and clean up its light/shake state) the moment it's torn down.</summary>
+    /// <param name="building">The building that was removed.</param>
+    /// <param name="__result">Whether the building was actually removed.</param>
+    private static void DestroyStructure_Postfix(Building building, bool __result)
+    {
+        if (!__result || PowerRelayEffectPatches.GetRelayBuildingNames is not { } getRelayBuildingNames || !getRelayBuildingNames().Contains(building.buildingType.Value))
+            return;
+
+        PowerRelayEffectPatches.KnownRelays.RemoveAll(entry => ReferenceEquals(entry.Building, building));
+        PowerRelayEffectPatches.ShakeSecondsRemaining.Remove(building);
+
+        if (PowerRelayEffectPatches.RelayLights.TryGetValue(building, out (LightSource Light, GameLocation Location) existing))
+        {
+            existing.Location.removeLightSource(existing.Light.Id);
+            PowerRelayEffectPatches.RelayLights.Remove(building);
+        }
+    }
+
+    /// <summary>
+    /// MOD: changed. Clear all cached light/shake state, then do exactly ONE full-world scan to rebuild
+    /// <see cref="KnownRelays"/> — meant to be called on day start, mirroring <see cref="PowerSiloCapPatches.Reset"/>'s
+    /// own identical design (see that method's own remarks for why this one scan, unlike everything
+    /// else, stays — a save reload recreates every <see cref="Building"/> instance without re-firing
+    /// <see cref="Building.FinishConstruction"/> for ones already standing).
+    /// </summary>
     public static void Reset()
     {
         PowerRelayEffectPatches.RelayLights.Clear();
         PowerRelayEffectPatches.ShakeSecondsRemaining.Clear();
+        PowerRelayEffectPatches.KnownRelays.Clear();
+
+        if (PowerRelayEffectPatches.GetRelayBuildingNames is not { } getRelayBuildingNames)
+            return;
+
+        HashSet<string> relayBuildingNames = getRelayBuildingNames();
+        if (relayBuildingNames.Count == 0)
+            return;
+
+        foreach (GameLocation location in CommonHelper.GetLocations())
+        {
+            foreach (Building building in location.buildings)
+            {
+                if (relayBuildingNames.Contains(building.buildingType.Value))
+                    PowerRelayEffectPatches.KnownRelays.Add((building, location));
+            }
+        }
     }
 
     /// <summary>Trigger a one-shot whole-building shake on a Relay — meant to be called right as it levels up.</summary>
@@ -143,7 +239,7 @@ internal static class PowerRelayEffectPatches
     /*********
     ** Private methods
     *********/
-    /// <summary>Create a Relay's static light source, positioned on its own drawn sprite.</summary>
+    /// <summary>Create (the first time a Relay is seen) or reposition (every tick after) a Relay's static light source — see <see cref="RelayLights"/>'s own remarks for why this reposition-every-tick approach (matching <see cref="PowerSiloCapPatches.UpdateCapLight"/>) replaced the old create-once approach.</summary>
     /// <param name="location">The location containing the Relay.</param>
     /// <param name="building">The Relay to light.</param>
     private static void AddRelayLight(GameLocation location, Building building)
@@ -152,6 +248,23 @@ internal static class PowerRelayEffectPatches
         float groundY = (building.tileY.Value + building.tilesHigh.Value) * Game1.tileSize;
         float y = groundY - PowerRelayEffectPatches.LightHeightAboveGroundInTiles * Game1.tileSize;
         Vector2 lightPosition = new(centerX, y);
+
+        if (PowerRelayEffectPatches.RelayLights.TryGetValue(building, out (LightSource Light, GameLocation Location) existing))
+        {
+            existing.Light.position.Value = lightPosition;
+
+            // MOD: added — a Relay can (rarely) change which location it's registered under without
+            // ever being torn down (e.g. moved via the carpenter menu's "move buildings" flow); mirrors
+            // PowerSiloCapPatches.UpdateCapLight's own identical cross-location handling.
+            if (existing.Location != location)
+            {
+                existing.Location.removeLightSource(existing.Light.Id);
+                location.sharedLights.AddLight(existing.Light);
+                PowerRelayEffectPatches.RelayLights[building] = (existing.Light, location);
+            }
+
+            return;
+        }
 
         // MOD: deterministic per-tile ID, matching PowerSiloCapPatches' own lightId convention.
         string lightId = $"PowerRelay_{building.tileX.Value}_{building.tileY.Value}";

@@ -52,6 +52,15 @@ internal class PowerCoilAmbientEffect
     /// <summary>Advance the ambient effect by one game tick, for the player's current location.</summary>
     public void Tick()
     {
+        // MOD: added — SMAPI's UpdateTicked keeps firing even while the game window is unfocused, but
+        // location.temporarySprites' own per-frame cleanup effectively stalls then (see
+        // PowerRelayAmbientEffect.Tick's own remarks, which hit the exact same issue first) — without
+        // this guard, every flash queued while unfocused just piles up unseen and then dumps out all at
+        // once the moment focus returns. Freezing the whole tick while unfocused means state just
+        // resumes exactly where it left off instead, with nothing to catch up on.
+        if (!Game1.game1.IsActive)
+            return;
+
         GameLocation? location = Game1.currentLocation;
         if (location == null)
             return;

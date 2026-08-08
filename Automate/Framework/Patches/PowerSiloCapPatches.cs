@@ -69,6 +69,21 @@ internal static class PowerSiloCapPatches
     /// <summary>MOD: added. The cap's light radius — per direct user request, "the strength of a lamppost". Matches vanilla's own generic <c>isLamp</c> light radius (see <see cref="SObject.checkForAction"/>'s decompiled source, the plain <c>lightSource = new LightSource(4, ..., 3f, ...)</c> branch used for lamp-flagged objects), rather than <see cref="PoweredChestPatches.LightRadius"/>'s much smaller radius.</summary>
     private const float LampLightRadius = 2f;
 
+    /// <summary>
+    /// MOD: changed. Every currently-known Power Silo building (with the location it's in) — populated
+    /// entirely by events rather than any periodic scan: <see cref="FinishConstruction_Postfix"/> adds
+    /// one the moment it finishes building, <see cref="DestroyStructure_Postfix"/> removes one the moment
+    /// it's torn down, and <see cref="Reset"/> does exactly ONE full-world scan (on day start / save
+    /// load only, not per-tick) purely as a correctness backstop for anything those two might miss (e.g.
+    /// a Silo that already existed before this version of the mod was installed). Per-tick position
+    /// recompute in <see cref="UpdateCapLight"/> already makes a MOVED Silo's cap/light follow it for
+    /// free — <see cref="Building.tileX"/>/<see cref="Building.tileY"/> change in place on the SAME
+    /// instance (see <see cref="GameLocation.buildStructure(Building,Vector2,Farmer,bool)"/>'s own
+    /// decompiled source), so this list never goes stale just because a Silo moved, only when one is
+    /// actually built or destroyed.
+    /// </summary>
+    private static readonly List<(Building Building, GameLocation Location)> KnownSilos = new();
+
     /// <summary>Get the <c>buildingType</c> ID(s) that count as a Power Silo.</summary>
     private static Func<HashSet<string>>? GetSiloBuildingNames;
 
@@ -158,6 +173,20 @@ internal static class PowerSiloCapPatches
             original: AccessTools.Method(typeof(Game1), nameof(Game1.GlobalToLocal), [typeof(xTile.Dimensions.Rectangle), typeof(Vector2)]),
             postfix: new HarmonyMethod(typeof(PowerSiloCapPatches), nameof(GlobalToLocal_Postfix))
         );
+
+        // MOD: added — event-based discovery: adds a Silo to KnownSilos the moment it finishes building
+        // (see KnownSilos's own remarks for why this replaces a periodic scan).
+        harmony.Patch(
+            original: AccessTools.Method(typeof(Building), nameof(Building.FinishConstruction)),
+            postfix: new HarmonyMethod(typeof(PowerSiloCapPatches), nameof(FinishConstruction_Postfix))
+        );
+
+        // MOD: added — event-based cleanup: removes a Silo from KnownSilos (and its light) the moment
+        // it's torn down.
+        harmony.Patch(
+            original: AccessTools.Method(typeof(GameLocation), nameof(GameLocation.destroyStructure), [typeof(Building)]),
+            postfix: new HarmonyMethod(typeof(PowerSiloCapPatches), nameof(DestroyStructure_Postfix))
+        );
     }
 
     /// <summary>
@@ -179,63 +208,117 @@ internal static class PowerSiloCapPatches
         float deltaSeconds = (float)Game1.currentGameTime.ElapsedGameTime.TotalSeconds;
         HashSet<Building> seenBuildings = new(); // MOD: added — tracks which Silos are still actually placed this tick, so CleanUpRemovedCapLights can tell a torn-down one from one that's just off-screen
 
-        foreach (GameLocation location in CommonHelper.GetLocations())
+        foreach ((Building building, GameLocation location) in PowerSiloCapPatches.KnownSilos)
         {
-            foreach (Building building in location.buildings)
+            if (building.daysOfConstructionLeft.Value > 0)
+                continue;
+
+            float target = PowerSiloCapPatches.GetTargetRiseTiles(building, powerSiloSystem);
+            (float Start, float Target, float ElapsedSeconds) state;
+
+            if (!PowerSiloCapPatches.RiseState.TryGetValue(building, out state))
             {
-                if (!siloBuildingNames.Contains(building.buildingType.Value) || building.daysOfConstructionLeft.Value > 0)
-                    continue;
-
-                float target = PowerSiloCapPatches.GetTargetRiseTiles(building, powerSiloSystem);
-                (float Start, float Target, float ElapsedSeconds) state;
-
-                if (!PowerSiloCapPatches.RiseState.TryGetValue(building, out state))
-                {
-                    // MOD: a Silo seen for the first time (e.g. right after loading a save) snaps
-                    // straight to its target — Start == Target means EvaluateRise always returns the
-                    // target regardless of ElapsedSeconds, so nothing animates in from zero.
-                    state = (target, target, 0f);
-                    PowerSiloCapPatches.RiseState[building] = state;
-                }
-                else if (Math.Abs(state.Target - target) > 0.001f)
-                {
-                    // MOD: the tier changed — restart the ease from wherever it CURRENTLY is (not the
-                    // old start point), so a tier change mid-rise never causes a visual jump.
-                    float currentValue = PowerSiloCapPatches.EvaluateRise(state);
-                    state = (currentValue, target, 0f);
-                    PowerSiloCapPatches.RiseState[building] = state;
-                    PowerSiloCapPatches.SpawnUpgradeSmoke(location, building); // MOD: added — a one-time puff burst right as the rise toward the new tier kicks off
-                }
-                else
-                {
-                    state = (state.Start, state.Target, state.ElapsedSeconds + deltaSeconds);
-                    PowerSiloCapPatches.RiseState[building] = state;
-                }
-
-                // MOD: added — per direct user request, a lamppost-strength light that moves with the
-                // cap's own rise animation (see UpdateCapLight's own remarks).
-                seenBuildings.Add(building);
-                PowerSiloCapPatches.UpdateCapLight(location, building, PowerSiloCapPatches.EvaluateRise(state));
+                // MOD: a Silo seen for the first time (e.g. right after loading a save) snaps
+                // straight to its target — Start == Target means EvaluateRise always returns the
+                // target regardless of ElapsedSeconds, so nothing animates in from zero.
+                state = (target, target, 0f);
+                PowerSiloCapPatches.RiseState[building] = state;
             }
+            else if (Math.Abs(state.Target - target) > 0.001f)
+            {
+                // MOD: the tier changed — restart the ease from wherever it CURRENTLY is (not the
+                // old start point), so a tier change mid-rise never causes a visual jump.
+                float currentValue = PowerSiloCapPatches.EvaluateRise(state);
+                state = (currentValue, target, 0f);
+                PowerSiloCapPatches.RiseState[building] = state;
+                PowerSiloCapPatches.SpawnUpgradeSmoke(location, building); // MOD: added — a one-time puff burst right as the rise toward the new tier kicks off
+            }
+            else
+            {
+                state = (state.Start, state.Target, state.ElapsedSeconds + deltaSeconds);
+                PowerSiloCapPatches.RiseState[building] = state;
+            }
+
+            // MOD: added — per direct user request, a lamppost-strength light that moves with the
+            // cap's own rise animation (see UpdateCapLight's own remarks).
+            seenBuildings.Add(building);
+            PowerSiloCapPatches.UpdateCapLight(location, building, PowerSiloCapPatches.EvaluateRise(state));
         }
 
         PowerSiloCapPatches.CleanUpRemovedCapLights(seenBuildings);
     }
 
     /// <summary>
-    /// MOD: changed. Clear all cached animation state — meant to be called on day start, mirroring
-    /// <see cref="MachineManager.Reset"/>, so a Silo torn down (or a save reloaded) doesn't leave stale
-    /// entries behind. Deliberately does NOT also call <see cref="GameLocation.removeLightSource"/> for
-    /// every tracked <see cref="CapLights"/> entry here — every Silo still actually standing gets
-    /// rediscovered on the very next <see cref="Tick"/> anyway, which re-registers its light under the
-    /// SAME deterministic ID (see <see cref="UpdateCapLight"/>), so any old registration is simply
-    /// overwritten a moment later. <see cref="CleanUpRemovedCapLights"/> is what handles a Silo that's
-    /// genuinely gone.
+    /// MOD: added. Add a Power Silo to <see cref="KnownSilos"/> the moment it finishes building — the
+    /// event-based replacement for a periodic discovery scan (see <see cref="KnownSilos"/>'s own
+    /// remarks). Idempotent (checked via <see cref="RiseState"/>'s own presence, since a building can
+    /// have <see cref="Building.FinishConstruction"/> called on it more than once, e.g. an upgrade).
+    /// </summary>
+    /// <param name="__instance">The building that just finished construction (or an upgrade).</param>
+    private static void FinishConstruction_Postfix(Building __instance)
+    {
+        if (PowerSiloCapPatches.GetSiloBuildingNames is not { } getSiloBuildingNames || !getSiloBuildingNames().Contains(__instance.buildingType.Value))
+            return;
+
+        if (PowerSiloCapPatches.RiseState.ContainsKey(__instance))
+            return; // already known — Tick() will just keep animating it as normal
+
+        if (__instance.GetParentLocation() is { } location)
+            PowerSiloCapPatches.KnownSilos.Add((__instance, location));
+    }
+
+    /// <summary>Remove a Power Silo from <see cref="KnownSilos"/> (and clean up its light/animation state) the moment it's torn down.</summary>
+    /// <param name="building">The building that was removed.</param>
+    /// <param name="__result">Whether the building was actually removed.</param>
+    private static void DestroyStructure_Postfix(Building building, bool __result)
+    {
+        if (!__result || PowerSiloCapPatches.GetSiloBuildingNames is not { } getSiloBuildingNames || !getSiloBuildingNames().Contains(building.buildingType.Value))
+            return;
+
+        PowerSiloCapPatches.KnownSilos.RemoveAll(entry => ReferenceEquals(entry.Building, building));
+        PowerSiloCapPatches.RiseState.Remove(building);
+
+        if (PowerSiloCapPatches.CapLights.TryGetValue(building, out (LightSource Light, GameLocation Location) existing))
+        {
+            existing.Location.removeLightSource(existing.Light.Id);
+            PowerSiloCapPatches.CapLights.Remove(building);
+        }
+    }
+
+    /// <summary>
+    /// MOD: changed. Clear all cached animation state, then do exactly ONE full-world scan to rebuild
+    /// <see cref="KnownSilos"/> — meant to be called on day start, mirroring <see cref="MachineManager.Reset"/>.
+    /// This is the one deliberate exception to "purely event-based" (see <see cref="KnownSilos"/>'s own
+    /// remarks): a save reload recreates every <see cref="Building"/> instance without ever calling
+    /// <see cref="Building.FinishConstruction"/> again for ones that were already standing, so SOMETHING
+    /// has to rediscover them — once per day (not per-tick, not even per-second) is a cheap, reassuring
+    /// backstop rather than a real performance concern. Deliberately does NOT also call
+    /// <see cref="GameLocation.removeLightSource"/> for every tracked <see cref="CapLights"/> entry here
+    /// — every Silo still actually standing gets rediscovered by the scan below anyway, which re-registers
+    /// its light under the SAME deterministic ID (see <see cref="UpdateCapLight"/>), so any old
+    /// registration is simply overwritten a moment later.
     /// </summary>
     public static void Reset()
     {
         PowerSiloCapPatches.RiseState.Clear();
         PowerSiloCapPatches.CapLights.Clear();
+        PowerSiloCapPatches.KnownSilos.Clear();
+
+        if (PowerSiloCapPatches.GetSiloBuildingNames is not { } getSiloBuildingNames)
+            return;
+
+        HashSet<string> siloBuildingNames = getSiloBuildingNames();
+        if (siloBuildingNames.Count == 0)
+            return;
+
+        foreach (GameLocation location in CommonHelper.GetLocations())
+        {
+            foreach (Building building in location.buildings)
+            {
+                if (siloBuildingNames.Contains(building.buildingType.Value))
+                    PowerSiloCapPatches.KnownSilos.Add((building, location));
+            }
+        }
     }
 
     /// <summary>

@@ -376,6 +376,32 @@ internal class ModEntry : Mod
         );
         PowerRelayEffectPatches.Apply(harmony);
 
+        // MOD: added — registers the Cave Hole's ladder-down interaction the same way (see
+        // CaveHoleInteraction's own remarks).
+        new CaveHoleInteraction().Register();
+
+        // MOD: added — swaps any still-uncleared Green Rain Weeds to regular weeds at the exact moment
+        // vanilla itself would otherwise just delete them outright (see CaveHoleGreenRainPatches's own
+        // remarks for why this needs to be a patch, not a day-start check).
+        CaveHoleGreenRainPatches.Apply(harmony);
+
+        // MOD: added — lets the player leave the Cave Hole's interior again (see CaveHoleExitPatches's
+        // own remarks for why this is a Harmony patch rather than a map tile property).
+        CaveHoleExitPatches.Apply(harmony);
+
+        // MOD: added — keeps the Cave Hole's own arrival/departure tile clear of anything the player
+        // might place there (see CaveHolePlacementPatches's own remarks).
+        CaveHolePlacementPatches.Apply(harmony);
+
+        // MOD: added — fixes a real crash (ArgumentOutOfRangeException in Building.doAction) caused by
+        // the Cave Hole's "no door" HumanDoor sentinel combined with having a real IndoorMap (see
+        // CaveHoleHumanDoorCrashPatches's own remarks).
+        CaveHoleHumanDoorCrashPatches.Apply(harmony);
+
+        // MOD: added — restricts the loot a Barrel/Crate gives inside a Cave Hole interior to 1-3 Cave
+        // Carrots or nothing, per direct user request (see CaveHoleCrateLootPatches's own remarks).
+        CaveHoleCrateLootPatches.Apply(harmony);
+
         // MOD: added — gives the Dwarf a "build a Power Silo" option alongside their normal shop, reusing
         // vanilla's own carpenter menu (see DwarfBuildMenuPatches's own remarks).
         DwarfBuildMenuPatches.Apply(harmony);
@@ -402,6 +428,11 @@ internal class ModEntry : Mod
         // Mountain spot, consuming a held Dwarf Scroll, per direct user request (see
         // DwarfNoteGemScrollPatches's own remarks).
         DwarfNoteGemScrollPatches.Apply(harmony);
+
+        // MOD: added — gives the Dwarf's shop 3 Cave Carrots that restock weekly, plus 1 Power Coil and
+        // 1 Powered Chest that each restock once a season, per direct user request (see
+        // DwarfWeeklyShopPatches's own remarks).
+        DwarfWeeklyShopPatches.Apply(harmony);
 
         // hook events
         helper.Events.Content.AssetRequested += this.OnAssetRequested;
@@ -598,6 +629,17 @@ internal class ModEntry : Mod
             // MOD: added — clears the Power Relay's cached light/shake state, mirroring PowerSiloCapPatches.Reset() above.
             PowerRelayEffectPatches.Reset();
         }
+
+        // MOD: added — spawns every placed Cave Hole's own quarry-style stone/ore nodes: a full dense
+        // fill the first morning after construction, then a smaller daily top-up after that (see
+        // CaveHoleQuarrySystem's own remarks). Runs unconditionally (not gated behind !IsSecondaryScreen
+        // above) since it's just placing objects in a shared location, not machine/automation state.
+        CaveHoleQuarrySystem.Tick();
+
+        // MOD: added — adds the lantern light to any Cave Hole interior that doesn't have one yet
+        // (a newly-finished Cave Hole's interior only exists once construction completes, so this can't
+        // run any earlier than the same point the quarry spawner needs to check anyway).
+        CaveHoleAmbientEffect.EnsureLights();
 
         // reset overlay
         this.DisableOverlay();

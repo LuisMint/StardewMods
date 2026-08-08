@@ -1,5 +1,6 @@
 using System;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using HarmonyLib;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -36,6 +37,26 @@ namespace Pathoschild.Stardew.Automate.Framework.Patches;
 /// gets registered into <c>GameLocation.sharedLights</c> (see <c>Object.updateWhenCurrentLocation</c>'s
 /// own decompiled source) — so no chest's light source, however it's set, would ever actually render
 /// without a postfix replicating that missing registration step here.
+///
+/// Breaking or moving a chest doesn't clean up/reposition its light for free either — NOT because
+/// <see cref="Chest"/> overrides those particular steps away (it doesn't), but because the actual work
+/// for both happens somewhere non-obvious: <see cref="Chest.performToolAction"/> only builds a
+/// <c>ChestHitArgs</c> and hands off to <see cref="Chest.HandleChestHit"/>, which does the real removal
+/// (<c>performRemoveAction</c> + <c>Location.Objects.Remove</c>) or move
+/// (<see cref="Chest.TryMoveToSafePosition"/>) inside an async <c>GetMutex().RequestLock(...)</c>
+/// callback — well after <c>performToolAction</c> itself has already returned. An earlier version of
+/// this fix patched <c>performToolAction</c> directly and looked broken (light lagged a step behind on
+/// move, never disappeared on break) for exactly that reason: it was checking state before the mutex
+/// callback had actually run. <see cref="PerformRemoveAction_Postfix"/> and
+/// <see cref="TryMoveToSafePosition_Postfix"/> patch the two methods that do the ACTUAL work directly
+/// instead, so each only ever fires exactly once, at the moment its own event genuinely happens — no
+/// polling.
+///
+/// A removed chest can still receive one more stray <see cref="Chest.updateWhenCurrentLocation"/> call
+/// afterward (confirmed via testing — the game's own object-update loop appears to finish an
+/// in-progress pass over the instance it was just removed from), which would otherwise silently re-add
+/// its light right after <see cref="PerformRemoveAction_Postfix"/> removed it, permanently orphaning it
+/// since a removed chest is never ticked again. See <see cref="RemovedChests"/> for how that's closed.
 /// </summary>
 internal static class PoweredChestPatches
 {
@@ -53,6 +74,25 @@ internal static class PoweredChestPatches
 
     /// <summary>Reflected access to <see cref="Chest"/>'s private <c>currentLidFrame</c> field, needed to replicate its lid-open overlay draw call (there's no public equivalent — <c>getLastLidFrame()</c> returns a different, static value, not the live animated frame).</summary>
     private static readonly FieldInfo CurrentLidFrameField = AccessTools.Field(typeof(Chest), "currentLidFrame");
+
+    /// <summary>
+    /// MOD: added. Every Powered Chest INSTANCE (by reference, not by tile/ID — see below) that
+    /// <see cref="PerformRemoveAction_Postfix"/> has already handled, so <see cref="UpdateWhenCurrentLocation_Postfix"/>
+    /// can permanently refuse to touch it again. Needed because a removed chest can still receive one
+    /// more stray <see cref="Chest.updateWhenCurrentLocation"/> call afterward (observed in testing —
+    /// the game's own object-update loop appears to finish an in-progress pass over the instance it was
+    /// just removed from), and checking <see cref="GameLocation.objects"/> at that point isn't reliable
+    /// either way: <see cref="Chest.HandleChestHit"/> calls <c>performRemoveAction()</c> BEFORE
+    /// <c>Location.Objects.Remove(...)</c>, not after, so there's no world-state check that's
+    /// consistently correct at every point <see cref="PerformRemoveAction_Postfix"/> or a stray update
+    /// call might fire. Remembering the INSTANCE itself sidesteps the whole timing question.
+    ///
+    /// A <see cref="ConditionalWeakTable{TKey,TValue}"/> (keyed by reference, not <see cref="SObject.Equals"/>
+    /// — which some item types override for stack-matching, making a plain <c>HashSet&lt;SObject&gt;</c>
+    /// unsafe here) rather than a plain set, so removed chest instances can still be garbage-collected
+    /// normally instead of leaking forever.
+    /// </summary>
+    private static readonly ConditionalWeakTable<SObject, object> RemovedChests = new();
 
     /// <summary>
     /// MOD: added. Flag that <see cref="SObject.performToolAction"/> is currently breaking a Powered
@@ -101,6 +141,21 @@ internal static class PoweredChestPatches
         harmony.Patch(
             original: AccessTools.Method(typeof(SoundsHelper), nameof(SoundsHelper.PlayAll)),
             prefix: new HarmonyMethod(typeof(PoweredChestPatches), nameof(PlaySound_Prefix))
+        );
+
+        // MOD: added — the ACTUAL removal step for a broken chest (see this class's own remarks for why
+        // it's not performToolAction itself); not overridden by Chest, so patching the base Object
+        // method catches it precisely once, right when vanilla itself removes the object.
+        harmony.Patch(
+            original: AccessTools.Method(typeof(SObject), nameof(SObject.performRemoveAction)),
+            postfix: new HarmonyMethod(typeof(PoweredChestPatches), nameof(PerformRemoveAction_Postfix))
+        );
+
+        // MOD: added — the ACTUAL move step for a dragged chest (see this class's own remarks); fires
+        // once per successful slide, exactly when it happens.
+        harmony.Patch(
+            original: AccessTools.Method(typeof(Chest), nameof(Chest.TryMoveToSafePosition)),
+            postfix: new HarmonyMethod(typeof(PoweredChestPatches), nameof(TryMoveToSafePosition_Postfix))
         );
     }
 
@@ -231,10 +286,19 @@ internal static class PoweredChestPatches
         if (__instance.QualifiedItemId != PoweredChestMachine.QualifiedItemId)
             return;
 
+        // MOD: added — permanently refuse to touch a chest instance PerformRemoveAction_Postfix already
+        // handled, however many stray update calls slip through for it afterward. See RemovedChests's
+        // own remarks for why this (not a GameLocation.objects check) is the reliable guard.
+        if (PoweredChestPatches.RemovedChests.TryGetValue(__instance, out _))
+            return;
+
         GameLocation? location = __instance.Location;
         LightSource? lightSource = __instance.lightSource;
 
-        if (location != null && lightSource != null && __instance.IsOn && !location.hasLightSource(lightSource.Id))
+        if (location is null || lightSource is null || !__instance.IsOn)
+            return;
+
+        if (!location.hasLightSource(lightSource.Id))
             location.sharedLights.AddLight(lightSource.Clone());
     }
 
@@ -249,6 +313,51 @@ internal static class PoweredChestPatches
     private static void PerformToolAction_Postfix()
     {
         PoweredChestPatches.IsBreakingPoweredChest = false;
+    }
+
+    /// <summary>
+    /// MOD: added. Remove a Powered Chest's light the moment vanilla itself actually removes the chest —
+    /// see this class's own remarks for why this (not <see cref="SObject.performToolAction"/>) is the
+    /// precise moment that happens.
+    /// </summary>
+    /// <param name="__instance">The object being removed.</param>
+    private static void PerformRemoveAction_Postfix(SObject __instance)
+    {
+        if (__instance.QualifiedItemId != PoweredChestMachine.QualifiedItemId)
+            return;
+
+        // MOD: added — mark this exact instance as handled BEFORE anything else below, so even a stray
+        // update call that slips in partway through this method is already blocked (see RemovedChests's
+        // own remarks).
+        PoweredChestPatches.RemovedChests.AddOrUpdate(__instance, null!);
+
+        if (__instance.lightSource is not { } light)
+            return;
+
+        __instance.Location?.removeLightSource(light.Id);
+    }
+
+    /// <summary>
+    /// MOD: added. Keep a Powered Chest's light centered on it the moment vanilla itself actually slides
+    /// the chest to a new tile — see this class's own remarks for why this (not
+    /// <see cref="SObject.performToolAction"/>) is the precise moment that happens.
+    /// </summary>
+    /// <param name="__instance">The chest that was moved.</param>
+    /// <param name="__result">Whether the move actually succeeded — a failed attempt (no safe adjacent tile) leaves the chest exactly where it was, so there's nothing to sync.</param>
+    private static void TryMoveToSafePosition_Postfix(Chest __instance, bool __result)
+    {
+        if (!__result || __instance.QualifiedItemId != PoweredChestMachine.QualifiedItemId || __instance.lightSource is not { } light)
+            return;
+
+        // MOD: the copy actually registered in sharedLights is a separate Clone() (see
+        // InitializeLightSource_Postfix's own remarks), so the one on the instance itself needs
+        // updating too — otherwise the NEXT move's "did this actually change" comparison would compare
+        // against a stale position.
+        Vector2 expectedPosition = new(__instance.TileLocation.X * 64f + 32f, __instance.TileLocation.Y * 64f + 32f);
+        light.position.Value = expectedPosition;
+
+        if (__instance.Location?.getLightSource(light.Id) is { } activeLight)
+            activeLight.position.Value = expectedPosition;
     }
 
     /// <summary>

@@ -8,6 +8,7 @@ using StardewValley;
 using StardewValley.Audio;
 using StardewValley.Extensions;
 using StardewValley.ItemTypeDefinitions;
+using StardewValley.Locations;
 using StardewValley.Menus;
 using SObject = StardewValley.Object;
 
@@ -538,11 +539,30 @@ internal static class PowerCoilPatches
     /// </summary>
     private static bool IsBreakingPowerCoil;
 
-    /// <summary>Set the <see cref="IsPlacingPowerCoil"/> flag before vanilla's own placement logic runs.</summary>
+    /// <summary>
+    /// MOD: added. Block placing a Power Coil in a non-permanent location (a Mine/Skull Cavern level, or
+    /// the Volcano Dungeon) — per direct user request, since either regenerates/resets its layout,
+    /// permanently altering the power grid's connections with no way for the player to ever remove the
+    /// coil again. Mirrors <see cref="PoweredChestPatches.PlacementAction_Prefix"/>'s own identical
+    /// check/message for the same reason.
+    /// </summary>
     /// <param name="__instance">The item being placed.</param>
-    private static void PlacementAction_Prefix(SObject __instance)
+    /// <param name="location">The location it's being placed in.</param>
+    /// <param name="__result">The value the original method would have returned.</param>
+    /// <returns>Returns <c>false</c> to skip the original method (blocking placement), or <c>true</c> to let it run normally.</returns>
+    private static bool PlacementAction_Prefix(SObject __instance, GameLocation location, ref bool __result)
     {
-        PowerCoilPatches.IsPlacingPowerCoil = __instance.QualifiedItemId == PowerCoilPatches.TargetQualifiedItemId;
+        bool isPowerCoil = __instance.QualifiedItemId == PowerCoilPatches.TargetQualifiedItemId;
+        PowerCoilPatches.IsPlacingPowerCoil = isPowerCoil;
+
+        if (isPowerCoil && (location is MineShaft || location is VolcanoDungeon))
+        {
+            Game1.showRedMessage(Game1.content.LoadString("Strings\\StringsFromCSFiles:Object.cs.13053"));
+            __result = false;
+            return false;
+        }
+
+        return true;
     }
 
     /// <summary>Clear the <see cref="IsPlacingPowerCoil"/> flag after vanilla's own placement logic runs.</summary>

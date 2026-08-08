@@ -3,7 +3,7 @@
    "Changes": [
       {
          "Action": "Include",
-         "FromFile": "Pipes/Pipes.json, Data/ObjectsData.json, Data/PathsData.json, Data/CraftingData.json, Data/ShopsData.json, Data/BigCraftablesData.json, Data/BuildingsData.json, Data/EventsData.json, Pipes/AudioChanges.json, Data/DwarfNotesData.json"
+         "FromFile": "Pipes/Pipes.json, Data/ObjectsData.json, Data/PathsData.json, Data/CraftingData.json, Data/ShopsData.json, Data/BigCraftablesData.json, Data/BuildingsData.json, Data/EventsData.json, Pipes/AudioChanges.json, Data/DwarfNotesData.json, Data/CaveHoleData.json"
       }
    ]
 }
