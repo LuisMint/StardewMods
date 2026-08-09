@@ -42,8 +42,8 @@ internal static class PowerSiloCapPatches
     /*********
     ** Fields
     *********/
-    /// <summary>The asset name of the Silo's cap texture (loaded by the AutomatePowerPipes content pack).</summary>
-    private const string CapAssetName = "Mods/luisMint.AutomatePowerPipes/PowerSiloTop";
+    /// <summary>The asset name of the Silo's cap texture (loaded by the PoweredAutomation content pack).</summary>
+    private const string CapAssetName = "Mods/luisMint.PoweredAutomation/PowerSiloTop";
 
     /// <summary>How many tiles the cap hangs above the GROUND (the building's own footprint-bottom point) for a freshly-built Silo (tier 0), before any upgrades.</summary>
     private const float BaseGapTiles = 2f;

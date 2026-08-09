@@ -1,9 +1,0 @@
-﻿{
-    "Name": "Test Data Layers Integration",
-    "Author": "Pathoschild",
-    "Version": "%ProjectVersion%",
-    "Description": "A dev mod used to test the Data Layers integration.",
-    "UniqueID": "Pathoschild.TestDataLayersMod",
-    "EntryDll": "TestDataLayersMod.dll",
-    "UpdateKeys": []
-}

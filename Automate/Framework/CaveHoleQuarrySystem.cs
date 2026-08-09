@@ -51,7 +51,7 @@ internal static class CaveHoleQuarrySystem
     /// already skips any tile that's occupied (see its own remarks), so a re-run only ever touches the
     /// newly-opened floor space, never anything the player placed or a node already sitting there.
     /// </summary>
-    private const string FilledForBuildingTypeModDataKey = "luisMint.AutomatePowerPipes/CaveHoleQuarryFilledForType";
+    private const string FilledForBuildingTypeModDataKey = "luisMint.PoweredAutomation/CaveHoleQuarryFilledForType";
 
     /// <summary>The chance each individual open tile gets filled during the initial dense fill — per direct user request that the room start out "nearly full" rather than just denser-than-usual. Deliberately not 100%, so it doesn't look like an unnaturally perfect grid.</summary>
     private const double InitialFillDensity = 0.9;

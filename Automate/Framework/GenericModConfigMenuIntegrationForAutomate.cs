@@ -123,6 +123,20 @@ internal class GenericModConfigMenuIntegrationForAutomate : IGenericModConfigMen
                 tooltip: I18n.Config_PowerRequiredMachinesEnabled_Desc,
                 get: config => config.PowerRequiredMachinesEnabled,
                 set: (config, value) => config.PowerRequiredMachinesEnabled = value
+            )
+            .AddCheckbox(
+                name: I18n.Config_ConnectedMachineLocationPowerCallouts_Name,
+                tooltip: I18n.Config_ConnectedMachineLocationPowerCallouts_Desc,
+                get: config => config.ConnectedMachineLocationPowerCallouts,
+                set: (config, value) => config.ConnectedMachineLocationPowerCallouts = value
+            )
+            .AddNumberField(
+                name: I18n.Config_ConnectedMachineLocationPowerCalloutIntervalSeconds_Name,
+                tooltip: I18n.Config_ConnectedMachineLocationPowerCalloutIntervalSeconds_Desc,
+                get: config => config.ConnectedMachineLocationPowerCalloutIntervalSeconds,
+                set: (config, value) => config.ConnectedMachineLocationPowerCalloutIntervalSeconds = value,
+                min: 1,
+                max: 30
             );
 
         // MOD: removed the "connectors" section — a per-vanilla-path checkbox list plus a custom-IDs

@@ -35,10 +35,10 @@ internal static class DwarfNoteTreasureTilePatches
     private static readonly Point TreasureTile = new(3, 8);
 
     /// <summary>The qualified item ID the tile drops.</summary>
-    private const string RewardItemId = "(BC)luisMint.AutomatePowerPipes_PowerCoil";
+    private const string RewardItemId = "(BC)luisMint.PoweredAutomation_PowerCoil";
 
     /// <summary>The <see cref="Farmer.modData"/> key on <see cref="Game1.MasterPlayer"/> tracking whether the reward has already been claimed. Deliberately global (not per-player), since it's a one-time find for the whole save, not one per player.</summary>
-    private const string ClaimedModDataKey = "luisMint.AutomatePowerPipes/DwarfNoteTreasureTileClaimed";
+    private const string ClaimedModDataKey = "luisMint.PoweredAutomation/DwarfNoteTreasureTileClaimed";
 
 
     /*********

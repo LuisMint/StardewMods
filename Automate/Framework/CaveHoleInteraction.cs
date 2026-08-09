@@ -31,13 +31,13 @@ internal class CaveHoleInteraction
     ** Fields
     *********/
     /// <summary>The key this interaction is registered under — must match the <c>Action</c> value on the Cave Hole's <c>Data/Buildings</c> <c>ActionTiles</c> entry.</summary>
-    public const string ActionKey = "luisMint.AutomatePowerPipes_CaveHoleInteract";
+    public const string ActionKey = "luisMint.PoweredAutomation_CaveHoleInteract";
 
     /// <summary>The base name every Cave Hole interior's unique location name starts with — matches <c>BuildingsData.json</c>'s <c>IndoorMap</c> value, since vanilla names each instance <c>{IndoorMap}{a fresh GUID}</c>.</summary>
-    internal const string InteriorLocationBaseName = "luisMint.AutomatePowerPipes_CaveHole1";
+    internal const string InteriorLocationBaseName = "luisMint.PoweredAutomation_CaveHole1";
 
     /// <summary>The Cave Hole's own <c>Data/Buildings</c> key (i.e. <see cref="Building.buildingType"/>'s value for one) — used by <see cref="CaveHoleQuarrySystem"/> to find every placed building.</summary>
-    internal const string BuildingType = "luisMint.AutomatePowerPipes_CaveHole";
+    internal const string BuildingType = "luisMint.PoweredAutomation_CaveHole";
 
     /// <summary>
     /// MOD: added. The Big Cave Hole's own <c>Data/Buildings</c> key — a <c>BuildingToUpgrade</c> upgrade
@@ -50,7 +50,7 @@ internal class CaveHoleInteraction
     /// is never changed by an upgrade), but anything keyed on <see cref="BuildingType"/> alone would stop
     /// matching a building the moment it upgrades — see <see cref="IsCaveHoleBuildingType"/>.
     /// </summary>
-    internal const string BigBuildingType = "luisMint.AutomatePowerPipes_CaveHole2";
+    internal const string BigBuildingType = "luisMint.PoweredAutomation_CaveHole2";
 
     /// <summary>The tile the player arrives at when entering a Cave Hole.</summary>
     private const int EntryTileX = 13;
@@ -59,13 +59,13 @@ internal class CaveHoleInteraction
     private const int EntryTileY = 6;
 
     /// <summary>The <see cref="Farmer.modData"/> key storing which location the player should return to when they leave a Cave Hole (see <see cref="Patches.CaveHoleExitPatches"/>).</summary>
-    internal const string ReturnLocationModDataKey = "luisMint.AutomatePowerPipes/CaveHoleReturnLocation";
+    internal const string ReturnLocationModDataKey = "luisMint.PoweredAutomation/CaveHoleReturnLocation";
 
     /// <summary>The <see cref="Farmer.modData"/> key storing the X tile the player should return to when they leave a Cave Hole.</summary>
-    internal const string ReturnTileXModDataKey = "luisMint.AutomatePowerPipes/CaveHoleReturnTileX";
+    internal const string ReturnTileXModDataKey = "luisMint.PoweredAutomation/CaveHoleReturnTileX";
 
     /// <summary>The <see cref="Farmer.modData"/> key storing the Y tile the player should return to when they leave a Cave Hole.</summary>
-    internal const string ReturnTileYModDataKey = "luisMint.AutomatePowerPipes/CaveHoleReturnTileY";
+    internal const string ReturnTileYModDataKey = "luisMint.PoweredAutomation/CaveHoleReturnTileY";
 
 
     /*********

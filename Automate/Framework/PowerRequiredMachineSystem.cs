@@ -39,9 +39,6 @@ internal class PowerRequiredMachineSystem
     /*********
     ** Fields
     *********/
-    /// <summary>How often to repeat the "Connected machine needs power in {location}" callout for a location that still has a starved machine, in real-world milliseconds, while <see cref="GetGlobalCalloutsEnabledFromConfig"/> is enabled.</summary>
-    private const double GlobalCalloutIntervalMilliseconds = 12000;
-
     /// <summary>Get whether the power-required-machines mechanic is currently enabled.</summary>
     private readonly Func<bool> GetEnabledFromConfig;
 
@@ -51,6 +48,9 @@ internal class PowerRequiredMachineSystem
     /// <summary>Get whether the periodic "Connected machine needs power in {location}" callout is enabled — see <see cref="Models.ModConfig.ConnectedMachineLocationPowerCallouts"/>.</summary>
     private readonly Func<bool> GetGlobalCalloutsEnabledFromConfig;
 
+    /// <summary>MOD: added. Get how often to repeat the "Connected machine needs power in {location}" callout for a location that still has a starved machine, in real-world seconds, while <see cref="GetGlobalCalloutsEnabledFromConfig"/> is enabled — see <see cref="Models.ModConfig.ConnectedMachineLocationPowerCalloutIntervalSeconds"/>.</summary>
+    private readonly Func<int> GetCalloutIntervalSeconds;
+
     /// <summary>Get the location instance for a location key, if it's currently tracked — used to resolve a friendly display name for the periodic callout.</summary>
     private readonly Func<string, GameLocation?> GetLocationByKey;
 
@@ -59,6 +59,16 @@ internal class PowerRequiredMachineSystem
 
     /// <summary>MOD: added. The game time (in milliseconds) when each location is next allowed to show its repeating "Connected machine needs power in {location}" callout.</summary>
     private readonly Dictionary<string, double> NextCalloutTimeByLocation = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// MOD: added. Whether the NEXT <see cref="ProcessStarvedMachineCallouts"/> call should silently
+    /// re-establish its baseline instead of firing the one-off "newly starved" notice — set by
+    /// <see cref="Reset"/> (day start / save load). Without this, the first check after a reset has no
+    /// baseline at all, so every machine that was ALREADY starved before the reset looks "newly
+    /// starved" and fires the reminder immediately on wake-up, even though nothing actually just
+    /// became starved.
+    /// </summary>
+    private bool suppressNextNewlyStarvedNotice = true;
 
 
     /*********
@@ -75,12 +85,14 @@ internal class PowerRequiredMachineSystem
     /// <param name="getEnabled">Get whether the power-required-machines mechanic is currently enabled.</param>
     /// <param name="getMachineTypeNames">Get the machine type IDs that require their own tile to be within power range.</param>
     /// <param name="getGlobalCalloutsEnabled">Get whether the periodic "Connected machine needs power in {location}" callout is enabled.</param>
+    /// <param name="getCalloutIntervalSeconds">MOD: added. Get how often to repeat the periodic callout, in real-world seconds.</param>
     /// <param name="getLocationByKey">Get the location instance for a location key, if it's currently tracked.</param>
-    public PowerRequiredMachineSystem(Func<bool> getEnabled, Func<HashSet<string>> getMachineTypeNames, Func<bool> getGlobalCalloutsEnabled, Func<string, GameLocation?> getLocationByKey)
+    public PowerRequiredMachineSystem(Func<bool> getEnabled, Func<HashSet<string>> getMachineTypeNames, Func<bool> getGlobalCalloutsEnabled, Func<int> getCalloutIntervalSeconds, Func<string, GameLocation?> getLocationByKey)
     {
         this.GetEnabledFromConfig = getEnabled;
         this.GetMachineTypeNames = getMachineTypeNames;
         this.GetGlobalCalloutsEnabledFromConfig = getGlobalCalloutsEnabled;
+        this.GetCalloutIntervalSeconds = getCalloutIntervalSeconds;
         this.GetLocationByKey = getLocationByKey;
     }
 
@@ -107,6 +119,21 @@ internal class PowerRequiredMachineSystem
     }
 
     /// <summary>
+    /// MOD: added. Clear all tracked callout state — call on day start (or save load), mirroring
+    /// <c>PowerSiloCapPatches.Reset</c>/<c>PowerRelayEffectPatches.Reset</c>'s own day-start cache
+    /// clears elsewhere in this codebase. Also marks the next <see cref="ProcessStarvedMachineCallouts"/>
+    /// call to silently re-establish its baseline instead of treating every already-starved machine as
+    /// newly discovered — see <see cref="suppressNextNewlyStarvedNotice"/>'s own remarks for why that
+    /// matters.
+    /// </summary>
+    public void Reset()
+    {
+        this.PreviouslyStarvedTilesByLocation.Clear();
+        this.NextCalloutTimeByLocation.Clear();
+        this.suppressNextNewlyStarvedNotice = true;
+    }
+
+    /// <summary>
     /// MOD: added. Check every active machine group for power-starved machines and show the
     /// appropriate reminder — meant to be called once per automation tick (the same cadence
     /// <see cref="MachineGroup.Automate"/> itself runs at), NOT tied to a rescan, since a starved
@@ -122,8 +149,9 @@ internal class PowerRequiredMachineSystem
     /// ongoing nag.</item>
     /// <item>While a location continues to have at least one starved tile AND
     /// <see cref="GetGlobalCalloutsEnabledFromConfig"/> is enabled, a location-specific
-    /// "Connected machine needs power in {location}" message repeats every <see cref="GlobalCalloutIntervalMilliseconds"/>.
-    /// See <see cref="Models.ModConfig.ConnectedMachineLocationPowerCallouts"/>.</item>
+    /// "Connected machine needs power in {location}" message repeats every
+    /// <see cref="GetCalloutIntervalSeconds"/> seconds. See
+    /// <see cref="Models.ModConfig.ConnectedMachineLocationPowerCallouts"/>/<see cref="Models.ModConfig.ConnectedMachineLocationPowerCalloutIntervalSeconds"/>.</item>
     /// </list>
     ///
     /// Deliberately keyed by LOCATION (not by machine instance) — <see cref="MachineGroup"/> instances
@@ -167,6 +195,13 @@ internal class PowerRequiredMachineSystem
 
         double curTime = Game1.currentGameTime?.TotalGameTime.TotalMilliseconds ?? 0;
         bool globalCalloutsEnabled = this.GetGlobalCalloutsEnabledFromConfig();
+        double calloutIntervalMilliseconds = Math.Max(1, this.GetCalloutIntervalSeconds()) * 1000;
+
+        // MOD: added — consume the suppress flag ONCE per call to this method (not once per location),
+        // so a reset that affects multiple locations at once doesn't fire the one-off notice for any of
+        // them, but a location that becomes newly starved on a LATER call still gets its notice normally.
+        bool suppressThisPass = this.suppressNextNewlyStarvedNotice;
+        this.suppressNextNewlyStarvedNotice = false;
 
         foreach ((string locationKey, HashSet<Vector2> currentStarvedTiles) in starvedTilesByLocation)
         {
@@ -176,14 +211,24 @@ internal class PowerRequiredMachineSystem
 
             if (hasNewlyStarvedTile)
             {
-                PowerRequiredMachineSystem.ShowNeedsPowerMessage();
-                this.NextCalloutTimeByLocation[locationKey] = curTime + PowerRequiredMachineSystem.GlobalCalloutIntervalMilliseconds;
+                if (!suppressThisPass)
+                    PowerRequiredMachineSystem.ShowNeedsPowerMessage();
+                this.NextCalloutTimeByLocation[locationKey] = curTime + calloutIntervalMilliseconds;
             }
             else if (globalCalloutsEnabled && (!this.NextCalloutTimeByLocation.TryGetValue(locationKey, out double nextCalloutTime) || curTime >= nextCalloutTime))
             {
                 string locationName = this.GetLocationByKey(locationKey)?.DisplayName ?? locationKey;
-                Game1.showRedMessage($"Connected machine needs power in {locationName}");
-                this.NextCalloutTimeByLocation[locationKey] = curTime + PowerRequiredMachineSystem.GlobalCalloutIntervalMilliseconds;
+
+                // MOD: added — count the starved tiles for a "N connected machine(s)" count. Tracked by
+                // tile rather than machine instance (see PreviouslyStarvedTilesByLocation's own remarks
+                // for why), but every power-required machine type in practice occupies exactly one
+                // tile, so tile count and machine count are the same number here.
+                int count = currentStarvedTiles.Count;
+                string machineWord = count == 1 ? "connected machine" : "connected machines";
+                string needWord = count == 1 ? "needs" : "need";
+                Game1.showRedMessage($"{count} {machineWord} {needWord} power in {locationName}");
+
+                this.NextCalloutTimeByLocation[locationKey] = curTime + calloutIntervalMilliseconds;
             }
 
             this.PreviouslyStarvedTilesByLocation[locationKey] = currentStarvedTiles;

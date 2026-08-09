@@ -23,7 +23,7 @@ internal class PowerRelayInteraction
     ** Fields
     *********/
     /// <summary>The key this interaction is registered under — must match the <c>Action</c> value on the Power Relay's <c>Data/Buildings</c> <c>ActionTiles</c> entry.</summary>
-    public const string ActionKey = "luisMint.AutomatePowerPipes_PowerRelayInteract";
+    public const string ActionKey = "luisMint.PoweredAutomation_PowerRelayInteract";
 
     /// <summary>The power relay system, used to read/write a Relay's delivered counts.</summary>
     private readonly PowerRelaySystem PowerRelaySystem;

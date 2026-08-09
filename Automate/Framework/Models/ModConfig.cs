@@ -138,7 +138,7 @@ internal class ModConfig
     /// or qualified item ID, same format as <see cref="Connectors"/>.
     /// </summary>
     [JsonProperty("PowerSourceNames")]
-    public HashSet<string> PowerSourceNames { get; set; } = new(StringComparer.OrdinalIgnoreCase) { "luisMint.AutomatePowerPipes_PowerCoil" };
+    public HashSet<string> PowerSourceNames { get; set; } = new(StringComparer.OrdinalIgnoreCase) { "luisMint.PoweredAutomation_PowerCoil" };
 
     /// <summary>
     /// MOD: added. How many tiles out from a power source, in each of the 4 cardinal directions, its
@@ -189,13 +189,17 @@ internal class ModConfig
 
     /// <summary>
     /// MOD: added. Whether to show a periodic "Connected machine needs power in {location}" reminder
-    /// (see <see cref="PowerRequiredMachineSystem.ProcessStarvedMachineCallouts"/>) every 12
-    /// real-world seconds for as long as a power-required machine remains starved, even while the
-    /// player isn't directly interacting with it. Independent of this setting, a single one-off
-    /// "Machine needs power" message always shows the moment a machine is first noticed to be starved
-    /// in a valid group — this only controls the ONGOING repeated nag on top of that.
+    /// (see <see cref="PowerRequiredMachineSystem.ProcessStarvedMachineCallouts"/>) every
+    /// <see cref="ConnectedMachineLocationPowerCalloutIntervalSeconds"/> real-world seconds for as long
+    /// as a power-required machine remains starved, even while the player isn't directly interacting
+    /// with it. Independent of this setting, a single one-off "Machine needs power" message always
+    /// shows the moment a machine is first noticed to be starved in a valid group — this only controls
+    /// the ONGOING repeated nag on top of that.
     /// </summary>
     public bool ConnectedMachineLocationPowerCallouts { get; set; } = true;
+
+    /// <summary>MOD: added. How often to repeat the "Connected machine needs power in {location}" reminder (see <see cref="ConnectedMachineLocationPowerCallouts"/>), in real-world seconds, for as long as a power-required machine remains starved.</summary>
+    public int ConnectedMachineLocationPowerCalloutIntervalSeconds { get; set; } = 12;
 
     /// <summary>
     /// MOD: added. Whether the "power silo capacity" mechanic is enabled — when true, the total
@@ -213,7 +217,7 @@ internal class ModConfig
     /// mechanic (see <see cref="PowerSiloSystemEnabled"/>) — the Power Silo, by default.
     /// </summary>
     [JsonProperty("PowerSiloBuildingNames")]
-    public HashSet<string> PowerSiloBuildingNames { get; set; } = new(StringComparer.OrdinalIgnoreCase) { "luisMint.AutomatePowerPipes_PowerSilo" };
+    public HashSet<string> PowerSiloBuildingNames { get; set; } = new(StringComparer.OrdinalIgnoreCase) { "luisMint.PoweredAutomation_PowerSilo" };
 
     /// <summary>
     /// MOD: added. The Power Coil capacity available across the whole save with no Power Silo built at
@@ -257,6 +261,57 @@ internal class ModConfig
     ];
 
     /// <summary>
+    /// MOD: added. Per direct user request, every geode mineral — shared by the "minerals" slot in each
+    /// of <see cref="PowerSiloTierPools"/>'s 5 tiers, which always asks for exactly 1 of ONE randomly
+    /// picked mineral from this list (see <see cref="PowerSiloItemOption.ItemIds"/>'s own remarks for
+    /// how a nested item-ID list resolves to one random pick). Defined once here instead of duplicating
+    /// all 39 IDs across all 5 tiers, so the list can't drift out of sync between tiers.
+    /// </summary>
+    private static readonly List<string> MineralItemIds =
+    [
+        "(O)562", // Tigerseye
+        "(O)564", // Opal
+        "(O)565", // Fire Opal
+        "(O)538", // Alamite
+        "(O)539", // Bixite
+        "(O)540", // Baryte
+        "(O)541", // Aerinite
+        "(O)542", // Calcite
+        "(O)543", // Dolomite
+        "(O)544", // Esperite
+        "(O)545", // Fluorapatite
+        "(O)546", // Geminite
+        "(O)547", // Helvite
+        "(O)548", // Jamborite
+        "(O)549", // Jagoite
+        "(O)550", // Kyanite
+        "(O)551", // Lunarite
+        "(O)552", // Malachite
+        "(O)553", // Neptunite
+        "(O)554", // Lemon Stone
+        "(O)555", // Nekoite
+        "(O)556", // Orpiment
+        "(O)557", // Petrified Slime
+        "(O)558", // Thunder Egg
+        "(O)559", // Pyrite
+        "(O)561", // Ghost Crystal
+        "(O)563", // Jasper
+        "(O)566", // Celestine
+        "(O)567", // Marble
+        "(O)568", // Sandstone
+        "(O)569", // Granite
+        "(O)570", // Basalt
+        "(O)571", // Limestone
+        "(O)572", // Soapstone
+        "(O)573", // Hematite
+        "(O)574", // Mudstone
+        "(O)575", // Obsidian
+        "(O)576", // Slate
+        "(O)577", // Fairy Stone
+        "(O)578"  // Star Shards
+    ];
+
+    /// <summary>
     /// MOD: added. Per direct user request, randomized alternatives to <see cref="PowerSiloTiers"/>'s
     /// fixed <see cref="PowerSiloTierConfig.RequiredItems"/> — index-aligned with <see cref="PowerSiloTiers"/>,
     /// each entry's <see cref="PowerSiloTierPool.Slots"/> is rolled ONCE per save (one random option per
@@ -279,20 +334,24 @@ internal class ModConfig
                 {
                     Options =
                     [
-                        new() { ItemId = "(O)334", MinCount = 3, MaxCount = 5 },   // Copper Bar
-                        new() { ItemId = "(O)378", MinCount = 20, MaxCount = 30 }, // Copper Ore
-                        new() { ItemId = "(O)382", MinCount = 5, MaxCount = 5 },   // Coal
-                        new() { ItemId = "(O)330", MinCount = 5, MaxCount = 10 },   // Clay (substituted for "Mud", which isn't a real item)
-                        new() { ItemId = "(O)390", MinCount = 30, MaxCount = 50 }, // Stone
-                        new() { ItemId = "(O)86", MinCount = 1, MaxCount = 3 }     // Earth Crystal
+                        new() { ItemId = "(O)334", MinCount = 10, MaxCount = 20 },   // Copper Bar
+                        new() { ItemId = "(O)378", MinCount = 50, MaxCount = 80 }, // Copper Ore
+                        new() { ItemId = "(O)382", MinCount = 10, MaxCount = 20 },   // Coal
+                        new() { ItemId = "(O)330", MinCount = 10, MaxCount = 20 },   // Clay (substituted for "Mud", which isn't a real item)
+                        new() { ItemId = "(O)390", MinCount = 100, MaxCount = 200 }, // Stone
+                        new() { ItemId = "(O)86", MinCount = 10, MaxCount = 20 }     // Earth Crystal
                     ]
                 },
                 new() // cave carrot family
                 {
                     Options =
                     [
-                        new() { ItemId = "(O)78", MinCount = 1, MaxCount = 3 }  // Cave Carrot
+                        new() { ItemId = "(O)78", MinCount = 3, MaxCount = 5 }  // Cave Carrot
                     ]
+                },
+                new() // minerals — MOD: added, always exactly 1 of ONE random geode mineral
+                {
+                    Options = [new() { ItemIds = ModConfig.MineralItemIds, MinCount = 1, MaxCount = 1 }]
                 }
             ]
         },
@@ -306,19 +365,23 @@ internal class ModConfig
                 {
                     Options =
                     [
-                        new() { ItemId = "(O)334", MinCount = 5, MaxCount = 10 },   // Copper Bar
-                        new() { ItemId = "(O)335", MinCount = 4, MaxCount = 8 },    // Iron Bar
-                        new() { ItemId = "(O)390", MinCount = 65, MaxCount = 80 },  // Stone
-                        new() { ItemIds = ["(O)60", "(O)62", "(O)64", "(O)66", "(O)68", "(O)70"], MinCount = 1, MaxCount = 1 }, // any gem except Diamond/Prismatic Shard
-                        new() { ItemId = "(O)86", MinCount = 3, MaxCount = 5 }      // Earth Crystal
+                        new() { ItemId = "(O)334", MinCount = 15, MaxCount = 25 },   // Copper Bar
+                        new() { ItemId = "(O)335", MinCount = 10, MaxCount = 20 },    // Iron Bar
+                        new() { ItemId = "(O)390", MinCount = 200, MaxCount = 300 },  // Stone
+                        new() { ItemIds = ["(O)60", "(O)62", "(O)64", "(O)66", "(O)68", "(O)70"], MinCount = 3, MaxCount = 5 } // any gem except Diamond/Prismatic Shard
+
                     ]
                 },
                 new() // cave carrot family
                 {
                     Options =
                     [
-                        new() { ItemId = "(O)78", MinCount = 3, MaxCount = 5 }  // Cave Carrot
+                        new() { ItemId = "(O)78", MinCount = 5, MaxCount = 10 }  // Cave Carrot
                     ]
+                },
+                new() // minerals — MOD: added, always exactly 1 of ONE random geode mineral
+                {
+                    Options = [new() { ItemIds = ModConfig.MineralItemIds, MinCount = 1, MaxCount = 1 }]
                 }
             ]
         },
@@ -332,28 +395,32 @@ internal class ModConfig
                 {
                     Options =
                     [
-                        new() { ItemId = "(O)787", MinCount = 2, MaxCount = 3 },   // Battery Pack
-                        new() { ItemId = "(O)338", MinCount = 10, MaxCount = 20 }   // Refined Quartz
+                        new() { ItemId = "(O)787", MinCount = 5, MaxCount = 10 },   // Battery Pack
+                        new() { ItemId = "(O)338", MinCount = 30, MaxCount = 50 }   // Refined Quartz
                     ]
                 },
                 new() // ore/bar
                 {
                     Options =
                     [
-                        new() { ItemId = "(O)334", MinCount = 10, MaxCount = 15 },   // Copper Bar
-                        new() { ItemId = "(O)335", MinCount = 7, MaxCount = 10 },   // Iron Bar
-                        new() { ItemId = "(O)380", MinCount = 50, MaxCount = 60 }, // Iron Ore
-                        new() { ItemId = "(O)384", MinCount = 20, MaxCount = 40 }   // Gold Ore
+                        new() { ItemId = "(O)334", MinCount = 30, MaxCount = 35 },   // Copper Bar
+                        new() { ItemId = "(O)335", MinCount = 20, MaxCount = 25 },   // Iron Bar
+                        new() { ItemId = "(O)380", MinCount = 100, MaxCount = 200 }, // Iron Ore
+                        new() { ItemId = "(O)384", MinCount = 50, MaxCount = 100 }   // Gold Ore
                     ]
                 },
                 new() // cave carrot family
                 {
                     Options =
                     [
-                        new() { ItemId = "(O)78", MinCount = 5, MaxCount = 8 },                                              // Cave Carrot
-                        new() { ItemId = "(O)186", MinCount = 2, MaxCount = 2 },                                             // Large Milk
-                        new() { ItemId = "(O)749", MinCount = 2, MaxCount = 5 }                                              // Omni Geode
+                        new() { ItemId = "(O)78", MinCount = 10, MaxCount = 10 },                                              // Cave Carrot
+                        new() { ItemId = "(O)186", MinCount = 2, MaxCount = 5 },                                             // Large Milk
+                        new() { ItemId = "(O)749", MinCount = 10, MaxCount = 20 }                                              // Omni Geode
                     ]
+                },
+                new() // minerals — MOD: added, always exactly 1 of ONE random geode mineral
+                {
+                    Options = [new() { ItemIds = ModConfig.MineralItemIds, MinCount = 1, MaxCount = 1 }]
                 }
             ]
         },
@@ -367,29 +434,34 @@ internal class ModConfig
                 {
                     Options =
                     [
-                        new() { ItemId = "(O)787", MinCount = 2, MaxCount = 8 },   // Battery Pack
-                        new() { ItemId = "(O)338", MinCount = 20, MaxCount = 30 }   // Refined Quartz
+                        new() { ItemId = "(O)787", MinCount = 10, MaxCount = 15 },   // Battery Pack
+                        new() { ItemId = "(O)338", MinCount = 40, MaxCount = 50 }   // Refined Quartz
                     ]
                 },
                 new() // bar/coal/gem
                 {
                     Options =
                     [
-                        new() { ItemId = "(O)336", MinCount = 9, MaxCount = 14 },   // Gold Bar
-                        new() { ItemId = "(O)382", MinCount = 35, MaxCount = 58 }, // Coal
-                        new() { ItemIds = ["(O)60", "(O)62", "(O)64", "(O)66", "(O)68", "(O)70", "(O)72"], MinCount = 3, MaxCount = 5 }, // any gem including Diamond, except Prismatic Shard
-                        new() { ItemId = "(O)386", MinCount = 5, MaxCount = 10 }   // Iridium Ore 
+                        new() { ItemId = "(O)336", MinCount = 20, MaxCount = 30 },   // Gold Bar
+                        new() { ItemId = "(O)382", MinCount = 30, MaxCount = 60 }, // Coal
+                        new() { ItemIds = ["(O)60", "(O)62", "(O)64", "(O)66", "(O)68", "(O)70", "(O)72"], MinCount = 10, MaxCount = 20 }, // any gem including Diamond, except Prismatic Shard
+                        new() { ItemId = "(O)386", MinCount = 20, MaxCount = 50 }   // Iridium Ore 
                     ]
                 },
                 new() // cave carrot family
                 {
                     Options =
                     [
-                        new() { ItemId = "(O)78", MinCount = 5, MaxCount = 10 },                                              // Cave Carrot
-                        new() { ItemId = "(O)186", MinCount = 2, MaxCount = 5 },                                             // Large Milk
-                        new() { ItemId = "(O)749", MinCount = 5, MaxCount = 10 },                                             // Omni Geode
-                        new() { ItemId = "(O)158", MinCount = 1, MaxCount = 1 }                                              // Stonefish
+                        new() { ItemId = "(O)78", MinCount = 10, MaxCount = 15 },                                              // Cave Carrot
+                        new() { ItemId = "(O)186", MinCount = 5, MaxCount = 10 },                                             // Large Milk
+                        new() { ItemId = "(O)749", MinCount = 20, MaxCount = 30 },                                             // Omni Geode
+                        new() { ItemId = "(O)CaveJelly", MinCount = 3, MaxCount = 5 },                                       // Cave Jelly
+                        new() { ItemId = "(O)158", MinCount = 1, MaxCount = 3 }                                              // Stonefish
                     ]
+                },
+                new() // minerals — MOD: added, always exactly 1 of ONE random geode mineral
+                {
+                    Options = [new() { ItemIds = ModConfig.MineralItemIds, MinCount = 1, MaxCount = 1 }]
                 }
             ]
         },
@@ -407,9 +479,9 @@ internal class ModConfig
                 {
                     Options =
                     [
-                        new() { ItemId = "(O)909", MinCount = 1, MaxCount = 1 },   // Radioactive Ore
-                        new() { ItemId = "(O)768", MinCount = 15, MaxCount = 20 }, // Solar Essence
-                        new() { ItemId = "(O)386", MinCount = 10, MaxCount = 20 }  // Iridium Ore — MOD: deliberately NOT scaled, per direct user request
+                        new() { ItemId = "(O)909", MinCount = 1, MaxCount = 5 },   // Radioactive Ore
+                        new() { ItemId = "(O)768", MinCount = 50, MaxCount = 100 }, // Solar Essence
+                        new() { ItemId = "(O)386", MinCount = 50, MaxCount = 100 }  // Iridium Ore — MOD: deliberately NOT scaled, per direct user request
                     ]
                 },
                 new() // cave carrot family
@@ -417,9 +489,13 @@ internal class ModConfig
                     Options =
                     [
                         new() { ItemId = "(O)78", MinCount = 15, MaxCount = 30 },                                              // Cave Carrot
-                        new() { ItemId = "(O)CaveJelly", MinCount = 1, MaxCount = 2 },                                       // Cave Jelly (substituted for "Dehydrated Cave Carrot", which isn't a real item) — MOD: deliberately NOT scaled, per direct user request. Unverified ID, couldn't confirm against the wiki; fix this if it turns out wrong
-                        new() { ItemId = "(O)749", MinCount = 15, MaxCount = 30 }                                              // Omni Geode
+                        new() { ItemId = "(O)CaveJelly", MinCount = 5, MaxCount = 10 },                                       // Cave Jelly
+                        new() { ItemId = "(O)749", MinCount = 20, MaxCount = 40 }                                              // Omni Geode
                     ]
+                },
+                new() // minerals — MOD: added, always exactly 1 of ONE random geode mineral
+                {
+                    Options = [new() { ItemIds = ModConfig.MineralItemIds, MinCount = 1, MaxCount = 1 }]
                 }
             ]
         }
@@ -439,7 +515,7 @@ internal class ModConfig
 
     /// <summary>MOD: added. The <c>buildingType</c> ID(s) that count as a Power Relay for the efficiency-bonus mechanic (see <see cref="PowerRelaySystemEnabled"/>) — the Power Relay, by default.</summary>
     [JsonProperty("PowerRelayBuildingNames")]
-    public HashSet<string> PowerRelayBuildingNames { get; set; } = new(StringComparer.OrdinalIgnoreCase) { "luisMint.AutomatePowerPipes_PowerRelay" };
+    public HashSet<string> PowerRelayBuildingNames { get; set; } = new(StringComparer.OrdinalIgnoreCase) { "luisMint.PoweredAutomation_PowerRelay" };
 
     /// <summary>MOD: added. The qualified/unqualified item ID delivered to a Power Relay for the delay-reduction track — Prismatic Shard, by default. Only accepted from level 1 onward; the very first delivery (level 0→1) instead asks for <see cref="PowerRelayFirstShardItemId"/>.</summary>
     public string PowerRelayShardItemId { get; set; } = "(O)74";

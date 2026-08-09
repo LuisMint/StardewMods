@@ -51,7 +51,7 @@ internal static class PowerRequiredMachinePatches
     ** Fields
     *********/
     /// <summary>MOD: added. The mod data key used to tag a machine's own internal storage chest (e.g. an Auto-Grabber's held chest) as currently power-starved, so <see cref="ChestAddItem_Prefix"/> can cheaply refuse new items without needing to resolve the chest's owning machine on every call. Kept in sync by <see cref="ShouldTimePassForMachine_Postfix"/>, which already runs for every placed object roughly every in-game 10 minutes. Internal (not private) so a machine wrapper with its own alternate write path that bypasses <see cref="Chest.addItem"/> entirely (e.g. <see cref="Machines.Objects.AutoGrabberMachine.SetInput"/>, which uses Automate's own <see cref="IContainer.Store"/> instead) can check the SAME tag directly, so a starved machine can't be fed around the block just by going through Automate's pipe network instead of a player's hand.</summary>
-    internal const string PowerStarvedChestModDataKey = "luisMint.AutomatePowerPipes/PowerStarvedChest";
+    internal const string PowerStarvedChestModDataKey = "luisMint.PoweredAutomation/PowerStarvedChest";
 
     /// <summary>MOD: added. The qualified item ID of the vanilla Auto-Petter — its animal-petting behavior and rotating-part visual are both hardcoded special cases in vanilla (search either method for this same literal), not data-driven, so they need their own dedicated hooks rather than going through the generic machinery above.</summary>
     private const string AutoPetterQualifiedItemId = "(BC)272";
@@ -69,14 +69,14 @@ internal static class PowerRequiredMachinePatches
     private static bool HasQueuedAutoPetterFailureMessage;
 
     /// <summary>
-    /// MOD: added. The asset name of the "no power" overlay icon (loaded by the AutomatePowerPipes
+    /// MOD: added. The asset name of the "no power" overlay icon (loaded by the PoweredAutomation
     /// content pack), drawn pulsing on top of any power-required machine while it's starved — see
     /// <see cref="Draw_Postfix"/>. This is deliberately a generic overlay rather than per-machine
     /// alternate textures: it works uniformly for every current and future power-required machine
     /// (including ones added by other mods hooking into Automate's own automation factory API) with no
     /// per-machine art needed.
     /// </summary>
-    private const string NoPowerIconAssetName = "Mods/luisMint.AutomatePowerPipes/NoPowerIcon";
+    private const string NoPowerIconAssetName = "Mods/luisMint.PoweredAutomation/NoPowerIcon";
 
     /// <summary>The overlay icon's alpha at the low point of its pulse.</summary>
     private const float NoPowerIconMinAlpha = 0.35f;

@@ -25,13 +25,13 @@ internal static class PowerCoilPatches
     ** Fields
     *********/
     /// <summary>The qualified item ID of the object these patches apply to.</summary>
-    internal const string TargetQualifiedItemId = "(BC)luisMint.AutomatePowerPipes_PowerCoil";
+    internal const string TargetQualifiedItemId = "(BC)luisMint.PoweredAutomation_PowerCoil";
 
-    /// <summary>The asset name of the dedicated, purpose-built crafting-menu icon (loaded by the AutomatePowerPipes content pack), as opposed to the taller world sprite used everywhere else. MOD: made internal (not private) so <see cref="PowerCoilMapMarkerPatches"/> can reuse the same small icon for its world-map markers.</summary>
-    internal const string CraftIconAssetName = "Mods/luisMint.AutomatePowerPipes/PowerCoilCraftIcon";
+    /// <summary>The asset name of the dedicated, purpose-built crafting-menu icon (loaded by the PoweredAutomation content pack), as opposed to the taller world sprite used everywhere else. MOD: made internal (not private) so <see cref="PowerCoilMapMarkerPatches"/> can reuse the same small icon for its world-map markers.</summary>
+    internal const string CraftIconAssetName = "Mods/luisMint.PoweredAutomation/PowerCoilCraftIcon";
 
     /// <summary>MOD: added. The asset name of the unpowered variant of <see cref="CraftIconAssetName"/>, used by <see cref="PowerCoilMapMarkerPatches"/> to mark an over-capacity coil differently on the world map.</summary>
-    internal const string UnpoweredCraftIconAssetName = "Mods/luisMint.AutomatePowerPipes/PowerCoilCraftIcon_UnPowered";
+    internal const string UnpoweredCraftIconAssetName = "Mods/luisMint.PoweredAutomation/PowerCoilCraftIcon_UnPowered";
 
     /// <summary>How far the sprite grows/shrinks at the peak of the pulse, as a fraction of its normal size (e.g. 0.05 = ±5%).</summary>
     private const float PulseAmplitude = 0.05f;
@@ -91,7 +91,7 @@ internal static class PowerCoilPatches
     /// separate sprite rather than a color tint, so it can carry its own art (e.g. no glowing coils)
     /// instead of just a darkened version of the powered one.
     /// </summary>
-    private const string UnpoweredAssetName = "Mods/luisMint.AutomatePowerPipes/PowerCoil_UnPowered";
+    private const string UnpoweredAssetName = "Mods/luisMint.PoweredAutomation/PowerCoil_UnPowered";
 
 
     /*********

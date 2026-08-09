@@ -59,31 +59,31 @@ internal static class DwarfWeeklyShopPatches
     private const int PoweredChestSeasonalLimit = 1;
 
     /// <summary>The <c>Game1.MasterPlayer.modData</c> key tracking which week's Cave Carrot stock was last rolled.</summary>
-    private const string CaveCarrotPeriodModDataKey = "luisMint.AutomatePowerPipes/DwarfCaveCarrotWeek";
+    private const string CaveCarrotPeriodModDataKey = "luisMint.PoweredAutomation/DwarfCaveCarrotWeek";
 
     /// <summary>The <c>Game1.MasterPlayer.modData</c> key tracking how many Cave Carrots have been bought this week.</summary>
-    private const string CaveCarrotBoughtModDataKey = "luisMint.AutomatePowerPipes/DwarfCaveCarrotBoughtThisWeek";
+    private const string CaveCarrotBoughtModDataKey = "luisMint.PoweredAutomation/DwarfCaveCarrotBoughtThisWeek";
 
     /// <summary>The <c>Game1.MasterPlayer.modData</c> key tracking which season's Power Coil stock was last rolled.</summary>
-    private const string PowerCoilPeriodModDataKey = "luisMint.AutomatePowerPipes/DwarfPowerCoilSeason";
+    private const string PowerCoilPeriodModDataKey = "luisMint.PoweredAutomation/DwarfPowerCoilSeason";
 
     /// <summary>The <c>Game1.MasterPlayer.modData</c> key tracking how many Power Coils have been bought this season.</summary>
-    private const string PowerCoilBoughtModDataKey = "luisMint.AutomatePowerPipes/DwarfPowerCoilBoughtThisSeason";
+    private const string PowerCoilBoughtModDataKey = "luisMint.PoweredAutomation/DwarfPowerCoilBoughtThisSeason";
 
     /// <summary>The <c>Game1.MasterPlayer.modData</c> key tracking which season's Powered Chest stock was last rolled.</summary>
-    private const string PoweredChestPeriodModDataKey = "luisMint.AutomatePowerPipes/DwarfPoweredChestSeason";
+    private const string PoweredChestPeriodModDataKey = "luisMint.PoweredAutomation/DwarfPoweredChestSeason";
 
     /// <summary>The <c>Game1.MasterPlayer.modData</c> key tracking how many Powered Chests have been bought this season.</summary>
-    private const string PoweredChestBoughtModDataKey = "luisMint.AutomatePowerPipes/DwarfPoweredChestBoughtThisSeason";
+    private const string PoweredChestBoughtModDataKey = "luisMint.PoweredAutomation/DwarfPoweredChestBoughtThisSeason";
 
     /// <summary>The <see cref="TriggerActionManager"/> action name referenced by the Cave Carrot entry's <c>ActionsOnPurchase</c> in <c>ShopsData.json</c>.</summary>
-    private const string CaveCarrotPurchasedAction = "luisMint.AutomatePowerPipes_DwarfCaveCarrotPurchased";
+    private const string CaveCarrotPurchasedAction = "luisMint.PoweredAutomation_DwarfCaveCarrotPurchased";
 
     /// <summary>The <see cref="TriggerActionManager"/> action name referenced by the Power Coil entry's <c>ActionsOnPurchase</c> in <c>ShopsData.json</c>.</summary>
-    private const string PowerCoilPurchasedAction = "luisMint.AutomatePowerPipes_DwarfPowerCoilPurchased";
+    private const string PowerCoilPurchasedAction = "luisMint.PoweredAutomation_DwarfPowerCoilPurchased";
 
     /// <summary>The <see cref="TriggerActionManager"/> action name referenced by the Powered Chest entry's <c>ActionsOnPurchase</c> in <c>ShopsData.json</c>.</summary>
-    private const string PoweredChestPurchasedAction = "luisMint.AutomatePowerPipes_DwarfPoweredChestPurchased";
+    private const string PoweredChestPurchasedAction = "luisMint.PoweredAutomation_DwarfPoweredChestPurchased";
 
 
     /*********

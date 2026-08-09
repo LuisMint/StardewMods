@@ -35,10 +35,10 @@ internal static class DwarfConstructionSiteInteractionPatches
     ** Fields
     *********/
     /// <summary>The <see cref="Building.modData"/> key storing the <see cref="StardewValley.Stats.DaysPlayed"/> value the loot was last given on, so it only triggers once per in-game day per building.</summary>
-    private const string LastLootDayModDataKey = "luisMint.AutomatePowerPipes/DwarfConstructionLootDay";
+    private const string LastLootDayModDataKey = "luisMint.PoweredAutomation/DwarfConstructionLootDay";
 
     /// <summary>The <see cref="Farmer.modData"/> key tracking whether a player has already used their one-time Dwarf Research Note #7 guaranteed-Diamond loot pull.</summary>
-    private const string GuaranteedDiamondUsedModDataKey = "luisMint.AutomatePowerPipes/DwarfNote7DiamondGuaranteeUsed";
+    private const string GuaranteedDiamondUsedModDataKey = "luisMint.PoweredAutomation/DwarfNote7DiamondGuaranteeUsed";
 
     /// <summary>The qualified item ID a Dwarf Research Note #7 guaranteed loot pull gives.</summary>
     private const string GuaranteedDiamondItemId = "(O)72"; // Diamond

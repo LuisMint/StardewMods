@@ -129,8 +129,8 @@ internal class PowerSiloMenu : IClickableMenu
     /// <summary>MOD: added. The flavor text shown below the solar-tier icon cluster once a Silo reaches the terminal solar tier.</summary>
     private const string SolarFlavorText = "A Dwarf left a crude\nsketch of what appears\nto be the sun";
 
-    /// <summary>MOD: added. The asset name of <see cref="MarkAllCoilsButton"/>'s own icon (loaded by the AutomatePowerPipes content pack), replacing the placeholder vanilla mouseCursors icon it used before this button became a real toggle.</summary>
-    private const string MarkPowerCoilsIconAssetName = "Mods/luisMint.AutomatePowerPipes/MarkPowerCoilsIcon";
+    /// <summary>MOD: added. The asset name of <see cref="MarkAllCoilsButton"/>'s own icon (loaded by the PoweredAutomation content pack), replacing the placeholder vanilla mouseCursors icon it used before this button became a real toggle.</summary>
+    private const string MarkPowerCoilsIconAssetName = "Mods/luisMint.PoweredAutomation/MarkPowerCoilsIcon";
 
     /// <summary>The Power Silo this menu displays.</summary>
     private readonly Building Silo;
@@ -155,6 +155,9 @@ internal class PowerSiloMenu : IClickableMenu
 
     /// <summary>The text currently hovered, shown as a tooltip.</summary>
     private string HoverText = "";
+
+    /// <summary>MOD: added. The "Bring" row requirement currently under the mouse, if any — shown as a full vanilla item tooltip (name, description, etc.) in <see cref="draw"/>, per direct user request, since the icon alone doesn't say which item it is (especially for a randomly-rolled mineral) and this menu's custom-drawn icons aren't real inventory slots Lookup Anything or similar mods can inspect.</summary>
+    private PowerSiloRequiredItem? HoveredBringRowRequirement;
 
     /// <summary>MOD: added. Elapsed seconds since this menu opened — drives the capacity grid's subtle bob and pulse animations, the same way <see cref="PondQueryMenu"/>'s own <c>_age</c> field drives its fish icons' bob.</summary>
     private float AnimationTimer;
@@ -428,6 +431,11 @@ internal class PowerSiloMenu : IClickableMenu
         int partitionY = boxTop + mainZoneHeight;
         this.drawHorizontalPartition(b, partitionY);
 
+        // MOD: added — recomputed fresh every frame (not just on mouse-move) since the bring rows'
+        // positions can shift between frames (e.g. a delivery completing removes a row) — see the loop
+        // below, where it's set the moment a hovered icon is found.
+        this.HoveredBringRowRequirement = null;
+
         if (hasOutstandingItems)
         {
             int leftX = this.xPositionOnScreen + 88;
@@ -448,7 +456,9 @@ internal class PowerSiloMenu : IClickableMenu
 
                 Utility.drawTextWithShadow(b, bringText, Game1.smallFont, new Vector2(leftX, rowCenterY - bringTextSize.Y / 2f), Game1.textColor);
 
-                // MOD: icon + count only — no item name text after it, per request.
+                // MOD: icon + count only — no item name text after it, per request. MOD: added — hovering
+                // the icon shows the full vanilla item tooltip instead (see HoveredBringRowRequirement's
+                // own remarks), so the name is still discoverable without permanently taking up row space.
                 ParsedItemData itemData = ItemRegistry.GetDataOrErrorItem(requirement.ItemId);
                 Texture2D texture = itemData.GetTexture();
                 Rectangle sourceRect = itemData.GetSourceRect();
@@ -463,6 +473,11 @@ internal class PowerSiloMenu : IClickableMenu
                 b.Draw(texture, iconPos, sourceRect, Color.White, 0f, Vector2.Zero, iconScale, SpriteEffects.None, 1f);
                 if (remaining > 1)
                     Utility.drawTinyDigits(remaining, b, iconPos + new Vector2(sourceRect.Width * iconScale * 0.75f, PowerSiloMenu.BringRowHeight * 0.6875f), 3f, 1f, Color.White);
+
+                // MOD: added — hit-test the drawn icon against the current mouse position for the tooltip.
+                Rectangle iconBounds = new((int)iconPos.X, (int)iconPos.Y, (int)(sourceRect.Width * iconScale), (int)(sourceRect.Height * iconScale));
+                if (iconBounds.Contains(Game1.getMouseX(), Game1.getMouseY()))
+                    this.HoveredBringRowRequirement = requirement;
             }
         }
         else
@@ -478,6 +493,16 @@ internal class PowerSiloMenu : IClickableMenu
 
         if (!string.IsNullOrEmpty(this.HoverText))
             IClickableMenu.drawHoverText(b, this.HoverText, Game1.smallFont);
+
+        // MOD: added — the full vanilla item tooltip (name, description, etc.) for whichever "Bring" row
+        // icon is currently under the mouse, if any — see HoveredBringRowRequirement's own remarks.
+        // Drawn last (on top of everything else, including the buttons' own HoverText) so it's never
+        // obscured, matching where vanilla itself draws an item tooltip relative to the rest of a menu.
+        if (this.HoveredBringRowRequirement is { } hovered)
+        {
+            Item hoveredItem = ItemRegistry.Create(hovered.ItemId);
+            IClickableMenu.drawToolTip(b, hoveredItem.getDescription(), hoveredItem.DisplayName, hoveredItem);
+        }
 
         this.drawMouse(b);
     }

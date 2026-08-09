@@ -247,7 +247,7 @@ internal class ModEntry : Mod
             powerSiloTierRoller: this.PowerSiloTierRoller
         );
 
-        this.CommandHandler = new CommandHandler(this.Monitor, () => this.Config, this.MachineManager);
+        this.CommandHandler = new CommandHandler(this.Monitor, () => this.Config, this.MachineManager, this.PowerSiloTierRoller);
 
         // MOD: added — the Power Relay's global efficiency-bonus mechanic (see PowerRelaySystem's own
         // remarks). Deliberately NOT owned by MachineManager.Factory like PowerSiloSystem is — unlike a
@@ -466,7 +466,7 @@ internal class ModEntry : Mod
     }
 
     /// <summary>
-    /// MOD: added. Copy every audio file from the AutomatePowerPipes content pack's <c>Pipes</c> folder
+    /// MOD: added. Copy every audio file from the PoweredAutomation content pack's <c>Pipes</c> folder
     /// into the exact <c>Content/SMAPI/&lt;mod id&gt;/Pipes</c> location that <c>{{InternalAssetKey}}</c>
     /// resolves a <c>Data/AudioChanges</c> cue's <c>FilePaths</c> to — see this method's call site for why
     /// that's otherwise never created on its own. A no-op if the content pack isn't installed.
@@ -477,13 +477,13 @@ internal class ModEntry : Mod
         {
             // MOD: IModInfo doesn't expose a content pack's install folder (only IContentPack does, which
             // is only available to a mod that owns the content pack) — so this assumes the standard
-            // "Mods/AutomatePowerPipes" folder name instead, same as this codebase already hardcodes that
+            // "Mods/PoweredAutomation" folder name instead, same as this codebase already hardcodes that
             // content pack's mod ID elsewhere (e.g. PowerSiloMenu's asset name constants).
-            IModInfo? contentPack = this.Helper.ModRegistry.Get("luisMint.AutomatePowerPipes");
+            IModInfo? contentPack = this.Helper.ModRegistry.Get("luisMint.PoweredAutomation");
             if (contentPack is null)
                 return;
 
-            string sourceDir = Path.Combine(Constants.GamePath, "Mods", "AutomatePowerPipes", "Pipes");
+            string sourceDir = Path.Combine(Constants.GamePath, "Mods", "PoweredAutomation", "Pipes");
             if (!Directory.Exists(sourceDir))
                 return;
 
@@ -602,6 +602,8 @@ internal class ModEntry : Mod
     /// <inheritdoc cref="IGameLoopEvents.DayStarted" />
     private void OnDayStarted(object? sender, DayStartedEventArgs e)
     {
+        this.Monitor.Log($"[PACING] === OnDayStarted === atMs={this.UnpausedElapsedMs:0}", LogLevel.Trace);
+
         // reset machine state
         if (!this.IsSecondaryScreen) // in split-screen mode, machine state is managed by the main screen
         {
@@ -628,6 +630,11 @@ internal class ModEntry : Mod
 
             // MOD: added — clears the Power Relay's cached light/shake state, mirroring PowerSiloCapPatches.Reset() above.
             PowerRelayEffectPatches.Reset();
+
+            // MOD: added — clears the power-required-machines callout tracking, so a machine that was
+            // ALREADY starved before today doesn't look "newly starved" and fire the reminder the
+            // moment the save loads — see PowerRequiredMachineSystem.Reset's own remarks.
+            this.MachineManager.Factory.PowerRequiredMachineSystem.Reset();
         }
 
         // MOD: added — spawns every placed Cave Hole's own quarry-style stone/ore nodes: a full dense
@@ -750,7 +757,10 @@ internal class ModEntry : Mod
         // add Generic Mod Config Menu integration
         if (this.RegisterConfigCountdown > 0 && --this.RegisterConfigCountdown == 0)
         {
-            this.AddGenericModConfigMenu(
+            // MOD: changed — uses AddGenericModConfigMenuWithDisplayName instead of the shared
+            // Common.AddGenericModConfigMenu helper, so the GMCM page shows "Powered Automation"
+            // instead of "Automate" (see DisplayNameManifest's own remarks for why).
+            this.AddGenericModConfigMenuWithDisplayName(
                 new GenericModConfigMenuIntegrationForAutomate(this.Data),
                 get: () => this.Config,
                 set: config => this.Config = config,
@@ -776,8 +786,17 @@ internal class ModEntry : Mod
                 // reload machines if needed
                 if (this.EnableAutomationChangeTracking)
                 {
+                    // MOD: fixed — a rescan (e.g. placing/removing a building or machine) used to only
+                    // set RunAutomationPassOnNextTick on day-start or a config reload, never here, so a
+                    // machine that joined a group already power-starved had no trigger to show the
+                    // reminder until the next periodic OnTimeChanged callout (up to 10 in-game minutes
+                    // later). Checking right here means it fires the same tick the rescan happens —
+                    // genuinely event-based, not a slow periodic catch-up.
                     if (this.MachineManager.ReloadQueuedLocations())
+                    {
                         this.ResetOverlayIfShown();
+                        this.MachineManager.Factory.PowerRequiredMachineSystem.ProcessStarvedMachineCallouts(this.MachineManager.GetActiveMachineGroups());
+                    }
 
                     // MOD: added — always drain (even outside event-based mode and even when action
                     // pacing is disabled, so this can't grow unbounded) — see
@@ -1203,9 +1222,12 @@ internal class ModEntry : Mod
     /// <param name="group">The group to schedule a batch for.</param>
     private void TryScheduleGroupBatch(IMachineGroup group)
     {
+        int groupId = System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(group);
+
         float effectiveActionDelaySeconds = this.GetEffectiveActionDelaySeconds();
         if (effectiveActionDelaySeconds <= 0)
         {
+            this.Monitor.Log($"[PACING] TryScheduleGroupBatch group={groupId} unbatched (delay<=0) — running Automate() directly", LogLevel.Trace);
             group.Automate();
             return;
         }
@@ -1214,8 +1236,12 @@ internal class ModEntry : Mod
             return; // nothing queued for this group — nothing to prime for
 
         if (!this.ArmedGroupBatches.Add(group))
+        {
+            this.Monitor.Log($"[PACING] TryScheduleGroupBatch group={groupId} already armed, queueCount={queue.Count} — skipped re-arm", LogLevel.Trace);
             return; // already priming — it'll drain the queue (including anything just added to it) when it fires
+        }
 
+        this.Monitor.Log($"[PACING] TryScheduleGroupBatch group={groupId} ARMED queueCount={queue.Count} delay={effectiveActionDelaySeconds}s atMs={this.UnpausedElapsedMs:0}", LogLevel.Trace);
         this.RunOrScheduleDelayedPass(() => this.RunGroupBatch(group), effectiveActionDelaySeconds, group);
     }
 
@@ -1232,15 +1258,24 @@ internal class ModEntry : Mod
     /// <param name="group">The group whose batch just came due.</param>
     private void RunGroupBatch(IMachineGroup group)
     {
+        int groupId = System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(group);
+
         if (!this.ArmedGroupBatches.Remove(group))
+        {
+            this.Monitor.Log($"[PACING] RunGroupBatch group={groupId} STALE FIRE (not armed) — skipped", LogLevel.Trace);
             return; // stale fire for a group whose pacing state was since purged/reset — nothing to do
+        }
 
         if (!this.GroupActionQueues.TryGetValue(group, out Queue<IMachine>? queue))
+        {
+            this.Monitor.Log($"[PACING] RunGroupBatch group={groupId} no queue entry — skipped", LogLevel.Trace);
             return;
+        }
 
         int committed = 0;
         int effectiveActionsPerDelayWindow = this.GetEffectiveActionsPerDelayWindow();
         bool unlimited = effectiveActionsPerDelayWindow <= 0;
+        int queueCountBefore = queue.Count;
 
         while (queue.Count > 0 && (unlimited || committed < effectiveActionsPerDelayWindow))
         {
@@ -1250,6 +1285,8 @@ internal class ModEntry : Mod
             if (this.AutomateMachine(group, machine))
                 committed++;
         }
+
+        this.Monitor.Log($"[PACING] RunGroupBatch group={groupId} queueBefore={queueCountBefore} committed={committed} cap={effectiveActionsPerDelayWindow} queueAfter={queue.Count} atMs={this.UnpausedElapsedMs:0}", LogLevel.Trace);
 
         if (queue.Count > 0)
             this.TryScheduleGroupBatch(group);
@@ -1367,6 +1404,8 @@ internal class ModEntry : Mod
             // MOD: added — see LastActualDelayMs's own remarks; lets the perf overlay show the real
             // measured delay instead of going on feel alone.
             this.LastActualDelayMs = curTimeMs - createdAtMs;
+
+            this.Monitor.Log($"[PACING] RunDuePendingPasses firing pass createdAtMs={createdAtMs:0} scheduledMs={scheduledTimeMs:0} nowMs={curTimeMs:0} actualDelayMs={this.LastActualDelayMs:0}", LogLevel.Trace);
 
             try
             {
@@ -1629,6 +1668,8 @@ internal class ModEntry : Mod
     /// </summary>
     private void ResetDelayQueueState()
     {
+        this.Monitor.Log($"[PACING] ResetDelayQueueState pendingPasses={this.PendingDelayedPasses.Count} armedBatches={this.ArmedGroupBatches.Count} queuedMachines={this.QueuedMachines.Count} atMs={this.UnpausedElapsedMs:0}", LogLevel.Trace);
+
         this.PendingDelayedPasses.Clear();
         this.GroupActionQueues.Clear();
         this.QueuedMachines.Clear();
@@ -1687,6 +1728,48 @@ internal class ModEntry : Mod
             IMachineGroup? passGroup = this.PendingDelayedPasses[i].Group;
             if (passGroup != null && removedSet.Contains(passGroup))
                 this.PendingDelayedPasses.RemoveAt(i);
+        }
+    }
+
+    /// <summary>
+    /// MOD: added. Same as the shared <c>Common.AddGenericModConfigMenu</c> helper, except it registers
+    /// under a <see cref="DisplayNameManifest"/> instead of this mod's own real manifest, so the GMCM
+    /// page shows "Powered Automation" instead of "Automate" — see that class's own remarks for why.
+    /// Deliberately not a change to the shared helper itself, since that's used generically and this
+    /// display override is specific to this one mod.
+    /// </summary>
+    /// <typeparam name="TConfig">The config model type.</typeparam>
+    /// <param name="configMenu">The config UI to register.</param>
+    /// <param name="get">Get the current config model.</param>
+    /// <param name="set">Overwrite the current config model.</param>
+    /// <param name="onSaved">Apply the config changes after they've been saved.</param>
+    private void AddGenericModConfigMenuWithDisplayName<TConfig>(IGenericModConfigMenuIntegrationFor<TConfig> configMenu, Func<TConfig> get, Action<TConfig> set, Action? onSaved = null)
+        where TConfig : class, new()
+    {
+        void Reset()
+        {
+            set(new TConfig());
+            this.Helper.WriteConfig(get());
+        }
+
+        void SaveAndApply()
+        {
+            this.Helper.WriteConfig(get());
+            onSaved?.Invoke();
+        }
+
+        IManifest displayManifest = new DisplayNameManifest(this.ModManifest, "Powered Automation");
+        GenericModConfigMenuIntegration<TConfig> api = new(this.Helper.ModRegistry, this.Monitor, displayManifest, get, Reset, SaveAndApply);
+        if (api.IsLoaded)
+        {
+            try
+            {
+                configMenu.Register(api, this.Monitor);
+            }
+            catch (Exception ex)
+            {
+                this.Monitor.LogOnce($"Failed registering config menu with Generic Mod Config Menu.\n\nTechnical info:\n{ex}", LogLevel.Error);
+            }
         }
     }
 

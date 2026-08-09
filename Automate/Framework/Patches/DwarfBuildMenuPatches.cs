@@ -10,7 +10,7 @@ namespace Pathoschild.Stardew.Automate.Framework.Patches;
 /// MOD: added. Gives the Dwarf a "build a Power Silo" option, reusing vanilla's own carpenter menu (via
 /// <see cref="GameLocation.ShowConstructOptions"/>) rather than a custom one — that method already accepts
 /// any "Builder" string (see the Power Silo's own <c>Data/Buildings</c> entry, tagged <c>"Builder": "Dwarf"</c>
-/// in <c>AutomatePowerPipes</c>), so the only real gap is a trigger: vanilla only ever calls it with a
+/// in <c>PoweredAutomation</c>), so the only real gap is a trigger: vanilla only ever calls it with a
 /// hardcoded <c>"Robin"</c> (behind her Carpenter shop's dialogue) or <c>"Wizard"</c> (behind a specific
 /// tower tile action), neither of which is reachable for a new builder name without a patch.
 ///
@@ -33,7 +33,7 @@ internal static class DwarfBuildMenuPatches
     /*********
     ** Fields
     *********/
-    /// <summary>The <c>Data/Buildings</c> "Builder" value the Power Silo (and any future Dwarf-built building) is tagged with — must match the value set in <c>AutomatePowerPipes</c>' <c>BuildingsData.json</c>.</summary>
+    /// <summary>The <c>Data/Buildings</c> "Builder" value the Power Silo (and any future Dwarf-built building) is tagged with — must match the value set in <c>PoweredAutomation</c>' <c>BuildingsData.json</c>.</summary>
     private const string BuilderName = "Dwarf";
 
     /// <summary>
@@ -138,7 +138,7 @@ internal static class DwarfBuildMenuPatches
     private static void ShowDwarfMessage(string text)
     {
         if (Game1.getCharacterFromName(DwarfBuildMenuPatches.BuilderName) is { } dwarf)
-            Game1.DrawDialogue(new Dialogue(dwarf, "luisMint.AutomatePowerPipes_DwarfConstruction", text));
+            Game1.DrawDialogue(new Dialogue(dwarf, "luisMint.PoweredAutomation_DwarfConstruction", text));
     }
 
     /// <summary>Get whether a Dwarf-built structure is currently under construction (or upgrading) anywhere in the save.</summary>

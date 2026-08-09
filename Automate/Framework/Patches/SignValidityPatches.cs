@@ -24,15 +24,15 @@ internal static class SignValidityPatches
     ** Fields
     *********/
     /// <summary>The <see cref="SObject.modData"/> key storing whether a managed sign is currently valid (enforcing its filter) — written by <see cref="SignTextureSync"/>, read here at draw time.</summary>
-    internal const string SignValidModDataKey = "luisMint.AutomatePowerPipes/SignValid";
+    internal const string SignValidModDataKey = "luisMint.PoweredAutomation/SignValid";
 
     /// <summary>Every managed sign's qualified item ID mapped to the asset name of its dedicated "invalid" (not currently enforcing) texture.</summary>
     private static readonly Dictionary<string, string> UnpoweredAssetNamesByQualifiedItemId = new()
     {
-        ["(BC)luisMint.AutomatePowerPipes_WhitelistSign"] = "Mods/luisMint.AutomatePowerPipes/WhitelistSign_UnPowered",
-        ["(BC)luisMint.AutomatePowerPipes_BlacklistSign"] = "Mods/luisMint.AutomatePowerPipes/BlacklistSign_UnPowered",
-        ["(BC)luisMint.AutomatePowerPipes_WhitelistCategorySign"] = "Mods/luisMint.AutomatePowerPipes/WhitelistCategorySign_UnPowered",
-        ["(BC)luisMint.AutomatePowerPipes_BlacklistCategorySign"] = "Mods/luisMint.AutomatePowerPipes/BlacklistCategorySign_UnPowered"
+        ["(BC)luisMint.PoweredAutomation_WhitelistSign"] = "Mods/luisMint.PoweredAutomation/WhitelistSign_UnPowered",
+        ["(BC)luisMint.PoweredAutomation_BlacklistSign"] = "Mods/luisMint.PoweredAutomation/BlacklistSign_UnPowered",
+        ["(BC)luisMint.PoweredAutomation_WhitelistCategorySign"] = "Mods/luisMint.PoweredAutomation/WhitelistCategorySign_UnPowered",
+        ["(BC)luisMint.PoweredAutomation_BlacklistCategorySign"] = "Mods/luisMint.PoweredAutomation/BlacklistCategorySign_UnPowered"
     };
 
 

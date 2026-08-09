@@ -15,8 +15,9 @@ internal class CommandHandler : GenericCommandHandler
     /// <param name="monitor">Writes messages to the console.</param>
     /// <param name="config">The mod configuration.</param>
     /// <param name="machineManager">Manages machine groups.</param>
-    public CommandHandler(IMonitor monitor, Func<ModConfig> config, MachineManager machineManager)
-        : base("automate", "Automate", CommandHandler.BuildCommands(monitor, config, machineManager), monitor) { }
+    /// <param name="powerSiloTierRoller">MOD: added. Resolves <see cref="Models.ModConfig.PowerSiloTierPools"/> into this save's rolled Power Silo tier requirements.</param>
+    public CommandHandler(IMonitor monitor, Func<ModConfig> config, MachineManager machineManager, PowerSiloTierRoller powerSiloTierRoller)
+        : base("automate", "Automate", CommandHandler.BuildCommands(monitor, config, machineManager, powerSiloTierRoller), monitor) { }
 
 
     /*********
@@ -26,11 +27,13 @@ internal class CommandHandler : GenericCommandHandler
     /// <param name="monitor">Writes messages to the console.</param>
     /// <param name="config">The mod configuration.</param>
     /// <param name="machineManager">Manages machine groups.</param>
-    private static ICommand[] BuildCommands(IMonitor monitor, Func<ModConfig> config, MachineManager machineManager)
+    /// <param name="powerSiloTierRoller">MOD: added. Resolves <see cref="Models.ModConfig.PowerSiloTierPools"/> into this save's rolled Power Silo tier requirements.</param>
+    private static ICommand[] BuildCommands(IMonitor monitor, Func<ModConfig> config, MachineManager machineManager, PowerSiloTierRoller powerSiloTierRoller)
     {
         return [
             new ResetCommand(monitor, machineManager),
-                new SummaryCommand(monitor, config, machineManager)
+                new SummaryCommand(monitor, config, machineManager),
+                new ResetPowerSiloRollCommand(monitor, powerSiloTierRoller) // MOD: added
         ];
     }
 }

@@ -38,7 +38,7 @@ internal class PowerSiloTierRoller
     private readonly Func<List<PowerSiloTierPool>?> GetTierPools;
 
     /// <summary>The <see cref="Farmer.modData"/> key on <see cref="Game1.MasterPlayer"/> storing this save's already-rolled requirements, keyed by tier index — see this class's own remarks for why it's global rather than per-player.</summary>
-    private const string RolledRequirementsModDataKey = "luisMint.AutomatePowerPipes/PowerSiloRolledRequirements";
+    private const string RolledRequirementsModDataKey = "luisMint.PoweredAutomation/PowerSiloRolledRequirements";
 
     /// <summary>The effective tier list computed for the current save, cached until <see cref="Reset"/> is called.</summary>
     private List<PowerSiloTierConfig>? CachedEffectiveTiers;
@@ -97,6 +97,19 @@ internal class PowerSiloTierRoller
     /// <summary>Clear the cached effective tier list — call this on save load, so a different save (or the same save reloaded) re-reads its own persisted roll instead of reusing whatever was cached in memory from before.</summary>
     public void Reset()
     {
+        this.CachedEffectiveTiers = null;
+    }
+
+    /// <summary>
+    /// MOD: added. Discard this save's persisted roll (see <see cref="RolledRequirementsModDataKey"/>)
+    /// AND the in-memory cache, so the very next <see cref="GetEffectiveTiers"/> call rolls fresh from
+    /// the CURRENT <see cref="ModConfig.PowerSiloTierPools"/> instead of replaying whatever was rolled
+    /// before — a dev/testing convenience for iterating on tier pool balance without needing to start a
+    /// new save each time. Exposed via the <c>automate reset_silo_tiers</c> console command.
+    /// </summary>
+    public void ResetSavedRoll()
+    {
+        Game1.MasterPlayer.modData.Remove(PowerSiloTierRoller.RolledRequirementsModDataKey);
         this.CachedEffectiveTiers = null;
     }
 

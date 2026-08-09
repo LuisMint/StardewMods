@@ -49,7 +49,7 @@ internal static class ConnectorTexturePatches
     ** Fields
     *********/
     /// <summary>The <see cref="Flooring.modData"/> key storing which of the 4 texture variants a managed connector tile currently shows — <c>"0"</c> (unpowered), <c>"1"</c> (powered), <c>"2"</c> (dimmer), or <c>"3"</c> (dimmest). Written by <see cref="PoweredFloorSync"/> (the two static states) and <see cref="PoweredFloorAnimator"/> (the animated "orphaned" state); missing entirely defaults to unpowered.</summary>
-    internal const string ConnectorVariantModDataKey = "luisMint.AutomatePowerPipes/ConnectorVariant";
+    internal const string ConnectorVariantModDataKey = "luisMint.PoweredAutomation/ConnectorVariant";
 
     /// <summary>The variant index shown for a fully unpowered connector — also the default when <see cref="ConnectorVariantModDataKey"/> is missing.</summary>
     internal const int UnpoweredVariant = 0;
@@ -66,26 +66,26 @@ internal static class ConnectorTexturePatches
     /// <summary>Every managed connector's floor ID (<see cref="Flooring.whichFloor"/>) mapped to its 4 variant asset names, indexed the same way as <see cref="UnpoweredVariant"/>/<see cref="PoweredVariant"/>/<see cref="DimmerVariant"/>/<see cref="DimmestVariant"/>.</summary>
     private static readonly Dictionary<string, string[]> AssetNamesByFloorId = new()
     {
-        ["luisMint.AutomatePowerPipes_PullPushPipe"] =
+        ["luisMint.PoweredAutomation_PullPushPipe"] =
         [
-            "Mods/luisMint.AutomatePowerPipes/Pipes_UnPowered",
-            "Mods/luisMint.AutomatePowerPipes/Pipes",
-            "Mods/luisMint.AutomatePowerPipes/Pipes_Dimmer",
-            "Mods/luisMint.AutomatePowerPipes/Pipes_Dimmest"
+            "Mods/luisMint.PoweredAutomation/Pipes_UnPowered",
+            "Mods/luisMint.PoweredAutomation/Pipes",
+            "Mods/luisMint.PoweredAutomation/Pipes_Dimmer",
+            "Mods/luisMint.PoweredAutomation/Pipes_Dimmest"
         ],
-        ["luisMint.AutomatePowerPipes_InputPipe"] =
+        ["luisMint.PoweredAutomation_InputPipe"] =
         [
-            "Mods/luisMint.AutomatePowerPipes/PipesInput_UnPowered",
-            "Mods/luisMint.AutomatePowerPipes/PipesInput",
-            "Mods/luisMint.AutomatePowerPipes/PipesInput_Dimmer",
-            "Mods/luisMint.AutomatePowerPipes/PipesInput_Dimmest"
+            "Mods/luisMint.PoweredAutomation/PipesInput_UnPowered",
+            "Mods/luisMint.PoweredAutomation/PipesInput",
+            "Mods/luisMint.PoweredAutomation/PipesInput_Dimmer",
+            "Mods/luisMint.PoweredAutomation/PipesInput_Dimmest"
         ],
-        ["luisMint.AutomatePowerPipes_OutputPipe"] =
+        ["luisMint.PoweredAutomation_OutputPipe"] =
         [
-            "Mods/luisMint.AutomatePowerPipes/PipesOutput_UnPowered",
-            "Mods/luisMint.AutomatePowerPipes/PipesOutput",
-            "Mods/luisMint.AutomatePowerPipes/PipesOutput_Dimmer",
-            "Mods/luisMint.AutomatePowerPipes/PipesOutput_Dimmest"
+            "Mods/luisMint.PoweredAutomation/PipesOutput_UnPowered",
+            "Mods/luisMint.PoweredAutomation/PipesOutput",
+            "Mods/luisMint.PoweredAutomation/PipesOutput_Dimmer",
+            "Mods/luisMint.PoweredAutomation/PipesOutput_Dimmest"
         ]
     };
 

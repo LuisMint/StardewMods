@@ -26,6 +26,10 @@
     "config.warn-for-missing-bridge-mod.desc": "Whether to log a warning on startup if you installed a custom-machine mod that requires a separate compatibility patch which isn't installed.",
     "config.power-required-machines-enabled.name": "Power-required machines",
     "config.power-required-machines-enabled.desc": "Whether certain high-value machines (Crystalarium, Auto-Grabber, Auto-Petter, Heavy Furnace, and others listed in the mod's config file) only automate while their own tile is within power range, instead of automating anywhere like other machines. Enabled by default as a deliberate balance choice.",
+    "config.connected-machine-location-power-callouts.name": "Unpowered machine location callout",
+    "config.connected-machine-location-power-callouts.desc": "Trigger callout for power-required machines that are connected to an active group but have NO power, gives general location of said machine",
+    "config.connected-machine-location-power-callout-interval-seconds.name": "Callout repeat interval (seconds)",
+    "config.connected-machine-location-power-callout-interval-seconds.desc": "Only used when Unpowered machine location callout above is enabled. How often, in real-world seconds, the location callout repeats for as long as a power-required machine remains without power.",
 
     // per-chest settings
     "config.title.chest-settings": "Chest settings",

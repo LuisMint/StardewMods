@@ -39,7 +39,7 @@ internal static class DwarfNoteGemScrollPatches
     private static readonly string[] RewardItemIds = ["(O)64", "(O)70", "(O)62"]; // Ruby, Jade, Aquamarine
 
     /// <summary>The <see cref="Farmer.modData"/> key on <see cref="Game1.MasterPlayer"/> tracking whether the reward has already been claimed. Deliberately global (not per-player), since it's a one-time find for the whole save, not one per player.</summary>
-    private const string ClaimedModDataKey = "luisMint.AutomatePowerPipes/DwarfNoteGemScrollClaimed";
+    private const string ClaimedModDataKey = "luisMint.PoweredAutomation/DwarfNoteGemScrollClaimed";
 
 
     /*********

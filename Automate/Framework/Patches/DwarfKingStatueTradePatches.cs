@@ -36,7 +36,7 @@ internal static class DwarfKingStatueTradePatches
     private const string RewardItemId = "(O)122"; // Dwarf Gadget
 
     /// <summary>The <see cref="SObject.modData"/> key on the statue tracking the <see cref="StardewValley.Stats.DaysPlayed"/> value it last traded on, so it only triggers once per statue per day.</summary>
-    private const string LastTradeDayModDataKey = "luisMint.AutomatePowerPipes/DwarfKingStatueTradeDay";
+    private const string LastTradeDayModDataKey = "luisMint.PoweredAutomation/DwarfKingStatueTradeDay";
 
 
     /*********

@@ -86,17 +86,6 @@ internal class MachineGroupFactory
     /// <summary>Build a storage manager for the given containers.</summary>
     private readonly Func<IContainer[], StorageManager> BuildStorage;
 
-    /// <summary>
-    /// MOD: added. Get whether a container's priority-tier category (plain chest, chest-backed hybrid,
-    /// or Powered Chest) currently allows it to automate at all — see <c>ModConfig.ChestsCanAutomate</c>/
-    /// <c>ModConfig.ChestHybridsCanAutomate</c>/<c>ModConfig.PoweredChestsCanAutomate</c>. Used during
-    /// GROUP FORMATION itself (see <see cref="GetMachineGroups"/>'s own remarks), not just as a read-time
-    /// filter on an already-built group — per direct user request, a disabled-category container should
-    /// never end up bundled into the same group as a real machine in the first place, even reached
-    /// indirectly through an enabled Powered Chest.
-    /// </summary>
-    private readonly Func<IContainer, bool> IsContainerCategoryEnabled;
-
     /// <summary>Encapsulates monitoring and logging.</summary>
     private readonly IMonitor Monitor;
 
@@ -117,9 +106,8 @@ internal class MachineGroupFactory
     /// <param name="powerRequiredMachineSystem">MOD: added. Encapsulates the "power-required machines" balance mechanic.</param>
     /// <param name="powerSiloSystem">MOD: added. Encapsulates the "power silo capacity" mechanic.</param>
     /// <param name="buildStorage">Build a storage manager for the given containers.</param>
-    /// <param name="isContainerCategoryEnabled">MOD: added. Get whether a container's priority-tier category currently allows it to automate at all — see <see cref="IsContainerCategoryEnabled"/>.</param>
     /// <param name="monitor">Encapsulates monitoring and logging.</param>
-    public MachineGroupFactory(Func<string, ModConfigMachine?> getMachineOverride, Func<string, ModConfigStorage?> getChestOverride, Func<bool> getChestsEnabledByDefault, Func<HashSet<string>> getWhitelistSignNames, Func<HashSet<string>> getBlacklistSignNames, Func<HashSet<string>> getWhitelistCategorySignNames, Func<HashSet<string>> getBlacklistCategorySignNames, Func<Dictionary<string, HashSet<string>>> getCustomCategories, PowerSystem powerSystem, PowerRequiredMachineSystem powerRequiredMachineSystem, PowerSiloSystem powerSiloSystem, Func<IContainer[], StorageManager> buildStorage, Func<IContainer, bool> isContainerCategoryEnabled, IMonitor monitor)
+    public MachineGroupFactory(Func<string, ModConfigMachine?> getMachineOverride, Func<string, ModConfigStorage?> getChestOverride, Func<bool> getChestsEnabledByDefault, Func<HashSet<string>> getWhitelistSignNames, Func<HashSet<string>> getBlacklistSignNames, Func<HashSet<string>> getWhitelistCategorySignNames, Func<HashSet<string>> getBlacklistCategorySignNames, Func<Dictionary<string, HashSet<string>>> getCustomCategories, PowerSystem powerSystem, PowerRequiredMachineSystem powerRequiredMachineSystem, PowerSiloSystem powerSiloSystem, Func<IContainer[], StorageManager> buildStorage, IMonitor monitor)
     {
         this.GetMachineOverride = getMachineOverride;
         this.GetChestOverride = getChestOverride;
@@ -133,7 +121,6 @@ internal class MachineGroupFactory
         this.PowerRequiredMachineSystem = powerRequiredMachineSystem; // MOD: added
         this.PowerSiloSystem = powerSiloSystem; // MOD: added
         this.BuildStorage = buildStorage;
-        this.IsContainerCategoryEnabled = isContainerCategoryEnabled; // MOD: added
         this.Monitor = monitor;
     }
 
@@ -554,26 +541,34 @@ internal class MachineGroupFactory
             }
         }
 
-        // step 5.6 (MOD: added): determine which connector roots touch at least one REAL (non-chest-
-        // like) machine — a Furnace, Keg, etc., as opposed to a Powered Chest (which is itself an
-        // IMachine, but chest-like — see MachineGroup.IsChestLikeMachine). Used in step 6 below to keep
-        // a disabled-category container from ever being grouped with a real machine, even indirectly
-        // through an enabled Powered Chest on the same connector network — per direct user request, this
-        // needs to happen at GROUP FORMATION time, not just as a read-time filter on an already-built
-        // group, since a disabled container should fail to even JOIN such a group in the first place.
-        // Its own separate pass (not inline in step 6) so the result doesn't depend on which order nodes
-        // happen to be visited in — a root is "tainted" the moment ANY real machine touches it, whether
-        // that machine or the disabled container is processed first.
-        HashSet<int> rootsWithRealMachine = new();
+        // step 5.6 (MOD: added): determine which OMNI-role connector roots touch at least one Powered
+        // Chest (a chest-like machine, see MachineGroup.IsChestLikeMachine) — used in step 6 below to
+        // keep a plain container from treating an Omni-conduit link to a Powered Chest as a valid
+        // connection. Per direct user request: a Powered Chest may only reach a plain container through
+        // an Input or Output conduit, never an Omni one — Omni is reserved for Powered-Chest-to-machine
+        // (and machine-to-machine/container) links. Its own separate pass so the result doesn't depend
+        // on node visitation order.
+        //
+        // MOD: removed — a SIMILAR pass used to also exclude a disabled-category container from any
+        // root touching a REAL machine at all (regardless of role), so it couldn't even join the same
+        // topological group. Per direct user request, that was too coarse: StorageManager already
+        // refuses to actually push/pull a disabled-category container at read time (see
+        // IsContainerCategoryEnabled's own remarks — its OWN filtered InputContainers/OutputContainers
+        // subsets simply never include it), so the group-formation-time exclusion wasn't preventing any
+        // additional item movement — it was only cutting the container off from OTHER things on the
+        // same network it should still be able to reach (e.g. other enabled containers, or a Powered
+        // Chest's own separate active push/pull). Removing it fixes that "overbleed" while the actual
+        // real-machine-can't-touch-a-disabled-container guarantee stays intact via StorageManager.
+        HashSet<int> omniRootsWithPoweredChest = new();
         for (int i = 0; i < nodes.Count; i++)
         {
-            if (nodes[i] is not IMachine machine0 || MachineGroup.IsChestLikeMachine(machine0))
+            if (nodes[i] is not IMachine chestLikeMachine || !MachineGroup.IsChestLikeMachine(chestLikeMachine))
                 continue;
 
             foreach (int j in GetTouchingNodeIndices(i))
             {
-                if (IsConnector(nodes[j]))
-                    rootsWithRealMachine.Add(Find(j));
+                if (IsConnector(nodes[j]) && connectorRoles[j] == ConnectorRole.Both)
+                    omniRootsWithPoweredChest.Add(Find(j));
             }
         }
 
@@ -612,12 +607,15 @@ internal class MachineGroupFactory
                 }
             }
 
-            // MOD: added — a disabled-category container (see IsContainerCategoryEnabled's own remarks)
-            // never joins a root that also touches a real machine, even indirectly through an enabled
-            // Powered Chest on the same network. Checked per-root, not per-node: the SAME container can
-            // still join a DIFFERENT root it also touches that has no real machine on it.
-            if (nodes[i] is IContainer disableableContainer && !this.IsContainerCategoryEnabled(disableableContainer))
-                touchedRoots.RemoveWhere(rootsWithRealMachine.Contains);
+            // MOD: added — a plain container (i.e. not itself a Powered Chest) never joins an Omni-role
+            // root that also touches a Powered Chest — see omniRootsWithPoweredChest's own remarks.
+            // Checked per-root like the check above, so a DIFFERENT root the same container touches via
+            // an Input or Output conduit is unaffected. A Powered Chest is exempt from this check on
+            // its OWN behalf (it's still added as a container normally elsewhere) — this only restricts
+            // what a PLAIN container may treat as a valid connection.
+            bool isPoweredChestItself = nodes[i] is IMachine selfMachine && MachineGroup.IsChestLikeMachine(selfMachine);
+            if (nodes[i] is IContainer && !isPoweredChestItself)
+                touchedRoots.RemoveWhere(omniRootsWithPoweredChest.Contains);
 
             if (touchedRoots.Count == 0)
             {

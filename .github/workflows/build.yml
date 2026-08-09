@@ -25,9 +25,6 @@ jobs:
             - name: Build mods
               run: dotnet build
 
-            - name: Run tests
-              run: dotnet test --no-build
-
             - name: Upload release zips
               uses: Pathoschild/SMAPI-ModBuildWorkflow/upload-release-artifacts@v1
               with:

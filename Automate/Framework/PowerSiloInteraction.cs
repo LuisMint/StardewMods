@@ -24,7 +24,7 @@ internal class PowerSiloInteraction
     ** Fields
     *********/
     /// <summary>The key this interaction is registered under — must match the <c>Action</c> value on the Power Silo's <c>Data/Buildings</c> <c>ActionTiles</c> entry.</summary>
-    public const string ActionKey = "luisMint.AutomatePowerPipes_PowerSiloInteract";
+    public const string ActionKey = "luisMint.PoweredAutomation_PowerSiloInteract";
 
     /// <summary>The power silo capacity system, used to read/write a Silo's current tier and total capacity.</summary>
     private readonly PowerSiloSystem PowerSiloSystem;
@@ -114,7 +114,7 @@ internal class PowerSiloInteraction
                 location.playSound("give_gift");
                 if (tierComplete)
                 {
-                    location.playSound("luisMint.AutomatePowerPipes_LowGrunt"); // MOD: added — a distinct cue for the moment a tier actually completes, layered on top of the "give_gift" every delivery already plays
+                    location.playSound("luisMint.PoweredAutomation_LowGrunt"); // MOD: added — a distinct cue for the moment a tier actually completes, layered on top of the "give_gift" every delivery already plays
                     int newTierIndex = tierIndex + 1;
 
                     // MOD: added — reaching the solar tier (delivering a Solar Panel here just consumes

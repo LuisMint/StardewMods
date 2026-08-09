@@ -64,10 +64,10 @@ internal class PowerRelaySystem
     public static readonly int MaxCumulativeBars = PowerRelaySystem.GetCumulativeRequiredForLevel(PowerRelaySystem.MaxBars);
 
     /// <summary>The <see cref="Building.modData"/> key storing how many raw shards a Relay has had delivered in total.</summary>
-    private const string ShardsDeliveredModDataKey = "luisMint.AutomatePowerPipes/RelayShardsDelivered";
+    private const string ShardsDeliveredModDataKey = "luisMint.PoweredAutomation/RelayShardsDelivered";
 
     /// <summary>The <see cref="Building.modData"/> key storing how many raw bars a Relay has had delivered in total.</summary>
-    private const string BarsDeliveredModDataKey = "luisMint.AutomatePowerPipes/RelayBarsDelivered";
+    private const string BarsDeliveredModDataKey = "luisMint.PoweredAutomation/RelayBarsDelivered";
 
 
     /*********

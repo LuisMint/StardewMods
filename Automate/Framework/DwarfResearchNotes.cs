@@ -15,19 +15,19 @@ internal static class DwarfResearchNotes
     ** Fields
     *********/
     /// <summary>Dwarf Research Note #1 ("Input Conduit")'s ID, matching its key in the <c>Mods/ichortower.SecretNoteFramework/Notes</c> asset.</summary>
-    public const string InputConduitNoteId = "luisMint.AutomatePowerPipes_DwarfNote_InputConduit";
+    public const string InputConduitNoteId = "luisMint.PoweredAutomation_DwarfNote_InputConduit";
 
     /// <summary>Dwarf Research Note #2 ("Output Conduit")'s ID, matching its key in the <c>Mods/ichortower.SecretNoteFramework/Notes</c> asset.</summary>
-    public const string OutputConduitNoteId = "luisMint.AutomatePowerPipes_DwarfNote_OutputConduit";
+    public const string OutputConduitNoteId = "luisMint.PoweredAutomation_DwarfNote_OutputConduit";
 
     /// <summary>Dwarf Research Note #3 ("Omni Conduit")'s ID, matching its key in the <c>Mods/ichortower.SecretNoteFramework/Notes</c> asset.</summary>
-    public const string OmniConduitNoteId = "luisMint.AutomatePowerPipes_DwarfNote_OmniConduit";
+    public const string OmniConduitNoteId = "luisMint.PoweredAutomation_DwarfNote_OmniConduit";
 
     /// <summary>Dwarf Research Note #4 ("Powered Chest - Power Coil")'s ID, matching its key in the <c>Mods/ichortower.SecretNoteFramework/Notes</c> asset.</summary>
-    public const string PoweredSystemsNoteId = "luisMint.AutomatePowerPipes_DwarfNote_PoweredSystems";
+    public const string PoweredSystemsNoteId = "luisMint.PoweredAutomation_DwarfNote_PoweredSystems";
 
     /// <summary>Dwarf Research Note #7 ("White/Black List Category Sign")'s ID, matching its key in the <c>Mods/ichortower.SecretNoteFramework/Notes</c> asset.</summary>
-    public const string CategorySignNoteId = "luisMint.AutomatePowerPipes_DwarfNote_CategorySign";
+    public const string CategorySignNoteId = "luisMint.PoweredAutomation_DwarfNote_CategorySign";
 
     /// <summary>The <see cref="Farmer.modData"/> key Secret Note Framework itself uses to track which notes a player has read, read directly since its own public API (<c>ichortower.SNF.API</c>) doesn't expose a read-check method.</summary>
     private const string SecretNoteFrameworkSeenNotesModDataKey = "ichortower.SecretNoteFramework/NotesSeen";

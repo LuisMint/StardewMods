@@ -34,7 +34,7 @@ internal class PoweredChestMachine : BaseMachine, IContainer, IChestLikeMachine,
     ** Fields
     *********/
     /// <summary>The qualified item ID of this custom chest.</summary>
-    public const string QualifiedItemId = "(BC)luisMint.AutomatePowerPipes_PoweredChest";
+    public const string QualifiedItemId = "(BC)luisMint.PoweredAutomation_PoweredChest";
 
     /// <summary>The chest's own real storage container.</summary>
     private readonly IContainer OwnContainer;

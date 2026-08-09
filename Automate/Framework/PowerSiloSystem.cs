@@ -65,7 +65,7 @@ internal class PowerSiloSystem
     internal const int SolarPanelsPerCapacityPoint = 5;
 
     /// <summary>The <see cref="Building.modData"/> key storing which tier a Power Silo has reached (an index into <see cref="GetTiers"/>).</summary>
-    private const string CapacityTierModDataKey = "luisMint.AutomatePowerPipes/CapacityTier";
+    private const string CapacityTierModDataKey = "luisMint.PoweredAutomation/CapacityTier";
 
     /// <summary>
     /// The <see cref="Building.modData"/> key storing how much of each of the CURRENT tier's
@@ -74,10 +74,10 @@ internal class PowerSiloSystem
     /// the first required item, 0 of the second). Reset whenever the tier advances (see
     /// <see cref="ResetDeliveryProgress"/>), since the next tier's requirements start fresh.
     /// </summary>
-    private const string TierProgressModDataKey = "luisMint.AutomatePowerPipes/TierProgress";
+    private const string TierProgressModDataKey = "luisMint.PoweredAutomation/TierProgress";
 
     /// <summary>The <see cref="SObject.modData"/> key storing when a Power Coil was placed (a <see cref="DateTime.Ticks"/> value), used to break ties for <see cref="RefreshCoilAllowance"/>'s oldest-first rule.</summary>
-    internal const string PlacementOrderModDataKey = "luisMint.AutomatePowerPipes/PlacementOrder";
+    internal const string PlacementOrderModDataKey = "luisMint.PoweredAutomation/PlacementOrder";
 
     /// <summary>
     /// The <see cref="SObject.modData"/> key storing whether a Power Coil is currently within capacity
@@ -87,7 +87,7 @@ internal class PowerSiloSystem
     /// mechanic existed, or before the first <see cref="RefreshCoilAllowance"/> call) is treated as
     /// powered, so nothing looks wrong before its first refresh.
     /// </summary>
-    internal const string CoilPoweredModDataKey = "luisMint.AutomatePowerPipes/CoilPowered";
+    internal const string CoilPoweredModDataKey = "luisMint.PoweredAutomation/CoilPowered";
 
     /// <summary>
     /// MOD: added. The <see cref="SObject.modData"/> key storing a Power Coil's own 1-based rank in the
@@ -97,7 +97,7 @@ internal class PowerSiloSystem
     /// mechanic existed, or before the first <see cref="RefreshCoilAllowance"/> call) means its rank
     /// isn't known yet — see <see cref="GetCoilRank"/>.
     /// </summary>
-    internal const string CoilRankModDataKey = "luisMint.AutomatePowerPipes/CoilRank";
+    internal const string CoilRankModDataKey = "luisMint.PoweredAutomation/CoilRank";
 
 
     /*********

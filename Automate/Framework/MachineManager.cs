@@ -215,6 +215,7 @@ internal class MachineManager
             getEnabled: () => this.Config().PowerRequiredMachinesEnabled,
             getMachineTypeNames: () => this.Config().PowerRequiredMachineNames,
             getGlobalCalloutsEnabled: () => this.Config().ConnectedMachineLocationPowerCallouts, // MOD: added
+            getCalloutIntervalSeconds: () => this.Config().ConnectedMachineLocationPowerCalloutIntervalSeconds, // MOD: added
             getLocationByKey: this.GetLocationByKey // MOD: added
         );
 
@@ -273,7 +274,6 @@ internal class MachineManager
             powerRequiredMachineSystem: powerRequiredMachineSystem, // MOD: added
             powerSiloSystem: powerSiloSystem, // MOD: added
             buildStorage: this.BuildStorage,
-            isContainerCategoryEnabled: this.IsContainerCategoryEnabled, // MOD: added
             monitor: monitor
         );
         this.Factory.Add(defaultFactory);

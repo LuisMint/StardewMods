@@ -25,7 +25,7 @@ internal static class CaveHoleAmbientEffect
     ** Fields
     *********/
     /// <summary>The light source's own deterministic ID (constant across every interior — each interior is its own location, so IDs never collide between them).</summary>
-    private const string LightId = "luisMint.AutomatePowerPipes_CaveHoleLantern";
+    private const string LightId = "luisMint.PoweredAutomation_CaveHoleLantern";
 
     /// <summary>The light's world pixel position — the geometric center of the lantern sprite's 2x2 footprint.</summary>
     private static readonly Vector2 LightPosition = new(12 * Game1.tileSize, 4 * Game1.tileSize);

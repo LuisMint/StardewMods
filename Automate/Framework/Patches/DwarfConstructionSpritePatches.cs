@@ -45,11 +45,11 @@ internal static class DwarfConstructionSpritePatches
     /// <summary>The <c>Data/Buildings</c> "Builder" value a structure must be tagged with for this to apply — matches <see cref="DwarfBuildMenuPatches"/>'s own constant of the same name.</summary>
     private const string BuilderName = "Dwarf";
 
-    /// <summary>The asset name of the Dwarf-reskinned <c>LooseSprites/Cursors</c> variant (loaded by the AutomatePowerPipes content pack from the user-provided <c>Cursors_Dwarf.png</c>).</summary>
-    private const string DwarfAssetName = "Mods/luisMint.AutomatePowerPipes/Cursors_Dwarf";
+    /// <summary>The asset name of the Dwarf-reskinned <c>LooseSprites/Cursors</c> variant (loaded by the PoweredAutomation content pack from the user-provided <c>Cursors_Dwarf.png</c>).</summary>
+    private const string DwarfAssetName = "Mods/luisMint.PoweredAutomation/Cursors_Dwarf";
 
-    /// <summary>The asset name of the single-tile ladder decoration (loaded by the AutomatePowerPipes content pack from the user-provided <c>DwarfLadder.png</c>, a 16x16 single tile).</summary>
-    private const string LadderAssetName = "Mods/luisMint.AutomatePowerPipes/DwarfLadder";
+    /// <summary>The asset name of the single-tile ladder decoration (loaded by the PoweredAutomation content pack from the user-provided <c>DwarfLadder.png</c>, a 16x16 single tile).</summary>
+    private const string LadderAssetName = "Mods/luisMint.PoweredAutomation/DwarfLadder";
 
     /// <summary>The ladder tile's full source rectangle — it's a dedicated single-tile image, not a region within a larger sheet.</summary>
     private static readonly Rectangle LadderSourceRect = new(0, 0, 16, 16);
@@ -67,7 +67,7 @@ internal static class DwarfConstructionSpritePatches
     private static bool TriedLoadingLadder;
 
     /// <summary>The <see cref="Building.modData"/> key storing the remaining-days value (<see cref="Building.daysOfConstructionLeft"/> or <see cref="Building.daysUntilUpgrade"/>) first observed for a building, used to hold off drawing the ladder tile until at least one in-game day has ticked since it started. Cleared once construction/upgrading ends so a later reconstruction starts fresh. Persisted (not an in-memory table) — see this class's own remarks for why.</summary>
-    private const string FirstObservedDaysModDataKey = "luisMint.AutomatePowerPipes/DwarfConstructionFirstObservedDays";
+    private const string FirstObservedDaysModDataKey = "luisMint.PoweredAutomation/DwarfConstructionFirstObservedDays";
 
 
     /*********
