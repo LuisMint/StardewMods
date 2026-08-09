@@ -32,6 +32,17 @@ public interface IStorage
     /// </summary>
     IContainer[] AllContainers { get; }
 
+    /// <summary>
+    /// MOD: added. The subset of <see cref="OutputContainers"/> the standard machine cycle may actually
+    /// draw ingredients from — narrower than <see cref="OutputContainers"/> itself (which only applies
+    /// connector-role filtering). A machine implementation that reads ingredient sources directly via
+    /// <see cref="IContainer"/> iteration (rather than through <see cref="GetItems"/>/<see cref="TryGetIngredient(Func{ITrackedStack,bool},int,out IConsumable)"/>/
+    /// <see cref="TryGetIngredient(IRecipe[],out IConsumable,out IRecipe)"/>) should use this instead of
+    /// <see cref="OutputContainers"/>, or it bypasses the same restrictions those methods enforce
+    /// internally.
+    /// </summary>
+    IContainer[] MachineOutputContainers { get; }
+
 
     /*********
     ** Public methods

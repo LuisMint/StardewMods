@@ -61,7 +61,7 @@ internal class DataBasedObjectMachine : GenericObjectMachine<SObject>
         // numeric whitelist/blacklist condition needs that method's own stack-clamping workaround to be
         // enforced here at all. See ItemFilteredContainer.AttemptAutoLoad's own remarks for why.
         bool addedInput = false;
-        foreach (IContainer container in input.OutputContainers)
+        foreach (IContainer container in input.MachineOutputContainers)
         {
             // MOD: added — vanilla's own AttemptAutoLoad checks a recipe's required count against ONE
             // inventory slot's own Stack at a time; it never combines several slots holding the same
@@ -243,7 +243,7 @@ internal class DataBasedObjectMachine : GenericObjectMachine<SObject>
             return;
 
         int maxToApply = 3;
-        foreach (IContainer container in input.OutputContainers)
+        foreach (IContainer container in input.MachineOutputContainers)
         {
             while (maxToApply > 0 && container.Inventory.ContainsId("(O)872"))
             {

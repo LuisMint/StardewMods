@@ -559,6 +559,14 @@ internal class MachineGroupFactory
         // same network it should still be able to reach (e.g. other enabled containers, or a Powered
         // Chest's own separate active push/pull). Removing it fixes that "overbleed" while the actual
         // real-machine-can't-touch-a-disabled-container guarantee stays intact via StorageManager.
+        //
+        // MOD: added — the GENERAL version of the same guarantee (a real machine can never touch ANY
+        // plain container or chest-backed hybrid directly, enabled or not, only a Powered Chest) lives
+        // there too now, for the same reason: it's a read-time restriction on StorageManager's own
+        // MachineInputContainers/MachineOutputContainers, not a group-formation-time exclusion, so a
+        // plain container still fully shares this topological group (still reachable by a Powered
+        // Chest's own AllContainers-based active pull/push) — it just isn't a valid target for the
+        // standard machine cycle specifically. See StorageManager.SetContainers's own remarks.
         HashSet<int> omniRootsWithPoweredChest = new();
         for (int i = 0; i < nodes.Count; i++)
         {

@@ -32,11 +32,8 @@ internal class StorageManager : IStorage
     /// </summary>
     private readonly Func<IContainer, bool> IsCategoryEnabled;
 
-    /// <summary>MOD: added. The subset of <see cref="InputContainers"/> usable by the standard machine push cycle (<see cref="TryPush"/>) — see <see cref="IsCategoryEnabled"/>.</summary>
+    /// <summary>MOD: added. The subset of <see cref="InputContainers"/> usable by the standard machine push cycle (<see cref="TryPush"/>) — see <see cref="IsCategoryEnabled"/>. Further restricted to Powered Chests only — see the filter in <see cref="SetContainers"/>.</summary>
     private IContainer[] MachineInputContainers;
-
-    /// <summary>MOD: added. The subset of <see cref="OutputContainers"/> usable by the standard machine pull cycle (<see cref="GetItems"/>) — see <see cref="IsCategoryEnabled"/>.</summary>
-    private IContainer[] MachineOutputContainers;
 
 
     /*********
@@ -50,6 +47,19 @@ internal class StorageManager : IStorage
 
     /// <inheritdoc />
     public IContainer[] AllContainers { get; private set; }
+
+    /// <summary>
+    /// MOD: added. The subset of <see cref="OutputContainers"/> usable by the standard machine pull
+    /// cycle — see <see cref="IsCategoryEnabled"/>. Further restricted to Powered Chests only, see the
+    /// filter in <see cref="SetContainers"/>. Exposed publicly (not just used internally by
+    /// <see cref="GetItems"/>/<see cref="TryGetIngredient(Func{ITrackedStack,bool},int,out IConsumable)"/>)
+    /// because <see cref="Machines.DataBasedObjectMachine"/> (the vanilla data-driven machine cycle —
+    /// covers most machines, including the Furnace) reads its ingredient sources directly through
+    /// <see cref="IContainer"/> iteration instead of going through any of this class's own methods, so
+    /// it needs the SAME filtered set those methods use internally or it would silently see (and pull
+    /// from) an ineligible container the standard cycle should never reach.
+    /// </summary>
+    public IContainer[] MachineOutputContainers { get; private set; }
 
 
     /*********
@@ -118,8 +128,21 @@ internal class StorageManager : IStorage
         // MOD: added — narrower subsets used ONLY by the standard machine push/pull cycle below
         // (TryPush/GetItems) — see IsCategoryEnabled's own remarks for why this is separate from
         // InputContainers/OutputContainers themselves.
-        this.MachineInputContainers = this.InputContainers.Where(this.IsCategoryEnabled).ToArray();
-        this.MachineOutputContainers = this.OutputContainers.Where(this.IsCategoryEnabled).ToArray();
+        //
+        // MOD: added a second filter — the standard cycle may only ever target a Powered Chest, never
+        // a plain container or chest-backed hybrid, regardless of which conduit (Input, Output, or
+        // Omni) connects them. A container and a real machine only ever end up sharing a group by both
+        // touching the same connector network (see MachineGroupFactory's own remarks on how groups are
+        // built) — nothing about that shared membership implies they're allowed to interact directly,
+        // and per direct user request they never should: a plain container may only ever be reached by
+        // a Powered Chest's own active pull/push (which reads AllContainers directly, unaffected by
+        // this — see AllContainers's own remarks). Uses GetContainerPriorityTier() rather than a type
+        // check so it still works correctly through a RoleRestrictedContainer wrapper, which forwards
+        // the tier from its real underlying container.
+        static bool IsPoweredChestTier(IContainer container) => container.GetContainerPriorityTier() == ContainerPriorityTiers.PoweredChest;
+
+        this.MachineInputContainers = this.InputContainers.Where(this.IsCategoryEnabled).Where(IsPoweredChestTier).ToArray();
+        this.MachineOutputContainers = this.OutputContainers.Where(this.IsCategoryEnabled).Where(IsPoweredChestTier).ToArray();
 
         this.FirstNonPreferredInput = this.MachineInputContainers.Length;
         for (int i = 0; i < this.MachineInputContainers.Length; i++)
