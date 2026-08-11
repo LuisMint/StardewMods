@@ -12,7 +12,8 @@
                 "{{ModId}}_BlacklistSign": "(BC)38 1 428 1 769 10/Field/{{ModId}}_BlacklistSign 1/false//",
                 "{{ModId}}_WhitelistCategorySign": "(BC){{ModId}}_WhitelistSign 1 336 5/Field/{{ModId}}_WhitelistCategorySign 1/false//",
                 "{{ModId}}_BlacklistCategorySign": "(BC){{ModId}}_BlacklistSign 1 336 5/Field/{{ModId}}_BlacklistCategorySign 1/false//",
-                "{{ModId}}_PoweredChest": "334 3 336 3 787 1 338 10 (BC)130 1/Field/{{ModId}}_PoweredChest 1/false//"
+                "{{ModId}}_PoweredChest": "334 3 336 3 787 1 338 10 (BC)130 1/Field/{{ModId}}_PoweredChest 1/false//",
+                "{{ModId}}_AutoCrafter": "709 15 334 3 335 1 338 5/Field/{{ModId}}_AutoCrafter 1/true//"
             }
         }
     ]

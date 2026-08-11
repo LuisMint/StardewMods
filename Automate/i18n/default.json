@@ -20,6 +20,8 @@
     "config.automation-interval.desc": "Only used when event-based automation above is disabled. The number of ticks between each automation process (60 for once per second, 120 for every two seconds, etc).",
     "config.min-minutes-for-fairy-dust.name": "Min minutes for fairy dust",
     "config.min-minutes-for-fairy-dust.desc": "The minimum machine processing time in minutes for which to apply fairy dust. For example, setting this to 30 minutes means fairy dust won't be applied if the machine would finish in 20 minutes without it.",
+    "config.automation-experience-percent.name": "Automation experience %",
+    "config.automation-experience-percent.desc": "What percentage of the normal skill experience is granted when Automate collects output automatically, instead of you collecting it by hand. Set to 0 for no experience from automation (the default), or 100 for the same experience as collecting it yourself.",
     "config.toggle-overlay-key.name": "Toggle overlay key",
     "config.toggle-overlay-key.desc": "The keys which toggle the automation overlay.",
     "config.warn-for-missing-bridge-mod.name": "Warn for missing bridge mod",

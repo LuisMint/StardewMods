@@ -20,6 +20,9 @@ internal class CrabPotMachine : GenericObjectMachine<CrabPot>
     /// <summary>Encapsulates monitoring and logging.</summary>
     private readonly IMonitor Monitor;
 
+    /// <summary>MOD: added. What percentage (0-100) of the fishing experience a manual crab pot check would grant is actually granted when Automate collects it automatically — see <see cref="Models.ModConfig.AutomationExperiencePercent"/>.</summary>
+    private readonly Func<int> GetExperiencePercent;
+
     /// <summary>The qualified fish IDs for which any crab pot has logged an 'invalid fish data' error.</summary>
     private static readonly HashSet<string> LoggedInvalidDataErrors = [];
 
@@ -32,10 +35,12 @@ internal class CrabPotMachine : GenericObjectMachine<CrabPot>
     /// <param name="location">The location containing the machine.</param>
     /// <param name="monitor">Encapsulates monitoring and logging.</param>
     /// <param name="tile">The tile covered by the machine.</param>
-    public CrabPotMachine(CrabPot machine, GameLocation location, Vector2 tile, IMonitor monitor)
+    /// <param name="getExperiencePercent">MOD: added. What percentage (0-100) of the fishing experience a manual crab pot check would grant is actually granted when Automate collects it automatically.</param>
+    public CrabPotMachine(CrabPot machine, GameLocation location, Vector2 tile, IMonitor monitor, Func<int> getExperiencePercent)
         : base(machine, location, tile)
     {
         this.Monitor = monitor;
+        this.GetExperiencePercent = getExperiencePercent;
     }
 
     /// <inheritdoc />
@@ -102,7 +107,10 @@ internal class CrabPotMachine : GenericObjectMachine<CrabPot>
         Farmer owner = this.GetOwner();
 
         // add fishing XP
-        owner.gainExperience(Farmer.fishingSkill, 5);
+        // MOD: changed — scaled by GetExperiencePercent, see Models.ModConfig.AutomationExperiencePercent's own remarks.
+        int scaledExperience = (int)Math.Round(5 * (this.GetExperiencePercent() / 100.0));
+        if (scaledExperience > 0)
+            owner.gainExperience(Farmer.fishingSkill, scaledExperience);
 
         // mark fish caught for achievements and stats
         IDictionary<string, string> fishData = DataLoader.Fish(Game1.content);

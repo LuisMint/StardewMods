@@ -92,6 +92,21 @@
                     "SpriteIndex": 0,
                     "ContextTags": null,
                     "CustomFields": null
+                },
+
+                "{{ModId}}_AutoCrafter": {
+                    "Name": "AutoCrafter",
+                    "DisplayName": "Auto Crafter",
+                    "Description": "Requires power. Right-click with a known recipe's item in hand to assign it, pulls the ingredients from a connected Powered Chest, and crafts automatically.",
+                    "Price": 200,
+                    "Fragility": 0,
+                    "CanBePlacedOutdoors": true,
+                    "CanBePlacedIndoors": true,
+                    "IsLamp": false,
+                    "Texture": "Mods/{{ModId}}/AutoCrafter",
+                    "SpriteIndex": 0,
+                    "ContextTags": null,
+                    "CustomFields": null
                 }
             }
         }

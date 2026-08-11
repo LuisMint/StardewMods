@@ -122,6 +122,16 @@
         },
         {
             "Action": "Load",
+            "Target": "Mods/{{ModId}}/AutoCrafter",
+            "FromFile": "Pipes/AutoCrafter.png"
+        },
+        {
+            "Action": "Load",
+            "Target": "Mods/{{ModId}}/AutoCrafter_UnPowered",
+            "FromFile": "Pipes/AutoCrafter_UnPowered.png"
+        },
+        {
+            "Action": "Load",
             "Target": "Mods/{{ModId}}/NoPowerIcon",
             "FromFile": "Pipes/NoPowerIcon.png"
         },

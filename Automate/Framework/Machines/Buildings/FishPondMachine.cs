@@ -1,3 +1,4 @@
+using System;
 using StardewValley;
 using StardewValley.Buildings;
 using SObject = StardewValley.Object;
@@ -9,13 +10,24 @@ namespace Pathoschild.Stardew.Automate.Framework.Machines.Buildings;
 internal class FishPondMachine : BaseMachineForBuilding<FishPond>
 {
     /*********
+    ** Fields
+    *********/
+    /// <summary>MOD: added. What percentage (0-100) of the fishing experience a manual fish pond harvest would grant is actually granted when Automate collects it automatically — see <see cref="Models.ModConfig.AutomationExperiencePercent"/>.</summary>
+    private readonly Func<int> GetExperiencePercent;
+
+
+    /*********
     ** Public methods
     *********/
     /// <summary>Construct an instance.</summary>
     /// <param name="pond">The underlying fish pond.</param>
     /// <param name="location">The location which contains the machine.</param>
-    public FishPondMachine(FishPond pond, GameLocation location)
-        : base(pond, location, BaseMachine.GetTileAreaFor(pond)) { }
+    /// <param name="getExperiencePercent">MOD: added. What percentage (0-100) of the fishing experience a manual fish pond harvest would grant is actually granted when Automate collects it automatically.</param>
+    public FishPondMachine(FishPond pond, GameLocation location, Func<int> getExperiencePercent)
+        : base(pond, location, BaseMachine.GetTileAreaFor(pond))
+    {
+        this.GetExperiencePercent = getExperiencePercent;
+    }
 
     /// <inheritdoc />
     public override MachineState GetState()
@@ -53,11 +65,13 @@ internal class FishPondMachine : BaseMachineForBuilding<FishPond>
         this.Machine.output.Value = null;
 
         // add fishing XP
+        // MOD: changed — scaled by GetExperiencePercent, see Models.ModConfig.AutomationExperiencePercent's own remarks.
         int addedExperience = item is SObject obj
             ? (int)(obj.sellToStorePrice() * (double)FishPond.HARVEST_OUTPUT_EXP_MULTIPLIER)
             : 0;
 
-        this.GetOwner().gainExperience(Farmer.fishingSkill, addedExperience + FishPond.HARVEST_BASE_EXP);
-
+        int scaledExperience = (int)Math.Round((addedExperience + FishPond.HARVEST_BASE_EXP) * (this.GetExperiencePercent() / 100.0));
+        if (scaledExperience > 0)
+            this.GetOwner().gainExperience(Farmer.fishingSkill, scaledExperience);
     }
 }

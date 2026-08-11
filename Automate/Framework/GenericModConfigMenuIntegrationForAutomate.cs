@@ -112,6 +112,15 @@ internal class GenericModConfigMenuIntegrationForAutomate : IGenericModConfigMen
                 max: 3000,
                 interval: 10
             )
+            .AddNumberField(
+                name: I18n.Config_AutomationExperiencePercent_Name,
+                tooltip: I18n.Config_AutomationExperiencePercent_Desc,
+                get: config => config.AutomationExperiencePercent,
+                set: (config, value) => config.AutomationExperiencePercent = (int)value,
+                min: 0,
+                max: 100,
+                interval: 1
+            )
             .AddCheckbox(
                 name: I18n.Config_WarnForMissingBridgeMod_Name,
                 tooltip: I18n.Config_WarnForMissingBridgeMod_Desc,
@@ -348,6 +357,7 @@ internal class GenericModConfigMenuIntegrationForAutomate : IGenericModConfigMen
         // other object machines
         machineIds[BaseMachine.GetDefaultMachineId<CrabPotMachine>()] = () => this.GetMachineNameFromItemId("(O)710");
         machineIds[BaseMachine.GetDefaultMachineId<FeedHopperMachine>()] = () => this.GetMachineNameFromItemId("(BC)99");
+        machineIds[BaseMachine.GetDefaultMachineId<AutoCrafterMachine>()] = () => this.GetMachineNameFromItemId(AutoCrafterMachine.QualifiedItemId);
         // MOD: removed the AutoGrabberMachine and MiniShippingBinMachine entries for the same reason as
         // JunimoHutMachine above — both are plain IContainers now, not IMachines.
 

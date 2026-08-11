@@ -98,13 +98,19 @@ internal class AutomationFactory : IAutomationFactory
 
             case "(O)710":
                 if (obj is CrabPot crabPot)
-                    return new CrabPotMachine(crabPot, location, tile, this.Monitor);
+                    return new CrabPotMachine(crabPot, location, tile, this.Monitor, () => this.Config().AutomationExperiencePercent);
                 break;
+
+            // MOD: added — must be intercepted here, before the Data/Machines fallback below, since the
+            // Auto Crafter deliberately has no Data/Machines entry of its own (see AutoCrafterPatches's
+            // own remarks for why).
+            case AutoCrafterMachine.QualifiedItemId:
+                return new AutoCrafterMachine(obj, location, tile);
         }
 
         // machine in Data/Machines
         if (obj.GetMachineData() != null)
-            return new DataBasedObjectMachine(obj, location, tile, () => this.Config().MinMinutesForFairyDust);
+            return new DataBasedObjectMachine(obj, location, tile, () => this.Config().MinMinutesForFairyDust, () => this.Config().AutomationExperiencePercent);
 
         // connector
         // MOD: changed from a bool IsConnector(...) check to a role-aware GetConnectorRole(...) lookup.
@@ -168,7 +174,7 @@ internal class AutomationFactory : IAutomationFactory
         switch (building)
         {
             case FishPond pond:
-                return new FishPondMachine(pond, location);
+                return new FishPondMachine(pond, location, () => this.Config().AutomationExperiencePercent);
 
             // MOD: changed — no longer resolves any per-item-type config (see JunimoHutMachine's own
             // remarks for why): it's now a chest-backed hybrid like the others in this fork, so what

@@ -9,6 +9,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Pathoschild.Stardew.Automate.Framework;
 using Pathoschild.Stardew.Automate.Framework.Commands;
+using Pathoschild.Stardew.Automate.Framework.Machines.Objects;
 using Pathoschild.Stardew.Automate.Framework.Models;
 using Pathoschild.Stardew.Automate.Framework.Patches;
 using Pathoschild.Stardew.Common;
@@ -313,6 +314,35 @@ internal class ModEntry : Mod
             getPoweredTiles: location => this.MachineManager.GetMachineDataFor(location)?.PoweredTiles
         );
         PowerRequiredMachinePatches.Apply(harmony);
+
+        // MOD: added, temporary diagnostic — see AutoCrafterMachine.Monitor's own remarks.
+        AutoCrafterMachine.Initialize(this.Monitor);
+
+        AutoCrafterPatches.Initialize(
+            getSystem: () => this.MachineManager.Factory.PowerRequiredMachineSystem,
+            getPoweredTiles: location => this.MachineManager.GetMachineDataFor(location)?.PoweredTiles,
+            notifyMachineMightBeReady: (location, tile) =>
+            {
+                if (Context.IsWorldReady && this.EnableAutomation && this.Config.UseEventBasedAutomation)
+                    this.ScheduleInputFeedsFor(location, tile);
+            }
+        );
+        AutoCrafterPatches.Apply(harmony);
+
+        // MOD: added — see MachineHarvestedPatches's own remarks. Fixes a gap affecting every machine
+        // (not just the Auto Crafter): a machine emptied by hand — usually because its output chest was
+        // full when it finished, so the player grabbed the item directly — never notified automation that
+        // it could now accept new input, leaving it stuck until an unrelated event or the periodic
+        // backstop scan eventually rechecked it.
+        MachineHarvestedPatches.Initialize(
+            getUseEventBasedAutomation: () => this.Config.UseEventBasedAutomation,
+            notifyMachineMightBeReady: (location, tile) =>
+            {
+                if (Context.IsWorldReady && this.EnableAutomation && this.Config.UseEventBasedAutomation)
+                    this.ScheduleInputFeedsFor(location, tile);
+            }
+        );
+        MachineHarvestedPatches.Apply(harmony);
 
         PowerRangePreviewPatches.Initialize(
             getRangeDistance: () => this.Config.PowerRangeDistance

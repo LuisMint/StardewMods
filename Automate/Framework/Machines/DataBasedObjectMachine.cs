@@ -19,6 +19,9 @@ internal class DataBasedObjectMachine : GenericObjectMachine<SObject>
     /// <summary>The minimum machine processing time in minutes for which to apply fairy dust.</summary>
     private readonly Func<int> MinMinutesForFairyDust;
 
+    /// <summary>MOD: added. What percentage (0-100) of the experience this machine would normally grant on harvest is actually granted when Automate collects it automatically — see <see cref="Models.ModConfig.AutomationExperiencePercent"/>.</summary>
+    private readonly Func<int> GetExperiencePercent;
+
 
     /*********
     ** Public methods
@@ -28,10 +31,12 @@ internal class DataBasedObjectMachine : GenericObjectMachine<SObject>
     /// <param name="location">The location containing the machine.</param>
     /// <param name="tile">The tile covered by the machine.</param>
     /// <param name="minMinutesForFairyDust">The minimum machine processing time in minutes for which to apply fairy dust.</param>
-    public DataBasedObjectMachine(SObject machine, GameLocation location, Vector2 tile, Func<int> minMinutesForFairyDust)
+    /// <param name="getExperiencePercent">MOD: added. What percentage (0-100) of the experience this machine would normally grant on harvest is actually granted when Automate collects it automatically.</param>
+    public DataBasedObjectMachine(SObject machine, GameLocation location, Vector2 tile, Func<int> minMinutesForFairyDust, Func<int> getExperiencePercent)
         : base(machine, location, tile, BaseMachine.GetDefaultMachineId(machine.Name))
     {
         this.MinMinutesForFairyDust = minMinutesForFairyDust;
+        this.GetExperiencePercent = getExperiencePercent;
     }
 
     /// <inheritdoc />
@@ -160,6 +165,9 @@ internal class DataBasedObjectMachine : GenericObjectMachine<SObject>
             }
 
             // grant any experience
+            // MOD: changed — scaled by GetExperiencePercent, since automated collection defaults to 0%
+            // (no experience) instead of the full amount a manual harvest would grant — see
+            // Models.ModConfig.AutomationExperiencePercent's own remarks.
             if (machineData?.ExperienceGainOnHarvest != null)
             {
                 string[] expSplit = machineData.ExperienceGainOnHarvest.Split(' ');
@@ -169,7 +177,11 @@ internal class DataBasedObjectMachine : GenericObjectMachine<SObject>
                     if (skill != -1 && expSplit.Length > i + 1)
                     {
                         if (int.TryParse(expSplit[i + 1], out int amount))
-                            Game1.player.gainExperience(skill, amount);
+                        {
+                            int scaledAmount = (int)Math.Round(amount * (this.GetExperiencePercent() / 100.0));
+                            if (scaledAmount > 0)
+                                Game1.player.gainExperience(skill, scaledAmount);
+                        }
                     }
                 }
             }

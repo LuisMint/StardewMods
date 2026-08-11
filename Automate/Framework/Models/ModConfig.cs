@@ -184,7 +184,8 @@ internal class ModConfig
         "Crystalarium",
         "AutoGrabber",
         "AutoPetter",
-        "HeavyFurnace"
+        "HeavyFurnace",
+        "AutoCrafter"
     };
 
     /// <summary>
@@ -620,6 +621,17 @@ internal class ModConfig
 
     /// <summary>The minimum machine processing time in minutes for which to apply fairy dust.</summary>
     public int MinMinutesForFairyDust { get; set; } = 20;
+
+    /// <summary>
+    /// MOD: added, per direct request. What percentage (0-100) of the skill experience a machine/action
+    /// would normally grant on harvest is actually granted when Automate collects it automatically,
+    /// instead of the player collecting it by hand — see the three grant sites this scales:
+    /// <see cref="Machines.DataBasedObjectMachine"/> (vanilla <c>Data/Machines</c> ExperienceGainOnHarvest,
+    /// e.g. Bee Houses/Recycling Machines), <see cref="Machines.Objects.CrabPotMachine"/> (fishing XP), and
+    /// <see cref="Machines.Buildings.FishPondMachine"/> (fishing XP). Defaults to 0 — automation grants no
+    /// experience at all unless raised.
+    /// </summary>
+    public int AutomationExperiencePercent { get; set; } = 0;
 
     /// <summary>
     /// MOD: added. Whether <see cref="ActionDelaySeconds"/> in this file takes effect. Per direct user
