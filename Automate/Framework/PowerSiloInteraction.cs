@@ -29,8 +29,8 @@ internal class PowerSiloInteraction
     /// <summary>The power silo capacity system, used to read/write a Silo's current tier and total capacity.</summary>
     private readonly PowerSiloSystem PowerSiloSystem;
 
-    /// <summary>Get the ordered capacity tiers a Power Silo progresses through.</summary>
-    private readonly Func<List<PowerSiloTierConfig>> GetTiers;
+    /// <summary>MOD: changed — now resolved per Power Silo building, since each Silo rolls its own independent tier requirements (see <see cref="PowerSiloTierRoller"/>'s own remarks).</summary>
+    private readonly Func<Building, List<PowerSiloTierConfig>> GetTiers;
 
 
     /*********
@@ -38,8 +38,8 @@ internal class PowerSiloInteraction
     *********/
     /// <summary>Construct an instance.</summary>
     /// <param name="powerSiloSystem">The power silo capacity system, used to read/write a Silo's current tier and total capacity.</param>
-    /// <param name="getTiers">Get the ordered capacity tiers a Power Silo progresses through.</param>
-    public PowerSiloInteraction(PowerSiloSystem powerSiloSystem, Func<List<PowerSiloTierConfig>> getTiers)
+    /// <param name="getTiers">Get the ordered capacity tiers for a specific Power Silo building.</param>
+    public PowerSiloInteraction(PowerSiloSystem powerSiloSystem, Func<Building, List<PowerSiloTierConfig>> getTiers)
     {
         this.PowerSiloSystem = powerSiloSystem;
         this.GetTiers = getTiers;
@@ -67,7 +67,7 @@ internal class PowerSiloInteraction
         if (silo is null)
             return false;
 
-        List<PowerSiloTierConfig> tiers = this.GetTiers();
+        List<PowerSiloTierConfig> tiers = this.GetTiers(silo);
         if (tiers.Count == 0)
             return false;
 

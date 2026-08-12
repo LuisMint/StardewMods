@@ -38,8 +38,8 @@ internal class PowerSiloSystem
     /// <summary>Get the <c>buildingType</c> ID(s) that count as a Power Silo.</summary>
     private readonly Func<HashSet<string>> GetSiloBuildingNames;
 
-    /// <summary>Get the ordered capacity tiers a Power Silo progresses through.</summary>
-    private readonly Func<List<PowerSiloTierConfig>> GetTiers;
+    /// <summary>MOD: changed — now resolved per Power Silo building (each Silo rolls its own independent tier requirements — see <see cref="PowerSiloTierRoller"/>'s own remarks), not once for the whole save.</summary>
+    private readonly Func<Building, List<PowerSiloTierConfig>> GetTiers;
 
     /// <summary>Get the Power Coil capacity available with no Power Silo built at all.</summary>
     private readonly Func<int> GetBaseCapacity;
@@ -113,12 +113,12 @@ internal class PowerSiloSystem
     /// <summary>Construct an instance.</summary>
     /// <param name="getEnabled">Get whether the power silo capacity mechanic is currently enabled.</param>
     /// <param name="getSiloBuildingNames">Get the <c>buildingType</c> ID(s) that count as a Power Silo.</param>
-    /// <param name="getTiers">Get the ordered capacity tiers a Power Silo progresses through.</param>
+    /// <param name="getTiers">Get the ordered capacity tiers for a specific Power Silo building.</param>
     /// <param name="getBaseCapacity">Get the Power Coil capacity available with no Power Silo built at all.</param>
     /// <param name="getSourceNames">Get the item names/IDs that count as a Power Coil for capacity purposes.</param>
     /// <param name="getSolarPanelNames">MOD: added. Get the item names/IDs that count as a Solar Panel for the solar tier's connected-panel bonus.</param>
     /// <param name="getPoweredTilesForLocation">MOD: added. Get a location's currently-powered tiles, or <c>null</c> if the power system itself is disabled.</param>
-    public PowerSiloSystem(Func<bool> getEnabled, Func<HashSet<string>> getSiloBuildingNames, Func<List<PowerSiloTierConfig>> getTiers, Func<int> getBaseCapacity, Func<HashSet<string>> getSourceNames, Func<HashSet<string>> getSolarPanelNames, Func<GameLocation, IReadOnlySet<Vector2>?> getPoweredTilesForLocation)
+    public PowerSiloSystem(Func<bool> getEnabled, Func<HashSet<string>> getSiloBuildingNames, Func<Building, List<PowerSiloTierConfig>> getTiers, Func<int> getBaseCapacity, Func<HashSet<string>> getSourceNames, Func<HashSet<string>> getSolarPanelNames, Func<GameLocation, IReadOnlySet<Vector2>?> getPoweredTilesForLocation)
     {
         this.GetEnabledFromConfig = getEnabled;
         this.GetSiloBuildingNames = getSiloBuildingNames;
@@ -202,8 +202,7 @@ internal class PowerSiloSystem
         int total = Math.Max(0, this.GetBaseCapacity());
 
         HashSet<string> siloBuildingNames = this.GetSiloBuildingNames();
-        List<PowerSiloTierConfig> tiers = this.GetTiers();
-        if (siloBuildingNames.Count == 0 || tiers.Count == 0)
+        if (siloBuildingNames.Count == 0)
             return total;
 
         foreach (GameLocation location in CommonHelper.GetLocations())
@@ -219,6 +218,14 @@ internal class PowerSiloSystem
                 // same reason). Without this, a newly-queued Silo would grant capacity a full day
                 // before it's actually standing.
                 if (building.daysOfConstructionLeft.Value > 0)
+                    continue;
+
+                // MOD: changed — resolved PER Silo now, since each one rolls its own independent tier
+                // requirements (see PowerSiloTierRoller's own remarks); CapacityGranted/GrantsSolarBonus
+                // themselves are unaffected by the roll (only RequiredItems is), so this doesn't change
+                // what capacity a given tier level grants, just which specific Silo's own list it reads.
+                List<PowerSiloTierConfig> tiers = this.GetTiers(building);
+                if (tiers.Count == 0)
                     continue;
 
                 int tier = Math.Clamp(this.GetTier(building), 0, tiers.Count - 1);

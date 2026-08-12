@@ -224,7 +224,7 @@ internal class MachineManager
         PowerSiloSystem powerSiloSystem = new(
             getEnabled: () => this.Config().PowerSiloSystemEnabled,
             getSiloBuildingNames: () => this.Config().PowerSiloBuildingNames,
-            getTiers: () => powerSiloTierRoller.GetEffectiveTiers(),
+            getTiers: silo => powerSiloTierRoller.GetEffectiveTiers(silo),
             getBaseCapacity: () => this.Config().PowerSiloBaseCapacity,
             getSourceNames: () => this.Config().PowerSourceNames,
             getSolarPanelNames: () => this.Config().PowerSiloSolarPanelNames, // MOD: added

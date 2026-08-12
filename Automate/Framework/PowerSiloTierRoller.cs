@@ -3,8 +3,10 @@ using System.Collections.Generic;
 using System.Linq;
 using Newtonsoft.Json;
 using Pathoschild.Stardew.Automate.Framework.Models;
+using Pathoschild.Stardew.Common;
 using StardewModdingAPI;
 using StardewValley;
+using StardewValley.Buildings;
 
 namespace Pathoschild.Stardew.Automate.Framework;
 
@@ -13,13 +15,21 @@ namespace Pathoschild.Stardew.Automate.Framework;
 /// concrete effective tier list — every tier with a pool gets its <see cref="PowerSiloTierConfig.RequiredItems"/>
 /// replaced by a ONE-TIME roll (one random option per <see cref="PowerSiloSlotPool"/>, with a random
 /// count within that option's own range), so requirements feel varied between saves without changing
-/// every time the config is read. The roll happens once per save and is persisted (see
-/// <see cref="RolledRequirementsModDataKey"/>), so reloading the same save always sees the same
-/// requirements it already showed the player, rather than re-rolling out from under them.
+/// every time the config is read. The roll happens once per Power Silo BUILDING and is persisted on
+/// that specific building (see <see cref="RolledRequirementsModDataKey"/>), so reloading the same save
+/// always sees the same requirements it already showed the player for each Silo, rather than
+/// re-rolling out from under them.
 ///
-/// Deliberately global (stored on <see cref="Game1.MasterPlayer"/>, not per-player) since every Power
-/// Silo in the save shares the exact same tier progression regardless of which player built or is
-/// feeding it — a per-player roll would mean two players' Silos disagreeing about what tier 2 costs.
+/// MOD: changed, per direct request — rolled per Power Silo BUILDING now, not once globally for the
+/// whole save. The previous design stored a single save-wide roll on <see cref="Game1.MasterPlayer"/>
+/// so every Silo agreed on tier costs regardless of which player fed it — but that also meant every
+/// Silo in the save was IDENTICAL to every other one, which defeats the point of rolling requirements
+/// at all if a player builds more than one. Storing the roll on the Silo <see cref="Building"/>'s own
+/// <see cref="Building.modData"/> instead (the same place <see cref="PowerSiloSystem"/> already stores
+/// that Silo's own tier/delivery progress) keeps each Silo's requirements independent of every OTHER
+/// Silo, while still being the same regardless of which player is looking at or feeding that ONE Silo —
+/// multiplayer players still can't disagree about what a given Silo wants, they just no longer see the
+/// same list on a DIFFERENT Silo.
 ///
 /// Everything downstream (<see cref="PowerSiloSystem"/>, <see cref="PowerSiloInteraction"/>,
 /// <see cref="PowerSiloMenu"/>, <see cref="Patches.PowerSiloCapPatches"/>) reads the result of
@@ -37,11 +47,11 @@ internal class PowerSiloTierRoller
     /// <summary>Get the randomized pools, index-aligned with <see cref="GetBaseTiers"/> — a <c>null</c> entry (or a list shorter than the base tiers) leaves the corresponding tier(s) using their fixed <see cref="PowerSiloTierConfig.RequiredItems"/> unchanged.</summary>
     private readonly Func<List<PowerSiloTierPool>?> GetTierPools;
 
-    /// <summary>The <see cref="Farmer.modData"/> key on <see cref="Game1.MasterPlayer"/> storing this save's already-rolled requirements, keyed by tier index — see this class's own remarks for why it's global rather than per-player.</summary>
+    /// <summary>MOD: changed — now a <see cref="Building.modData"/> key on the specific Power Silo, not <see cref="Farmer.modData"/> on <see cref="Game1.MasterPlayer"/> — storing this Silo's already-rolled requirements, keyed by tier index. See this class's own remarks for why it moved from a save-wide key to a per-building one.</summary>
     private const string RolledRequirementsModDataKey = "luisMint.PoweredAutomation/PowerSiloRolledRequirements";
 
-    /// <summary>The effective tier list computed for the current save, cached until <see cref="Reset"/> is called.</summary>
-    private List<PowerSiloTierConfig>? CachedEffectiveTiers;
+    /// <summary>MOD: changed — now keyed per Silo <see cref="Building"/> instead of a single save-wide value, so each Silo's own effective tier list is cached independently. Cleared entirely by <see cref="Reset"/>.</summary>
+    private readonly Dictionary<Building, List<PowerSiloTierConfig>> CachedEffectiveTiersBySilo = new();
 
 
     /*********
@@ -56,11 +66,12 @@ internal class PowerSiloTierRoller
         this.GetTierPools = getTierPools;
     }
 
-    /// <summary>Get the effective tier list — the base tiers with any pooled tier's <see cref="PowerSiloTierConfig.RequiredItems"/> swapped out for this save's already-rolled (or freshly rolled, if this is the first call this save) result. Cheap after the first call per save.</summary>
-    public List<PowerSiloTierConfig> GetEffectiveTiers()
+    /// <summary>Get a Power Silo's effective tier list — the base tiers with any pooled tier's <see cref="PowerSiloTierConfig.RequiredItems"/> swapped out for THIS Silo's already-rolled (or freshly rolled, if this is the first call for it) result. Cheap after the first call per Silo.</summary>
+    /// <param name="silo">The Power Silo building to get (or roll) requirements for.</param>
+    public List<PowerSiloTierConfig> GetEffectiveTiers(Building silo)
     {
-        if (this.CachedEffectiveTiers is not null)
-            return this.CachedEffectiveTiers;
+        if (this.CachedEffectiveTiersBySilo.TryGetValue(silo, out List<PowerSiloTierConfig>? cached))
+            return cached;
 
         List<PowerSiloTierConfig> baseTiers = this.GetBaseTiers();
         List<PowerSiloTierPool>? pools = this.GetTierPools();
@@ -72,7 +83,7 @@ internal class PowerSiloTierRoller
             return baseTiers;
         }
 
-        Dictionary<int, List<PowerSiloRequiredItem>> rolled = this.LoadOrRoll(baseTiers, pools);
+        Dictionary<int, List<PowerSiloRequiredItem>> rolled = this.LoadOrRoll(silo, baseTiers, pools);
 
         List<PowerSiloTierConfig> effective = new(baseTiers.Count);
         for (int i = 0; i < baseTiers.Count; i++)
@@ -90,39 +101,50 @@ internal class PowerSiloTierRoller
                 effective.Add(baseTiers[i]);
         }
 
-        this.CachedEffectiveTiers = effective;
+        this.CachedEffectiveTiersBySilo[silo] = effective;
         return effective;
     }
 
-    /// <summary>Clear the cached effective tier list — call this on save load, so a different save (or the same save reloaded) re-reads its own persisted roll instead of reusing whatever was cached in memory from before.</summary>
+    /// <summary>Clear every cached effective tier list — call this on save load, so a different save (or the same save reloaded) re-reads each Silo's own persisted roll instead of reusing whatever was cached in memory from before.</summary>
     public void Reset()
     {
-        this.CachedEffectiveTiers = null;
+        this.CachedEffectiveTiersBySilo.Clear();
     }
 
     /// <summary>
-    /// MOD: added. Discard this save's persisted roll (see <see cref="RolledRequirementsModDataKey"/>)
-    /// AND the in-memory cache, so the very next <see cref="GetEffectiveTiers"/> call rolls fresh from
-    /// the CURRENT <see cref="ModConfig.PowerSiloTierPools"/> instead of replaying whatever was rolled
-    /// before — a dev/testing convenience for iterating on tier pool balance without needing to start a
-    /// new save each time. Exposed via the <c>automate reset_silo_tiers</c> console command.
+    /// MOD: added. Discard EVERY Power Silo's persisted roll (see <see cref="RolledRequirementsModDataKey"/>)
+    /// across every location in the save, AND the in-memory cache, so the next <see cref="GetEffectiveTiers"/>
+    /// call for each Silo rolls fresh from the CURRENT <see cref="ModConfig.PowerSiloTierPools"/> instead
+    /// of replaying whatever was rolled before — a dev/testing convenience for iterating on tier pool
+    /// balance without needing to start a new save each time. Exposed via the
+    /// <c>automate reset_silo_tiers</c> console command. MOD: changed — now clears every Silo BUILDING's
+    /// own roll (the roll moved from a single save-wide key to a per-building one — see this class's own
+    /// remarks), not just one global value; removing the key from a building that never had it (i.e. not
+    /// actually a Power Silo) is a harmless no-op, so this doesn't need to know which buildingType names
+    /// actually count as a Power Silo.
     /// </summary>
     public void ResetSavedRoll()
     {
-        Game1.MasterPlayer.modData.Remove(PowerSiloTierRoller.RolledRequirementsModDataKey);
-        this.CachedEffectiveTiers = null;
+        foreach (GameLocation location in CommonHelper.GetLocations())
+        {
+            foreach (Building building in location.buildings)
+                building.modData.Remove(PowerSiloTierRoller.RolledRequirementsModDataKey);
+        }
+
+        this.CachedEffectiveTiersBySilo.Clear();
     }
 
 
     /*********
     ** Private methods
     *********/
-    /// <summary>Get this save's already-rolled requirements if present, otherwise roll fresh ones and persist them immediately.</summary>
+    /// <summary>Get a Power Silo's already-rolled requirements if present, otherwise roll fresh ones and persist them immediately.</summary>
+    /// <param name="silo">The Power Silo building to get (or roll) requirements for.</param>
     /// <param name="baseTiers">The base capacity tiers, for bounds-checking the pools against.</param>
     /// <param name="pools">The randomized pools to roll from.</param>
-    private Dictionary<int, List<PowerSiloRequiredItem>> LoadOrRoll(List<PowerSiloTierConfig> baseTiers, List<PowerSiloTierPool> pools)
+    private Dictionary<int, List<PowerSiloRequiredItem>> LoadOrRoll(Building silo, List<PowerSiloTierConfig> baseTiers, List<PowerSiloTierPool> pools)
     {
-        if (Game1.MasterPlayer.modData.TryGetValue(PowerSiloTierRoller.RolledRequirementsModDataKey, out string? raw))
+        if (silo.modData.TryGetValue(PowerSiloTierRoller.RolledRequirementsModDataKey, out string? raw))
         {
             try
             {
@@ -146,7 +168,7 @@ internal class PowerSiloTierRoller
             rolled[i] = pool.Slots.Select(PowerSiloTierRoller.RollSlot).ToList();
         }
 
-        Game1.MasterPlayer.modData[PowerSiloTierRoller.RolledRequirementsModDataKey] = JsonConvert.SerializeObject(rolled);
+        silo.modData[PowerSiloTierRoller.RolledRequirementsModDataKey] = JsonConvert.SerializeObject(rolled);
         return rolled;
     }
 

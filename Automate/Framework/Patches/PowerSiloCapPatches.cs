@@ -87,8 +87,8 @@ internal static class PowerSiloCapPatches
     /// <summary>Get the <c>buildingType</c> ID(s) that count as a Power Silo.</summary>
     private static Func<HashSet<string>>? GetSiloBuildingNames;
 
-    /// <summary>Get the ordered capacity tiers a Power Silo progresses through.</summary>
-    private static Func<List<PowerSiloTierConfig>>? GetTiers;
+    /// <summary>MOD: changed — now resolved per Power Silo building, since each Silo rolls its own independent tier requirements (see <see cref="PowerSiloTierRoller"/>'s own remarks).</summary>
+    private static Func<Building, List<PowerSiloTierConfig>>? GetTiers;
 
     /// <summary>The power silo capacity system, used to read a Silo's current tier.</summary>
     private static PowerSiloSystem? PowerSiloSystem;
@@ -136,9 +136,9 @@ internal static class PowerSiloCapPatches
     *********/
     /// <summary>Prepare this patch class before <see cref="Apply"/> is called.</summary>
     /// <param name="getSiloBuildingNames">Get the <c>buildingType</c> ID(s) that count as a Power Silo.</param>
-    /// <param name="getTiers">Get the ordered capacity tiers a Power Silo progresses through.</param>
+    /// <param name="getTiers">Get the ordered capacity tiers for a specific Power Silo building.</param>
     /// <param name="powerSiloSystem">The power silo capacity system, used to read a Silo's current tier.</param>
-    public static void Initialize(Func<HashSet<string>> getSiloBuildingNames, Func<List<PowerSiloTierConfig>> getTiers, PowerSiloSystem powerSiloSystem)
+    public static void Initialize(Func<HashSet<string>> getSiloBuildingNames, Func<Building, List<PowerSiloTierConfig>> getTiers, PowerSiloSystem powerSiloSystem)
     {
         PowerSiloCapPatches.GetSiloBuildingNames = getSiloBuildingNames;
         PowerSiloCapPatches.GetTiers = getTiers;
@@ -460,7 +460,7 @@ internal static class PowerSiloCapPatches
     /// <param name="powerSiloSystem">The power silo capacity system, used to read the Silo's current tier.</param>
     private static float GetTargetRiseTiles(Building building, PowerSiloSystem powerSiloSystem)
     {
-        List<PowerSiloTierConfig> tiers = PowerSiloCapPatches.GetTiers?.Invoke() ?? [];
+        List<PowerSiloTierConfig> tiers = PowerSiloCapPatches.GetTiers?.Invoke(building) ?? [];
         if (tiers.Count == 0)
             return PowerSiloCapPatches.BaseGapTiles;
 

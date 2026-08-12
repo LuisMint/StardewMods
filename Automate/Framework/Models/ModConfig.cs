@@ -185,7 +185,8 @@ internal class ModConfig
         "AutoGrabber",
         "AutoPetter",
         "HeavyFurnace",
-        "AutoCrafter"
+        "AutoCrafter",
+        "FishSmoker"
     };
 
     /// <summary>
@@ -267,8 +268,11 @@ internal class ModConfig
     /// picked mineral from this list (see <see cref="PowerSiloItemOption.ItemIds"/>'s own remarks for
     /// how a nested item-ID list resolves to one random pick). Defined once here instead of duplicating
     /// all 39 IDs across all 5 tiers, so the list can't drift out of sync between tiers.
+    /// MOD: changed from private to internal — also reused by <see cref="Patches.DwarfWeeklyShopPatches"/>
+    /// for its own "1 already-donated geode mineral" weekly Dwarf shop entry, per direct request, so
+    /// that list stays the single shared source of truth rather than a second copy drifting out of sync.
     /// </summary>
-    private static readonly List<string> MineralItemIds =
+    internal static readonly List<string> MineralItemIds =
     [
         "(O)562", // Tigerseye
         "(O)564", // Opal

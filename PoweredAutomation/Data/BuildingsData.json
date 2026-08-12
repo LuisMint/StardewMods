@@ -6,7 +6,7 @@
             "Entries": {
                 "{{ModId}}_CaveHole": {
                     "Name": "Cave Hole",
-                    "Description": "A hole leading down into a small dwarf-dug cavern.",
+                    "Description": "A hole leading down into a small Dwarf-dug cavern. It's dug deep into an ore rich vein.",
                     "Texture": "Mods/{{ModId}}/CaveHole",
                     "Skins": [],
                     "DrawShadow": false,
@@ -64,7 +64,7 @@
                 },
                 "{{ModId}}_CaveHole2": {
                     "Name": "Big Cave Hole",
-                    "Description": "An expanded dwarf-dug cavern. Upgrades an existing Cave Hole.",
+                    "Description": "An expanded Dwarf-dug cavern. It's dug deep into an ore rich vein.",
                     "Texture": "Mods/{{ModId}}/BigCaveHole",
                     "Skins": [],
                     "DrawShadow": false,

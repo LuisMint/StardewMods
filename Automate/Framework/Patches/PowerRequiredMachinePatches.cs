@@ -220,6 +220,19 @@ internal static class PowerRequiredMachinePatches
             prefix: new HarmonyMethod(typeof(PowerRequiredMachinePatches), nameof(Draw_Prefix)),
             postfix: new HarmonyMethod(typeof(PowerRequiredMachinePatches), nameof(Draw_Postfix))
         );
+
+        // MOD: added — WoodChipper (and any other SObject subclass that fully overrides draw() without
+        // calling base.draw(), e.g. Sign) has its OWN distinct draw MethodInfo; a Harmony patch on
+        // SObject.draw's method body is never executed for such an instance, since virtual dispatch
+        // resolves straight to the override — so the no-power icon postfix above silently never fired
+        // for a starved Wood Chipper. Draw_Postfix itself is already fully generic (keyed only off
+        // __instance, not any specific machine type), so it's safe to attach a second time here with no
+        // prefix — WoodChipper's own draw already renders itself completely; this just layers the same
+        // icon overlay on top of it afterward, exactly like it does for every other machine.
+        harmony.Patch(
+            original: AccessTools.Method(typeof(WoodChipper), nameof(WoodChipper.draw), [typeof(SpriteBatch), typeof(int), typeof(int), typeof(float)]),
+            postfix: new HarmonyMethod(typeof(PowerRequiredMachinePatches), nameof(Draw_Postfix))
+        );
     }
 
 

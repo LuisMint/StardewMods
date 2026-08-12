@@ -7,7 +7,7 @@
                 "{{ModId}}_PowerCoil": {
                     "Name": "{{ModId}}_PowerCoil",
                     "DisplayName": "Power Coil",
-                    "Description": "Provides power to nearby connectors and machines.",
+                    "Description": "Provides power to nearby conduits and machines.",
                     "Price": 50,
                     "Fragility": 0,
                     "CanBePlacedOutdoors": true,
@@ -22,7 +22,7 @@
                 "{{ModId}}_WhitelistSign": {
                     "Name": "{{ModId}}_WhitelistSign",
                     "DisplayName": "Whitelist Sign",
-                    "Description": "Use an item on this sign to let only that item pass through a touching connector group. The item won't be consumed.",
+                    "Description": "Use an item on this sign to let only that item pass through a touching conduit group. The item won't be consumed.",
                     "Price": 25,
                     "Fragility": 0,
                     "CanBePlacedOutdoors": true,
@@ -37,7 +37,7 @@
                 "{{ModId}}_BlacklistSign": {
                     "Name": "{{ModId}}_BlacklistSign",
                     "DisplayName": "Blacklist Sign",
-                    "Description": "Use an item on this sign to block that item from passing through a touching connector group. The item won't be consumed.",
+                    "Description": "Use an item on this sign to block that item from passing through a touching conduit group. The item won't be consumed.",
                     "Price": 25,
                     "Fragility": 0,
                     "CanBePlacedOutdoors": true,
@@ -52,7 +52,7 @@
                 "{{ModId}}_WhitelistCategorySign": {
                     "Name": "{{ModId}}_WhitelistCategorySign",
                     "DisplayName": "Whitelist Category Sign",
-                    "Description": "Use an item on this sign to let only that item's CATEGORY pass through a touching connector group. The item won't be consumed.",
+                    "Description": "Use an item on this sign to let only that item's CATEGORY pass through a touching conduit group. The item won't be consumed.",
                     "Price": 25,
                     "Fragility": 0,
                     "CanBePlacedOutdoors": true,
@@ -67,7 +67,7 @@
                 "{{ModId}}_BlacklistCategorySign": {
                     "Name": "{{ModId}}_BlacklistCategorySign",
                     "DisplayName": "Blacklist Category Sign",
-                    "Description": "Use an item on this sign to block that item's CATEGORY from passing through a touching connector group. The item won't be consumed.",
+                    "Description": "Use an item on this sign to block that item's CATEGORY from passing through a touching conduit group. The item won't be consumed.",
                     "Price": 25,
                     "Fragility": 0,
                     "CanBePlacedOutdoors": true,
@@ -97,7 +97,7 @@
                 "{{ModId}}_AutoCrafter": {
                     "Name": "AutoCrafter",
                     "DisplayName": "Auto Crafter",
-                    "Description": "Requires power. Right-click with a known recipe's item in hand to assign it, pulls the ingredients from a connected Powered Chest, and crafts automatically.",
+                    "Description": "Use an item on this machine to assign and craft any known recipes via automation. The item won't be consumed.",
                     "Price": 200,
                     "Fragility": 0,
                     "CanBePlacedOutdoors": true,

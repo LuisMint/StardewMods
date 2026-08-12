@@ -229,7 +229,10 @@ internal class ModEntry : Mod
 
         // MOD: added — constructed before MachineManager (which needs it to build PowerSiloSystem) and
         // kept as its own field so PowerSiloInteraction/PowerSiloCapPatches below share this EXACT same
-        // instance, rather than each rolling independently.
+        // instance. MOD: changed — each roller call now takes the specific Silo building it's rolling
+        // for (see PowerSiloTierRoller's own remarks on why the roll moved from once-per-save to
+        // once-per-Silo), so sharing this one instance just means they all reuse the same in-memory
+        // per-building cache, not that they'd ever get the same roll for two DIFFERENT Silos.
         this.PowerSiloTierRoller = new PowerSiloTierRoller(
             getBaseTiers: () => this.Config.PowerSiloTiers,
             getTierPools: () => this.Config.PowerSiloTierPools
@@ -242,7 +245,12 @@ internal class ModEntry : Mod
             defaultFactory: new AutomationFactory(
                 config: () => this.Config,
                 monitor: this.Monitor,
-                reflection: this.Helper.Reflection
+                reflection: this.Helper.Reflection,
+                // MOD: added, per direct request — see ShippingBinContainer's own remarks for why the
+                // shipping bin only becomes a plain readable/writable container when this companion mod
+                // (which is what actually lets a player browse/withdraw the bin's contents before they're
+                // sold overnight) is installed.
+                isBetterShippingBinInstalled: () => this.Helper.ModRegistry.IsLoaded("MindMeltMax.BetterShipping")
             ),
             monitor: this.Monitor,
             powerSiloTierRoller: this.PowerSiloTierRoller
@@ -315,9 +323,6 @@ internal class ModEntry : Mod
         );
         PowerRequiredMachinePatches.Apply(harmony);
 
-        // MOD: added, temporary diagnostic — see AutoCrafterMachine.Monitor's own remarks.
-        AutoCrafterMachine.Initialize(this.Monitor);
-
         AutoCrafterPatches.Initialize(
             getSystem: () => this.MachineManager.Factory.PowerRequiredMachineSystem,
             getPoweredTiles: location => this.MachineManager.GetMachineDataFor(location)?.PoweredTiles,
@@ -375,7 +380,7 @@ internal class ModEntry : Mod
         // tick below; Reset() clears it on day start.
         PowerSiloCapPatches.Initialize(
             getSiloBuildingNames: () => this.Config.PowerSiloBuildingNames,
-            getTiers: () => this.PowerSiloTierRoller.GetEffectiveTiers(),
+            getTiers: silo => this.PowerSiloTierRoller.GetEffectiveTiers(silo),
             powerSiloSystem: this.MachineManager.Factory.PowerSiloSystem
         );
         PowerSiloCapPatches.Apply(harmony);
@@ -384,7 +389,7 @@ internal class ModEntry : Mod
         // not a Harmony patch (see PowerSiloInteraction's own remarks for why).
         new PowerSiloInteraction(
             powerSiloSystem: this.MachineManager.Factory.PowerSiloSystem,
-            getTiers: () => this.PowerSiloTierRoller.GetEffectiveTiers()
+            getTiers: silo => this.PowerSiloTierRoller.GetEffectiveTiers(silo)
         ).Register();
 
         // MOD: added — registers the Power Relay's click interaction the same way (see
@@ -460,8 +465,9 @@ internal class ModEntry : Mod
         DwarfNoteGemScrollPatches.Apply(harmony);
 
         // MOD: added — gives the Dwarf's shop 3 Cave Carrots that restock weekly, plus 1 Power Coil and
-        // 1 Powered Chest that each restock once a season, per direct user request (see
-        // DwarfWeeklyShopPatches's own remarks).
+        // 1 Powered Chest that each restock once a season, and 1 already-donated geode mineral that
+        // restocks weekly, per direct user request (see DwarfWeeklyShopPatches's own remarks).
+        DwarfWeeklyShopPatches.Initialize(this.Monitor);
         DwarfWeeklyShopPatches.Apply(harmony);
 
         // hook events
@@ -632,8 +638,6 @@ internal class ModEntry : Mod
     /// <inheritdoc cref="IGameLoopEvents.DayStarted" />
     private void OnDayStarted(object? sender, DayStartedEventArgs e)
     {
-        this.Monitor.Log($"[PACING] === OnDayStarted === atMs={this.UnpausedElapsedMs:0}", LogLevel.Trace);
-
         // reset machine state
         if (!this.IsSecondaryScreen) // in split-screen mode, machine state is managed by the main screen
         {
@@ -1122,6 +1126,13 @@ internal class ModEntry : Mod
     /// </summary>
     private float GetEffectiveActionDelaySeconds()
     {
+        // MOD: added, per direct request — OverwriteAutomationDelay is meant to pin ActionDelaySeconds
+        // to exactly the configured value, full stop; the Power Relay's in-game efficiency bonus (like
+        // any other "upgrade" a player might have) shouldn't still be adjusting it on top of that once
+        // the player has explicitly opted into overwriting it themselves.
+        if (this.Config.OverwriteAutomationDelay)
+            return this.Config.ActionDelaySeconds;
+
         return this.PowerRelaySystem.GetEffectiveActionDelaySeconds();
     }
 
@@ -1133,6 +1144,11 @@ internal class ModEntry : Mod
     /// </summary>
     private int GetEffectiveActionsPerDelayWindow()
     {
+        // MOD: added, per direct request — same reasoning as GetEffectiveActionDelaySeconds above: an
+        // overwrite should mean exactly that, with no Power Relay bonus layered on top.
+        if (this.Config.OverwriteAutomationDelay)
+            return this.Config.ActionsPerDelayWindow;
+
         return this.Config.ActionsPerDelayWindow <= 0
             ? this.Config.ActionsPerDelayWindow
             : this.Config.ActionsPerDelayWindow + this.PowerRelaySystem.GetActionsPerDelayWindowBonus();
@@ -1200,7 +1216,46 @@ internal class ModEntry : Mod
             didSomething |= group.TryPushMachineOutput(machine);
 
         if (machine.GetState() is MachineState.Empty)
-            didSomething |= group.TryFeedMachineInput(machine);
+        {
+            bool fed = group.TryFeedMachineInput(machine);
+            didSomething |= fed;
+
+            // MOD: fixed — a machine fed through one Input Conduit network but pushing output through a
+            // SEPARATE Output Conduit network belongs to TWO different machine groups at once (different
+            // connector "materials" never merge into one shared group — see MachineGroupFactory's own
+            // remarks on step 4), each seeing only its own half of the machine's storage. Failing to feed
+            // it through THIS group doesn't mean nothing can — the chest with its actual ingredients might
+            // only be reachable through the OTHER group sharing this same tile. Previously nothing
+            // rescheduled that other group until the periodic full backstop scan happened to notice (the
+            // ONLY path that already worked correctly here, since it iterates every active group
+            // unconditionally rather than being scoped to just one) — reported as "the item is taken fine,
+            // but a new one doesn't get inserted until the hourly check". Omni Conduit was never affected,
+            // since input and output flow through the same single connector network/group there.
+            //
+            // MOD: fixed — a first attempt at this called ScheduleInputFeedsFor (which includes THIS same
+            // group, since it covers the machine's own tile too) and caused a real hang: this method is
+            // itself called from RunGroupBatch's own synchronous while loop draining THIS group's queue,
+            // and ScheduleInputFeedsFor's ScheduleGroupCheck re-enqueues every Done/Empty machine in the
+            // group it's given — including the machine that was JUST dequeued a moment ago (now removed
+            // from QueuedMachines, so the dedup no longer blocks re-adding it). Every failed feed
+            // attempt re-added itself right back onto the queue being drained, so the while loop's
+            // queue.Count never reached 0 and the game hung completely (confirmed via a SMAPI log showing
+            // the same 3 groups cycling "already armed — skipped re-arm" thousands of times with real game
+            // time never advancing). Only nudging OTHER groups — never the one currently being drained —
+            // and only THIS specific machine (not a broad rescan of every machine in that other group)
+            // avoids re-touching the in-progress queue entirely, so there's nothing left to loop on.
+            if (!fed)
+            {
+                foreach (IMachineGroup otherGroup in this.MachineManager.GetActiveMachineGroupsFor(machine.Location, new Vector2(machine.TileArea.X, machine.TileArea.Y)))
+                {
+                    if (ReferenceEquals(otherGroup, group))
+                        continue;
+
+                    this.EnqueueForAutomation(otherGroup, machine);
+                    this.TryScheduleGroupBatch(otherGroup);
+                }
+            }
+        }
 
         AutomationPerfTracker.RecordFlaggedBatch(stopwatch.Elapsed.TotalMilliseconds);
 
@@ -1252,12 +1307,9 @@ internal class ModEntry : Mod
     /// <param name="group">The group to schedule a batch for.</param>
     private void TryScheduleGroupBatch(IMachineGroup group)
     {
-        int groupId = System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(group);
-
         float effectiveActionDelaySeconds = this.GetEffectiveActionDelaySeconds();
         if (effectiveActionDelaySeconds <= 0)
         {
-            this.Monitor.Log($"[PACING] TryScheduleGroupBatch group={groupId} unbatched (delay<=0) — running Automate() directly", LogLevel.Trace);
             group.Automate();
             return;
         }
@@ -1266,12 +1318,8 @@ internal class ModEntry : Mod
             return; // nothing queued for this group — nothing to prime for
 
         if (!this.ArmedGroupBatches.Add(group))
-        {
-            this.Monitor.Log($"[PACING] TryScheduleGroupBatch group={groupId} already armed, queueCount={queue.Count} — skipped re-arm", LogLevel.Trace);
             return; // already priming — it'll drain the queue (including anything just added to it) when it fires
-        }
 
-        this.Monitor.Log($"[PACING] TryScheduleGroupBatch group={groupId} ARMED queueCount={queue.Count} delay={effectiveActionDelaySeconds}s atMs={this.UnpausedElapsedMs:0}", LogLevel.Trace);
         this.RunOrScheduleDelayedPass(() => this.RunGroupBatch(group), effectiveActionDelaySeconds, group);
     }
 
@@ -1288,24 +1336,15 @@ internal class ModEntry : Mod
     /// <param name="group">The group whose batch just came due.</param>
     private void RunGroupBatch(IMachineGroup group)
     {
-        int groupId = System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(group);
-
         if (!this.ArmedGroupBatches.Remove(group))
-        {
-            this.Monitor.Log($"[PACING] RunGroupBatch group={groupId} STALE FIRE (not armed) — skipped", LogLevel.Trace);
             return; // stale fire for a group whose pacing state was since purged/reset — nothing to do
-        }
 
         if (!this.GroupActionQueues.TryGetValue(group, out Queue<IMachine>? queue))
-        {
-            this.Monitor.Log($"[PACING] RunGroupBatch group={groupId} no queue entry — skipped", LogLevel.Trace);
             return;
-        }
 
         int committed = 0;
         int effectiveActionsPerDelayWindow = this.GetEffectiveActionsPerDelayWindow();
         bool unlimited = effectiveActionsPerDelayWindow <= 0;
-        int queueCountBefore = queue.Count;
 
         while (queue.Count > 0 && (unlimited || committed < effectiveActionsPerDelayWindow))
         {
@@ -1315,8 +1354,6 @@ internal class ModEntry : Mod
             if (this.AutomateMachine(group, machine))
                 committed++;
         }
-
-        this.Monitor.Log($"[PACING] RunGroupBatch group={groupId} queueBefore={queueCountBefore} committed={committed} cap={effectiveActionsPerDelayWindow} queueAfter={queue.Count} atMs={this.UnpausedElapsedMs:0}", LogLevel.Trace);
 
         if (queue.Count > 0)
             this.TryScheduleGroupBatch(group);
@@ -1434,8 +1471,6 @@ internal class ModEntry : Mod
             // MOD: added — see LastActualDelayMs's own remarks; lets the perf overlay show the real
             // measured delay instead of going on feel alone.
             this.LastActualDelayMs = curTimeMs - createdAtMs;
-
-            this.Monitor.Log($"[PACING] RunDuePendingPasses firing pass createdAtMs={createdAtMs:0} scheduledMs={scheduledTimeMs:0} nowMs={curTimeMs:0} actualDelayMs={this.LastActualDelayMs:0}", LogLevel.Trace);
 
             try
             {
@@ -1698,8 +1733,6 @@ internal class ModEntry : Mod
     /// </summary>
     private void ResetDelayQueueState()
     {
-        this.Monitor.Log($"[PACING] ResetDelayQueueState pendingPasses={this.PendingDelayedPasses.Count} armedBatches={this.ArmedGroupBatches.Count} queuedMachines={this.QueuedMachines.Count} atMs={this.UnpausedElapsedMs:0}", LogLevel.Trace);
-
         this.PendingDelayedPasses.Clear();
         this.GroupActionQueues.Clear();
         this.QueuedMachines.Clear();

@@ -3,7 +3,6 @@ using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Linq;
 using Microsoft.Xna.Framework;
-using StardewModdingAPI;
 using StardewValley;
 using SObject = StardewValley.Object;
 
@@ -46,25 +45,10 @@ internal class AutoCrafterMachine : GenericObjectMachine<SObject>
     /// <summary>MOD: changed, per direct request — every craft now takes a flat 20 in-game minutes, regardless of how many ingredients the recipe needs.</summary>
     internal const int ProcessingMinutes = 20;
 
-    /// <summary>
-    /// MOD: added, temporary diagnostic — logs exactly why <see cref="SetInput"/> is refusing to start a
-    /// craft (which check failed, and for <see cref="HasAllIngredients"/> specifically, which ingredient
-    /// was short and by how much), since a user report of "recipe assigned, ingredients in the connected
-    /// chest, powered, but it just sits there" gave no error to go on otherwise. Set via
-    /// <see cref="Initialize"/>; safe to leave <c>null</c> (logging is skipped) if never initialized.
-    /// </summary>
-    private static IMonitor? Monitor;
-
 
     /*********
     ** Public methods
     *********/
-    /// <summary>Provide the monitor used for diagnostic logging in <see cref="SetInput"/>. Optional — must be called before any craft is attempted for logging to occur.</summary>
-    /// <param name="monitor">The monitor to log through.</param>
-    internal static void Initialize(IMonitor monitor)
-    {
-        AutoCrafterMachine.Monitor = monitor;
-    }
     /// <summary>Construct an instance.</summary>
     /// <param name="machine">The underlying machine.</param>
     /// <param name="location">The location containing the machine.</param>
@@ -76,23 +60,15 @@ internal class AutoCrafterMachine : GenericObjectMachine<SObject>
     public override bool SetInput(IStorage input)
     {
         if (this.GetGenericState() != MachineState.Empty)
-        {
-            AutoCrafterMachine.Monitor?.Log($"[AutoCrafter] SetInput at {this.TileArea.X},{this.TileArea.Y}: skipped, machine state is {this.GetGenericState()} (not Empty).", LogLevel.Trace);
             return false; // already processing, or output sitting uncollected
-        }
 
         if (!AutoCrafterMachine.TryGetAssignedRecipe(this.Machine, out CraftingRecipe? recipe))
-        {
-            AutoCrafterMachine.Monitor?.Log($"[AutoCrafter] SetInput at {this.TileArea.X},{this.TileArea.Y}: skipped, no recipe assigned.", LogLevel.Trace);
             return false; // nothing assigned
-        }
 
         // don't consume anything unless every ingredient is available all at once, same guarantee a
         // vanilla Furnace gets from AttemptAutoLoad for its own multi-ingredient recipe (Coal + Ore)
-        if (!AutoCrafterMachine.HasAllIngredients(input, recipe.recipeList, this.TileArea.X, this.TileArea.Y))
+        if (!AutoCrafterMachine.HasAllIngredients(input, recipe.recipeList))
             return false;
-
-        AutoCrafterMachine.Monitor?.Log($"[AutoCrafter] SetInput at {this.TileArea.X},{this.TileArea.Y}: all ingredients present for recipe '{recipe.name}', starting craft.", LogLevel.Trace);
 
         foreach (KeyValuePair<string, int> entry in recipe.recipeList)
             input.TryConsume(stack => AutoCrafterMachine.MatchesIngredient(stack.Sample, entry.Key), entry.Value);
@@ -284,26 +260,16 @@ internal class AutoCrafterMachine : GenericObjectMachine<SObject>
     /// <summary>Get whether every ingredient in a recipe's ingredient list is currently available, without consuming anything.</summary>
     /// <param name="storage">The storage to check.</param>
     /// <param name="recipeList">The recipe's ingredients, indexed by unqualified item ID or category number.</param>
-    /// <param name="logTileX">MOD: added, temporary diagnostic — the machine's tile X, for <see cref="Monitor"/> log messages.</param>
-    /// <param name="logTileY">MOD: added, temporary diagnostic — the machine's tile Y, for <see cref="Monitor"/> log messages.</param>
-    private static bool HasAllIngredients(IStorage storage, Dictionary<string, int> recipeList, int logTileX, int logTileY)
+    private static bool HasAllIngredients(IStorage storage, Dictionary<string, int> recipeList)
     {
         List<ITrackedStack> items = storage.GetItems().ToList();
-
-        // MOD: added, temporary diagnostic — logs every ingredient the storage can see at all (matched by
-        // ItemId, ignoring quantity), to help tell "storage isn't reachable/empty" apart from "reachable,
-        // just short on one specific ingredient".
-        AutoCrafterMachine.Monitor?.Log($"[AutoCrafter] HasAllIngredients at {logTileX},{logTileY}: storage has {items.Count} stack(s): {string.Join(", ", items.Select(stack => $"{stack.Sample.QualifiedItemId} x{stack.Count}"))}", LogLevel.Trace);
 
         bool hasAll = true;
         foreach (KeyValuePair<string, int> entry in recipeList)
         {
             int available = items.Where(stack => AutoCrafterMachine.MatchesIngredient(stack.Sample, entry.Key)).Sum(stack => stack.Count);
             if (available < entry.Value)
-            {
-                AutoCrafterMachine.Monitor?.Log($"[AutoCrafter] HasAllIngredients at {logTileX},{logTileY}: short on ingredient key '{entry.Key}' — need {entry.Value}, have {available}.", LogLevel.Trace);
                 hasAll = false;
-            }
         }
 
         return hasAll;
