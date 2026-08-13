@@ -33,8 +33,8 @@ internal class AutomationFactory : IAutomationFactory
     /// <summary>Simplifies access to private code.</summary>
     private readonly IReflectionHelper Reflection;
 
-    /// <summary>MOD: added, per direct request. Get whether the "Better Shipping Bin" mod (<c>MindMeltMax.BetterShipping</c>) is installed — see the two <see cref="ShippingBin"/> cases in <see cref="GetFor(Building, GameLocation, in Vector2)"/>/<see cref="GetForTile"/> for why this changes what the shipping bin resolves to.</summary>
-    private readonly Func<bool> IsBetterShippingBinInstalled;
+    /// <summary>MOD: added, per direct request. Get the effective <c>ActionsPerDelayWindow</c> (after any Power Relay bonus) — passed to <see cref="PoweredChestMachine"/> so its own single paced turn can perform up to that many individual transfers instead of always exactly one.</summary>
+    private readonly Func<int> GetEffectiveActionsPerDelayWindow;
 
 
     /*********
@@ -44,13 +44,13 @@ internal class AutomationFactory : IAutomationFactory
     /// <param name="config">The mod configuration.</param>
     /// <param name="monitor">Encapsulates monitoring and logging.</param>
     /// <param name="reflection">Simplifies access to private code.</param>
-    /// <param name="isBetterShippingBinInstalled">MOD: added, per direct request. Get whether the "Better Shipping Bin" mod is installed — see <see cref="IsBetterShippingBinInstalled"/>.</param>
-    public AutomationFactory(Func<ModConfig> config, IMonitor monitor, IReflectionHelper reflection, Func<bool> isBetterShippingBinInstalled)
+    /// <param name="getEffectiveActionsPerDelayWindow">MOD: added, per direct request. Get the effective <c>ActionsPerDelayWindow</c> (after any Power Relay bonus) — see <see cref="GetEffectiveActionsPerDelayWindow"/>.</param>
+    public AutomationFactory(Func<ModConfig> config, IMonitor monitor, IReflectionHelper reflection, Func<int> getEffectiveActionsPerDelayWindow)
     {
         this.Config = config;
         this.Monitor = monitor;
         this.Reflection = reflection;
-        this.IsBetterShippingBinInstalled = isBetterShippingBinInstalled;
+        this.GetEffectiveActionsPerDelayWindow = getEffectiveActionsPerDelayWindow;
     }
 
     /// <summary>Get a machine, container, or connector instance for a given object.</summary>
@@ -67,7 +67,7 @@ internal class AutomationFactory : IAutomationFactory
             // PoweredChestMachine's own remarks for why it needs its own dedicated entity type rather
             // than falling into the generic ChestContainer case below.
             if (chest.QualifiedItemId == PoweredChestMachine.QualifiedItemId)
-                return new PoweredChestMachine(chest, location, tile, () => this.Config().PoweredChestsCanAutomate);
+                return new PoweredChestMachine(chest, location, tile, () => this.Config().PoweredChestsCanAutomate, this.GetEffectiveActionsPerDelayWindow, this.Monitor); // MOD: added monitor arg, temporary diagnostic
 
             // MOD: added — the vanilla Hopper needs its own dedicated entity type for the same reason
             // as the Mini-Shipping Bin: a plain tagged ChestContainer isn't otherwise distinguishable
@@ -193,15 +193,17 @@ internal class AutomationFactory : IAutomationFactory
             case JunimoHut hut:
                 return hut.isUnderConstruction() ? null : new JunimoHutMachine(hut, location);
 
-            // MOD: changed, per direct request — with "Better Shipping Bin" installed, the bin becomes a
-            // plain readable/writable ItemFilteredContainer-eligible IContainer (see ShippingBinContainer's
-            // own remarks) instead of the active-pull-only ShippingBinMachine, so a whitelist/blacklist
-            // sign's numeric cap and conduits pulling FROM the bin both actually work. Without that
-            // companion mod, behavior is unchanged from vanilla.
+            // MOD: changed, per direct request — the bin is always a plain readable/writable
+            // ItemFilteredContainer-eligible IContainer (see ShippingBinContainer's own remarks) instead
+            // of the active-pull-only ShippingBinMachine, so a whitelist/blacklist sign's numeric cap and
+            // conduits pulling FROM the bin both actually work. This used to be gated behind the "Better
+            // Shipping Bin" companion mod being installed (its own player-facing menu was the only way to
+            // browse/withdraw the bin's contents before the nightly auto-sell) — per direct follow-up
+            // request, that gate is gone: the user explicitly accepted the bin behaving like ordinary
+            // bidirectional storage even without that companion mod's UI, in exchange for the filter and
+            // conduit pull-out actually working. ShippingBinMachine itself is now unused everywhere.
             case ShippingBin bin:
-                return this.IsBetterShippingBinInstalled()
-                    ? new ShippingBinContainer(location, BaseMachine.GetTileAreaFor(bin), bin)
-                    : new ShippingBinMachine(bin, location);
+                return new ShippingBinContainer(location, BaseMachine.GetTileAreaFor(bin), bin);
 
             default:
                 if (DataBasedBuildingMachine.CanAutomate(building))
@@ -223,13 +225,11 @@ internal class AutomationFactory : IAutomationFactory
     /// <remarks>Shipping bin logic from <see cref="Farm.leftClick"/>, garbage can logic from <see cref="Town.checkAction"/>.</remarks>
     public IAutomatable? GetForTile(GameLocation location, in Vector2 tile)
     {
-        // shipping bin on island farm — see the ShippingBin case in GetFor(Building, ...) for why this branches on IsBetterShippingBinInstalled
+        // shipping bin on island farm — see the ShippingBin case in GetFor(Building, ...) for why this is always a ShippingBinContainer now
         if (location is IslandWest farm && farm.farmhouseRestored.Value && (int)tile.X == farm.shippingBinPosition.X && (int)tile.Y == farm.shippingBinPosition.Y)
         {
             Rectangle binTile = new(farm.shippingBinPosition.X, farm.shippingBinPosition.Y, 2, 1);
-            return this.IsBetterShippingBinInstalled()
-                ? new ShippingBinContainer(Game1.getFarm(), binTile)
-                : new ShippingBinMachine(Game1.getFarm(), binTile);
+            return new ShippingBinContainer(Game1.getFarm(), binTile);
         }
 
         // garbage can

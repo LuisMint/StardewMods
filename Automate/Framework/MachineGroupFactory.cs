@@ -89,6 +89,18 @@ internal class MachineGroupFactory
     /// <summary>Encapsulates monitoring and logging.</summary>
     private readonly IMonitor Monitor;
 
+    /// <summary>MOD: added. Get the effective <c>ActionDelaySeconds</c> (after any Power Relay bonus), in seconds — see <see cref="ThrottledContainer"/>.</summary>
+    private readonly Func<float> GetEffectiveActionDelaySeconds;
+
+    /// <summary>MOD: added. Get the effective <c>ActionsPerDelayWindow</c> (after any Power Relay bonus) — see <see cref="ThrottledContainer"/>.</summary>
+    private readonly Func<int> GetEffectiveActionsPerDelayWindow;
+
+    /// <summary>MOD: added. Get whether a container's lid animation/jolt/item sprite/sound should play — see <see cref="ThrottledContainer"/>.</summary>
+    private readonly Func<bool> GetVisualEffectsEnabled;
+
+    /// <summary>MOD: added, per direct request. Proactively wake every active group covering a tile whose container just changed — see <see cref="ThrottledContainer"/>'s own remarks.</summary>
+    private readonly Action<GameLocation, Vector2, bool> NotifyContainerChanged;
+
 
     /*********
     ** Public methods
@@ -107,7 +119,11 @@ internal class MachineGroupFactory
     /// <param name="powerSiloSystem">MOD: added. Encapsulates the "power silo capacity" mechanic.</param>
     /// <param name="buildStorage">Build a storage manager for the given containers.</param>
     /// <param name="monitor">Encapsulates monitoring and logging.</param>
-    public MachineGroupFactory(Func<string, ModConfigMachine?> getMachineOverride, Func<string, ModConfigStorage?> getChestOverride, Func<bool> getChestsEnabledByDefault, Func<HashSet<string>> getWhitelistSignNames, Func<HashSet<string>> getBlacklistSignNames, Func<HashSet<string>> getWhitelistCategorySignNames, Func<HashSet<string>> getBlacklistCategorySignNames, Func<Dictionary<string, HashSet<string>>> getCustomCategories, PowerSystem powerSystem, PowerRequiredMachineSystem powerRequiredMachineSystem, PowerSiloSystem powerSiloSystem, Func<IContainer[], StorageManager> buildStorage, IMonitor monitor)
+    /// <param name="getEffectiveActionDelaySeconds">MOD: added. Get the effective <c>ActionDelaySeconds</c> (after any Power Relay bonus), in seconds.</param>
+    /// <param name="getEffectiveActionsPerDelayWindow">MOD: added. Get the effective <c>ActionsPerDelayWindow</c> (after any Power Relay bonus).</param>
+    /// <param name="getVisualEffectsEnabled">MOD: added. Get whether a container's lid animation/jolt/item sprite/sound should play.</param>
+    /// <param name="notifyContainerChanged">MOD: added, per direct request. Proactively wake every active group covering a tile whose container just changed — see <see cref="NotifyContainerChanged"/>.</param>
+    public MachineGroupFactory(Func<string, ModConfigMachine?> getMachineOverride, Func<string, ModConfigStorage?> getChestOverride, Func<bool> getChestsEnabledByDefault, Func<HashSet<string>> getWhitelistSignNames, Func<HashSet<string>> getBlacklistSignNames, Func<HashSet<string>> getWhitelistCategorySignNames, Func<HashSet<string>> getBlacklistCategorySignNames, Func<Dictionary<string, HashSet<string>>> getCustomCategories, PowerSystem powerSystem, PowerRequiredMachineSystem powerRequiredMachineSystem, PowerSiloSystem powerSiloSystem, Func<IContainer[], StorageManager> buildStorage, IMonitor monitor, Func<float> getEffectiveActionDelaySeconds, Func<int> getEffectiveActionsPerDelayWindow, Func<bool> getVisualEffectsEnabled, Action<GameLocation, Vector2, bool> notifyContainerChanged)
     {
         this.GetMachineOverride = getMachineOverride;
         this.GetChestOverride = getChestOverride;
@@ -122,6 +138,10 @@ internal class MachineGroupFactory
         this.PowerSiloSystem = powerSiloSystem; // MOD: added
         this.BuildStorage = buildStorage;
         this.Monitor = monitor;
+        this.GetEffectiveActionDelaySeconds = getEffectiveActionDelaySeconds; // MOD: added
+        this.GetEffectiveActionsPerDelayWindow = getEffectiveActionsPerDelayWindow; // MOD: added
+        this.GetVisualEffectsEnabled = getVisualEffectsEnabled; // MOD: added
+        this.NotifyContainerChanged = notifyContainerChanged; // MOD: added
     }
 
     /// <summary>Add an automation factory.</summary>
@@ -342,7 +362,7 @@ internal class MachineGroupFactory
         MachineGroupBuilder GetOrCreateBuilder(int root)
         {
             if (!buildersByRoot.TryGetValue(root, out MachineGroupBuilder? builder))
-                buildersByRoot[root] = builder = new MachineGroupBuilder(this.GetLocationKey(location), this.SortMachines, this.BuildStorage, this.Monitor);
+                buildersByRoot[root] = builder = new MachineGroupBuilder(this.GetLocationKey(location), this.SortMachines, this.BuildStorage, this.Monitor, this.GetEffectiveActionDelaySeconds, this.GetEffectiveActionsPerDelayWindow, this.GetVisualEffectsEnabled, this.NotifyContainerChanged);
             return builder;
         }
 
@@ -627,7 +647,7 @@ internal class MachineGroupFactory
 
             if (touchedRoots.Count == 0)
             {
-                MachineGroupBuilder solo = new(this.GetLocationKey(location), this.SortMachines, this.BuildStorage, this.Monitor);
+                MachineGroupBuilder solo = new(this.GetLocationKey(location), this.SortMachines, this.BuildStorage, this.Monitor, this.GetEffectiveActionDelaySeconds, this.GetEffectiveActionsPerDelayWindow, this.GetVisualEffectsEnabled, this.NotifyContainerChanged);
                 this.AddToBuilder(solo, nodes[i], ConnectorRole.Both, poweredTiles);
                 soloBuilders.Add(solo);
             }

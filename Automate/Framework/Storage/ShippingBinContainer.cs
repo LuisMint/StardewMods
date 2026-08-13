@@ -14,28 +14,26 @@ namespace Pathoschild.Stardew.Automate.Framework.Storage;
 /// <summary>
 /// MOD: added, per direct request. Wraps the farm's own shipping bin inventory (see
 /// <see cref="Farm.getShippingBin"/>) as a plain <see cref="IContainer"/> — readable, writable, and
-/// (critically) countable via <see cref="Inventory"/>'s own <c>CountId</c>, unlike
-/// <see cref="Pathoschild.Stardew.Automate.Framework.Machines.Buildings.ShippingBinMachine"/>'s own active-pull design, which reaches straight
-/// into another container's items without ever calling <c>Store</c> on anything of its own — so a
-/// whitelist/blacklist sign's numeric cap (enforced entirely by <see cref="ItemFilteredContainer.Store"/>
-/// reading <c>Inventory.CountId</c>) never had anything to apply itself to, and neither did a conduit
-/// trying to pull the bin's own contents back out.
+/// (critically) countable via <see cref="Inventory"/>'s own <c>CountId</c> — so a whitelist/blacklist
+/// sign's numeric cap (enforced entirely by <see cref="ItemFilteredContainer.Store"/> reading
+/// <c>Inventory.CountId</c>) has something to apply itself to, and a conduit can pull the bin's own
+/// contents back out.
 ///
-/// Only ever constructed when the "Better Shipping Bin" mod is installed (see
-/// <see cref="AutomationFactory"/>'s own gating) — without it, the bin has no player-facing way to browse
-/// or withdraw its contents before they're sold overnight, so treating it as ordinary bidirectional
-/// storage the rest of the day would be misleading. Vanilla's own once-a-day autosell of whatever's still
-/// sitting in this SAME inventory at 6am is completely unaffected either way, since this wraps the game's
-/// live shipping-bin list directly rather than a copy — pulling items back out (manually, or via a
-/// conduit) before then is exactly what keeps them from being sold, same as it would be for a player using
-/// Better Shipping Bin's own menu.
+/// MOD: changed, per direct request — this used to be constructed only when the "Better Shipping Bin"
+/// companion mod was installed (its own player-facing menu was the only way to browse/withdraw the bin's
+/// contents before they're sold overnight otherwise, via a separate active-pull-only machine the rest of
+/// the time); that gate is gone now, and this is always what a shipping bin resolves to (see
+/// <see cref="AutomationFactory"/>). Vanilla's own once-a-day autosell of whatever's still sitting in this
+/// SAME inventory at 6am is completely unaffected either way, since this wraps the game's live
+/// shipping-bin list directly rather than a copy — pulling items back out (manually, or via a conduit)
+/// before then is exactly what keeps them from being sold.
 ///
 /// Deliberately purely passive (a plain <see cref="IContainer"/>, not also an <see cref="IMachine"/>) —
-/// see <see cref="Pathoschild.Stardew.Automate.Framework.Machines.Objects.MiniShippingBinMachine"/>'s own remarks for why that's what lets a
-/// whitelist/blacklist sign's cap apply automatically no matter which machine is pushing into it, without
-/// any bespoke logic of its own.
+/// see <see cref="Pathoschild.Stardew.Automate.Framework.Machines.Objects.MiniShippingBinMachine"/>'s own
+/// remarks for why that's what lets a whitelist/blacklist sign's cap apply automatically no matter which
+/// machine is pushing into it, without any bespoke logic of its own.
 /// </summary>
-internal class ShippingBinContainer : IContainer, IHasContainerPriority
+internal class ShippingBinContainer : IContainer, IHasContainerPriority, IHasOwnEntryEffect
 {
     /*********
     ** Fields
@@ -45,12 +43,6 @@ internal class ShippingBinContainer : IContainer, IHasContainerPriority
 
     /// <summary>MOD: added. The constructed shipping bin, if this container was built for a farm building rather than the island farm's built-in bin — see <see cref="Store"/>'s own remarks for why this matters for the shipment animation/sound.</summary>
     private readonly ShippingBin? Bin;
-
-    /// <summary>MOD: added. How long to wait between accepting shipments, in milliseconds — see <see cref="Store"/>'s own remarks for why this exists.</summary>
-    private const double AcceptIntervalMs = 500;
-
-    /// <summary>MOD: added. The <see cref="Game1.currentGameTime"/> total-milliseconds value before which <see cref="Store"/> won't accept anything new.</summary>
-    private double NextAcceptAllowedMs;
 
 
     /*********
@@ -87,6 +79,10 @@ internal class ShippingBinContainer : IContainer, IHasContainerPriority
     /// <inheritdoc />
     public int ContainerPriorityTier => ContainerPriorityTiers.ChestHybrid;
 
+    /// <summary>MOD: added, per direct request — <see cref="Store"/> always plays vanilla's own shipment animation/sound, so the generic one would otherwise double up on top of it.</summary>
+    /// <inheritdoc />
+    public bool HasOwnEntryEffect => true;
+
 
     /*********
     ** Public methods
@@ -103,29 +99,22 @@ internal class ShippingBinContainer : IContainer, IHasContainerPriority
     }
 
     /// <summary>
-    /// MOD: changed. Plays the same shipment animation/sound the old active-pull <see cref="Pathoschild.Stardew.Automate.Framework.Machines.Buildings.ShippingBinMachine"/>
-    /// always did after actually storing anything — using the exact same fallback chain (the constructed
-    /// <see cref="Bin"/> if there is one, then <see cref="IslandWest"/>, then plain <see cref="Farm"/>) —
-    /// so pushing items in through this container still looks and sounds the same as it always has,
-    /// instead of silently appearing in the inventory with no feedback.
+    /// Plays vanilla's own shipment animation/sound after actually storing anything — using the exact
+    /// same fallback chain (the constructed <see cref="Bin"/> if there is one, then <see cref="IslandWest"/>,
+    /// then plain <see cref="Farm"/>) — so pushing items in through this container still looks and sounds
+    /// the same as a normal shipment, instead of silently appearing in the inventory with no feedback.
     ///
-    /// MOD: added. Also throttled to one accepted stack per <see cref="AcceptIntervalMs"/> — rejecting
-    /// (leaving the stack fully untouched, so the caller naturally retries on a later automation tick)
-    /// anything that arrives before the cooldown expires. Without this, an active mover like a Powered
-    /// Chest drains all of its own distinct stacks into the bin within a single tick, so everything
-    /// appears at once; the old active-pull <see cref="Pathoschild.Stardew.Automate.Framework.Machines.Buildings.ShippingBinMachine"/>
-    /// never had this problem because it WAS the tick-paced mover. This restores that same natural
-    /// trickle using the mod's own existing retry/rescheduling machinery, without this container needing
-    /// to know anything about who's pushing into it.
+    /// MOD: removed this container's own accept-cooldown throttle — every container in the mod
+    /// (including this one) is now unconditionally wrapped in <see cref="ThrottledContainer"/> at the
+    /// single choke point every container passes through, which paces deliveries generically using the
+    /// real <c>ActionDelaySeconds</c>/<c>ActionsPerDelayWindow</c> config (Power-Relay-upgrade-aware)
+    /// instead of a hardcoded cooldown — that's what this container's own throttle was an early,
+    /// single-container prototype of, so keeping a second one here would just double up on the same job.
     /// </summary>
     /// <inheritdoc />
     public void Store(ITrackedStack stack)
     {
         if (stack.Count <= 0 || !stack.Sample.canBeShipped())
-            return;
-
-        double now = Game1.currentGameTime?.TotalGameTime.TotalMilliseconds ?? 0;
-        if (now < this.NextAcceptAllowedMs)
             return;
 
         int before = stack.Count;
@@ -145,16 +134,14 @@ internal class ShippingBinContainer : IContainer, IHasContainerPriority
             }
         }
 
-        // otherwise add a new slot — unlimited capacity, same as the standard machine cycle already assumes for this bin (see ShippingBinMachine.SetInput)
+        // otherwise add a new slot — unlimited capacity, matching the farm's own live shipping-bin inventory
         if (stack.Count > 0)
             inventory.Add(stack.Take(stack.Count));
 
-        // play the shipment animation/sound for whatever was actually stored just now, and start the next accept cooldown
+        // play the shipment animation/sound for whatever was actually stored just now
         int moved = before - stack.Count;
         if (moved > 0)
         {
-            this.NextAcceptAllowedMs = now + ShippingBinContainer.AcceptIntervalMs;
-
             Item shipped = stack.Sample.getOne();
             shipped.Stack = moved;
 

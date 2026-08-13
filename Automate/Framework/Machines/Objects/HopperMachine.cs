@@ -21,7 +21,7 @@ namespace Pathoschild.Stardew.Automate.Framework.Machines.Objects;
 /// own remarks for why this needs its own dedicated entity type rather than falling into the generic
 /// tagged <see cref="Storage.ChestContainer"/> case (which is how most vanilla storages are handled).
 /// </summary>
-internal class HopperMachine : IContainer, IHasContainerPriority
+internal class HopperMachine : IContainer, IHasContainerPriority, IHasUnderlyingChest
 {
     /*********
     ** Fields
@@ -65,6 +65,9 @@ internal class HopperMachine : IContainer, IHasContainerPriority
 
     /// <inheritdoc />
     public int ContainerPriorityTier => this.Storage.ContainerPriorityTier;
+
+    /// <inheritdoc />
+    public Chest? UnderlyingChest => this.Storage.UnderlyingChest;
 
 
     /*********

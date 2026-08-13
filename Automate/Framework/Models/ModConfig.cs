@@ -685,6 +685,18 @@ internal class ModConfig
     /// </summary>
     public int ActionsPerDelayWindow { get; set; } = ModConfig.DefaultActionsPerDelayWindow;
 
+    /// <summary>
+    /// MOD: added, per direct request. Whether a container shows a lid animation, a jolt, a flying item
+    /// sprite, and a sound whenever an item enters or leaves it through automation (see
+    /// <see cref="ThrottledContainer"/>/<see cref="ContainerVisualEffects"/>). This ONLY gates those
+    /// visuals/audio — the underlying chunked delivery pacing itself (<see cref="ActionDelaySeconds"/>/
+    /// <see cref="ActionsPerDelayWindow"/>, including any Power Relay bonus) always applies regardless
+    /// of this setting. Also only ever plays for a location a player is actually standing in (see
+    /// <see cref="ContainerVisualEffects"/>'s own remarks) — background automation elsewhere never pays
+    /// for or shows these regardless of this setting either.
+    /// </summary>
+    public bool AnimatedItemTransfers { get; set; } = true;
+
 
     /*********
     ** Public methods

@@ -60,11 +60,12 @@ internal class DataBasedObjectMachine : GenericObjectMachine<SObject>
             return false;
 
         // add machine input
-        // MOD: routed through ItemFilteredContainer's own AttemptAutoLoad when a sign filter applies,
-        // since vanilla's own ingredient consumption mutates the input item's Stack directly — bypassing
-        // any count-checking method a plain container.Inventory call could otherwise clamp — so a
-        // numeric whitelist/blacklist condition needs that method's own stack-clamping workaround to be
-        // enforced here at all. See ItemFilteredContainer.AttemptAutoLoad's own remarks for why.
+        // MOD: routed through the container's own IHasAttemptAutoLoad handling when it has one (see that
+        // interface's own remarks) — e.g. ItemFilteredContainer's implementation, when a sign filter
+        // applies, since vanilla's own ingredient consumption mutates the input item's Stack directly,
+        // bypassing any count-checking method a plain container.Inventory call could otherwise clamp; or
+        // ThrottledContainer's implementation, which fires this mod's own exit-effect animation for
+        // whatever actually got consumed this way, since that path bypasses its usual per-item hooks too.
         bool addedInput = false;
         foreach (IContainer container in input.MachineOutputContainers)
         {
@@ -78,8 +79,8 @@ internal class DataBasedObjectMachine : GenericObjectMachine<SObject>
             // check runs means it always sees as much of that item as physically fits in one slot.
             DataBasedObjectMachine.ConsolidateFragmentedStacks(container.Inventory);
 
-            bool loaded = container is ItemFilteredContainer filtered
-                ? filtered.AttemptAutoLoad(machine, Game1.player)
+            bool loaded = container is IHasAttemptAutoLoad withAutoLoad
+                ? withAutoLoad.AttemptAutoLoad(machine, Game1.player)
                 : machine.AttemptAutoLoad(container.Inventory, Game1.player);
 
             if (loaded)

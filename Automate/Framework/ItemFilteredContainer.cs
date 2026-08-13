@@ -7,6 +7,7 @@ using Pathoschild.Stardew.Automate.Framework.Storage;
 using StardewValley;
 using StardewValley.Inventories;
 using StardewValley.Mods;
+using StardewValley.Objects;
 using SObject = StardewValley.Object;
 
 namespace Pathoschild.Stardew.Automate.Framework;
@@ -22,7 +23,7 @@ namespace Pathoschild.Stardew.Automate.Framework;
 /// see <see cref="FilteredInventory"/>'s own remarks for why. Everything else is delegated straight to
 /// the wrapped container unchanged.
 /// </summary>
-internal class ItemFilteredContainer : IContainer, IConnectionRoleRestriction, IHasContainerPriority
+internal class ItemFilteredContainer : IContainer, IConnectionRoleRestriction, IHasContainerPriority, IHasUnderlyingChest, IHasAttemptAutoLoad, IHasOwnEntryEffect
 {
     /*********
     ** Fields
@@ -81,6 +82,13 @@ internal class ItemFilteredContainer : IContainer, IConnectionRoleRestriction, I
     /// <summary>MOD: added. Forwards to the wrapped container's own priority tier (see <see cref="IHasContainerPriority"/>), for the same reason <see cref="AllowStorageThroughThisConnection"/> forwards its own role restriction — see that property's own remarks.</summary>
     /// <inheritdoc />
     public int ContainerPriorityTier => this.Inner.GetContainerPriorityTier();
+
+    /// <summary>MOD: added. Forwards to the wrapped container's own underlying chest (see <see cref="IHasUnderlyingChest"/>), for the same reason <see cref="ContainerPriorityTier"/> forwards its own tier — see that property's own remarks.</summary>
+    /// <inheritdoc />
+    public Chest? UnderlyingChest => this.Inner.GetUnderlyingChest();
+
+    /// <inheritdoc />
+    public bool HasOwnEntryEffect => this.Inner.GetHasOwnEntryEffect();
 
 
     /*********

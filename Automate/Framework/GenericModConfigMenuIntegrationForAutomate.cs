@@ -89,6 +89,12 @@ internal class GenericModConfigMenuIntegrationForAutomate : IGenericModConfigMen
                 min: 0,
                 max: 20
             )
+            .AddCheckbox(
+                name: I18n.Config_AnimatedItemTransfers_Name,
+                tooltip: I18n.Config_AnimatedItemTransfers_Desc,
+                get: config => config.AnimatedItemTransfers,
+                set: (config, value) => config.AnimatedItemTransfers = value
+            )
             .AddNumberField(
                 name: I18n.Config_AutomationInterval_Name,
                 tooltip: I18n.Config_AutomationInterval_Desc,

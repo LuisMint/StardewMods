@@ -21,7 +21,7 @@ namespace Pathoschild.Stardew.Automate.Framework.Machines.Objects;
 /// player deliberately route items into it too (subject to the same whitelist/blacklist signs as any
 /// other container in the group) is a reasonable, deliberate deviation from that original design.
 /// </remarks>
-internal class AutoGrabberMachine : IContainer, IHasContainerPriority
+internal class AutoGrabberMachine : IContainer, IHasContainerPriority, IHasUnderlyingChest
 {
     /*********
     ** Fields
@@ -66,6 +66,9 @@ internal class AutoGrabberMachine : IContainer, IHasContainerPriority
 
     /// <inheritdoc />
     public int ContainerPriorityTier => this.Storage.ContainerPriorityTier;
+
+    /// <inheritdoc />
+    public Chest? UnderlyingChest => this.Storage.UnderlyingChest;
 
 
     /*********

@@ -2,9 +2,12 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using Microsoft.Xna.Framework;
+using Pathoschild.Stardew.Automate.Framework.Storage;
 using StardewValley;
 using StardewValley.Inventories;
 using StardewValley.Mods;
+using StardewValley.Objects;
+using SObject = StardewValley.Object;
 
 namespace Pathoschild.Stardew.Automate.Framework;
 
@@ -32,7 +35,7 @@ namespace Pathoschild.Stardew.Automate.Framework;
 /// same real inventory, so normal machines' storage/ingredient lookups (which don't care about
 /// origin) are unaffected.
 /// </summary>
-internal class JunimoTouchpointContainer : IContainer, IConnectionRoleRestriction
+internal class JunimoTouchpointContainer : IContainer, IConnectionRoleRestriction, IHasUnderlyingChest, IHasAttemptAutoLoad, IHasOwnEntryEffect
 {
     /*********
     ** Fields
@@ -80,6 +83,12 @@ internal class JunimoTouchpointContainer : IContainer, IConnectionRoleRestrictio
     /// <inheritdoc />
     public IInventory Inventory => this.Inner.Inventory;
 
+    /// <inheritdoc />
+    public Chest? UnderlyingChest => this.Inner.GetUnderlyingChest();
+
+    /// <inheritdoc />
+    public bool HasOwnEntryEffect => this.Inner.GetHasOwnEntryEffect();
+
 
     /*********
     ** Public methods
@@ -98,6 +107,9 @@ internal class JunimoTouchpointContainer : IContainer, IConnectionRoleRestrictio
 
     /// <inheritdoc />
     public void Store(ITrackedStack stack) => this.Inner.Store(stack);
+
+    /// <inheritdoc />
+    public bool AttemptAutoLoad(SObject machine, Farmer who) => this.Inner is IHasAttemptAutoLoad inner ? inner.AttemptAutoLoad(machine, who) : machine.AttemptAutoLoad(this.Inner.Inventory, who);
 
     /// <inheritdoc />
     public int GetFilled() => this.Inner.GetFilled();

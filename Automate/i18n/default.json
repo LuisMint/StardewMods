@@ -16,6 +16,8 @@
     "config.overwrite-automation-actions.desc": "Whether Actions per delay window below actually takes effect. If disabled (default), it's locked to 1 regardless of what you set, so upgrading a Power Relay stays the main way to increase it. Enable to set your own value instead.",
     "config.actions-per-delay-window.name": "Actions per delay window",
     "config.actions-per-delay-window.desc": "Only takes effect if Overwrite automation actions above is enabled. How many machine/container actions a group may commit within one Action Delay window before the rest have to wait for the next one. Set to 0 for unlimited. Has no effect when Action Delay is 0.",
+    "config.animated-item-transfers.name": "Animated item transfers",
+    "config.animated-item-transfers.desc": "Whether a container's lid pops open, jolts, and shows a flying item sprite and sound whenever an item enters or leaves it through automation. Only ever plays in a location a player is actually standing in. Only affects the visuals/audio — chunked delivery pacing itself always applies regardless of this setting.",
     "config.automation-interval.name": "Automation interval",
     "config.automation-interval.desc": "Only used when event-based automation above is disabled. The number of ticks between each automation process (60 for once per second, 120 for every two seconds, etc).",
     "config.min-minutes-for-fairy-dust.name": "Min minutes for fairy dust",

@@ -6,6 +6,8 @@ using Pathoschild.Stardew.Automate.Framework.Storage;
 using StardewValley;
 using StardewValley.Inventories;
 using StardewValley.Mods;
+using StardewValley.Objects;
+using SObject = StardewValley.Object;
 
 namespace Pathoschild.Stardew.Automate.Framework;
 
@@ -30,7 +32,7 @@ internal interface IConnectionRoleRestriction
 /// same physical chest can be wrapped differently for different groups it belongs to — e.g. acting
 /// as input-only through one path network and output-only through a separate one.
 /// </summary>
-internal class RoleRestrictedContainer : IContainer, IConnectionRoleRestriction, IHasContainerPriority
+internal class RoleRestrictedContainer : IContainer, IConnectionRoleRestriction, IHasContainerPriority, IHasUnderlyingChest, IHasAttemptAutoLoad, IHasOwnEntryEffect
 {
     /*********
     ** Fields
@@ -57,6 +59,13 @@ internal class RoleRestrictedContainer : IContainer, IConnectionRoleRestriction,
     /// </summary>
     /// <inheritdoc />
     public int ContainerPriorityTier => this.Inner.GetContainerPriorityTier();
+
+    /// <summary>MOD: added. Forwards to the wrapped container's own underlying chest (see <see cref="IHasUnderlyingChest"/>), for the same reason <see cref="ContainerPriorityTier"/> forwards its own tier — see that property's own remarks.</summary>
+    /// <inheritdoc />
+    public Chest? UnderlyingChest => this.Inner.GetUnderlyingChest();
+
+    /// <inheritdoc />
+    public bool HasOwnEntryEffect => this.Inner.GetHasOwnEntryEffect();
 
     /// <inheritdoc cref="IAutomatable.Location" />
     public GameLocation Location => this.Inner.Location;
@@ -104,6 +113,10 @@ internal class RoleRestrictedContainer : IContainer, IConnectionRoleRestriction,
 
     /// <inheritdoc />
     public void Store(ITrackedStack stack) => this.Inner.Store(stack);
+
+    /// <summary>MOD: added. Forwards to the wrapped container's own auto-load handling if it has any (see <see cref="IHasAttemptAutoLoad"/>), falling back to vanilla's own default straight against <see cref="Inventory"/> otherwise — same forwarding reasoning as <see cref="ContainerPriorityTier"/>.</summary>
+    /// <inheritdoc />
+    public bool AttemptAutoLoad(SObject machine, Farmer who) => this.Inner is IHasAttemptAutoLoad inner ? inner.AttemptAutoLoad(machine, who) : machine.AttemptAutoLoad(this.Inner.Inventory, who);
 
     /// <inheritdoc />
     public int GetFilled() => this.Inner.GetFilled();

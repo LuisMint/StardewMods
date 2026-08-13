@@ -15,7 +15,7 @@ using SObject = StardewValley.Object;
 namespace Pathoschild.Stardew.Automate.Framework.Storage;
 
 /// <summary>An in-game chest which can provide or store items.</summary>
-internal class ChestContainer : IContainer
+internal class ChestContainer : IContainer, IHasUnderlyingChest
 {
     /*********
     ** Fields
@@ -33,6 +33,9 @@ internal class ChestContainer : IContainer
     /*********
     ** Accessors
     *********/
+    /// <inheritdoc />
+    public Chest UnderlyingChest => this.Chest;
+
     /// <inheritdoc />
     public string TypeId => this.Chest.QualifiedItemId;
 

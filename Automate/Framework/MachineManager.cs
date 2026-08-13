@@ -194,7 +194,11 @@ internal class MachineManager
     /// <param name="defaultFactory">The default automation factory to registry.</param>
     /// <param name="monitor">Encapsulates monitoring and logging.</param>
     /// <param name="powerSiloTierRoller">MOD: added. Resolves <see cref="ModConfig.PowerSiloTierPools"/> into this save's rolled Power Silo tier requirements — constructed by the caller (see its own remarks for why) rather than here, so it's the same shared instance used elsewhere.</param>
-    public MachineManager(Func<ModConfig> config, DataModel data, IAutomationFactory defaultFactory, IMonitor monitor, PowerSiloTierRoller powerSiloTierRoller)
+    /// <param name="getEffectiveActionDelaySeconds">MOD: added. Get the effective <c>ActionDelaySeconds</c> (after any Power Relay bonus), in seconds — see <see cref="ThrottledContainer"/>.</param>
+    /// <param name="getEffectiveActionsPerDelayWindow">MOD: added. Get the effective <c>ActionsPerDelayWindow</c> (after any Power Relay bonus) — see <see cref="ThrottledContainer"/>.</param>
+    /// <param name="getVisualEffectsEnabled">MOD: added. Get whether a container's lid animation/jolt/item sprite/sound should play — see <see cref="ThrottledContainer"/>.</param>
+    /// <param name="notifyContainerChanged">MOD: added, per direct request. Proactively wake every active group covering a tile whose container just changed — see <see cref="ThrottledContainer"/>'s own remarks.</param>
+    public MachineManager(Func<ModConfig> config, DataModel data, IAutomationFactory defaultFactory, IMonitor monitor, PowerSiloTierRoller powerSiloTierRoller, Func<float> getEffectiveActionDelaySeconds, Func<int> getEffectiveActionsPerDelayWindow, Func<bool> getVisualEffectsEnabled, Action<GameLocation, Vector2, bool> notifyContainerChanged)
     {
         this.Config = config;
         this.Data = data;
@@ -274,7 +278,11 @@ internal class MachineManager
             powerRequiredMachineSystem: powerRequiredMachineSystem, // MOD: added
             powerSiloSystem: powerSiloSystem, // MOD: added
             buildStorage: this.BuildStorage,
-            monitor: monitor
+            monitor: monitor,
+            getEffectiveActionDelaySeconds: getEffectiveActionDelaySeconds, // MOD: added
+            getEffectiveActionsPerDelayWindow: getEffectiveActionsPerDelayWindow, // MOD: added
+            getVisualEffectsEnabled: getVisualEffectsEnabled, // MOD: added
+            notifyContainerChanged: notifyContainerChanged // MOD: added
         );
         this.Factory.Add(defaultFactory);
 

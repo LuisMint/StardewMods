@@ -27,7 +27,7 @@ namespace Pathoschild.Stardew.Automate.Framework.Machines.Buildings;
 /// another item the player can choose to keep or move via connectors/signs like anything else, rather
 /// than a hardcoded carve-out.
 /// </remarks>
-internal class JunimoHutMachine : IContainer, IHasContainerPriority
+internal class JunimoHutMachine : IContainer, IHasContainerPriority, IHasUnderlyingChest
 {
     /*********
     ** Fields
@@ -73,6 +73,9 @@ internal class JunimoHutMachine : IContainer, IHasContainerPriority
 
     /// <inheritdoc />
     public int ContainerPriorityTier => this.Storage.ContainerPriorityTier;
+
+    /// <inheritdoc />
+    public Chest? UnderlyingChest => this.Storage.UnderlyingChest;
 
 
     /*********

@@ -1,4 +1,5 @@
 using StardewValley.Mods;
+using StardewValley.Objects;
 
 namespace Pathoschild.Stardew.Automate.Framework.Storage;
 
@@ -113,6 +114,20 @@ internal static class ContainerExtensions
     public static int GetContainerPriorityTier(this IContainer container)
     {
         return container is IHasContainerPriority p ? p.ContainerPriorityTier : ContainerPriorityTiers.Normal;
+    }
+
+    /// <summary>MOD: added. Get the container's underlying chest (see <see cref="IHasUnderlyingChest"/>), or <c>null</c> if it isn't chest-backed or doesn't implement the interface.</summary>
+    /// <param name="container">The container instance.</param>
+    public static Chest? GetUnderlyingChest(this IContainer container)
+    {
+        return container is IHasUnderlyingChest p ? p.UnderlyingChest : null;
+    }
+
+    /// <summary>MOD: added. Get whether the container already shows its own "item arrived" feedback (see <see cref="IHasOwnEntryEffect"/>), defaulting to <c>false</c> if it doesn't implement the interface.</summary>
+    /// <param name="container">The container instance.</param>
+    public static bool GetHasOwnEntryEffect(this IContainer container)
+    {
+        return container is IHasOwnEntryEffect p && p.HasOwnEntryEffect;
     }
 
     /// <summary>

@@ -37,7 +37,7 @@ namespace Pathoschild.Stardew.Automate.Framework;
 /// it (see any of the classes mentioned above for the exact boilerplate). That's the whole
 /// integration — no <see cref="IMachine"/> involvement needed at all.</para>
 /// </summary>
-internal class ChestHybridStorage : IContainer, IHasContainerPriority
+internal class ChestHybridStorage : IContainer, IHasContainerPriority, IHasUnderlyingChest
 {
     /*********
     ** Fields
@@ -94,6 +94,9 @@ internal class ChestHybridStorage : IContainer, IHasContainerPriority
     /// <summary>MOD: added. This hybrid's priority tier — see <see cref="IHasContainerPriority"/>'s own remarks. Used only for storage-preference ordering now (which container a machine tries first) — there's no more "who acts" contest to resolve, since a hybrid never acts on its own.</summary>
     /// <inheritdoc />
     public int ContainerPriorityTier => ContainerPriorityTiers.ChestHybrid;
+
+    /// <inheritdoc />
+    public Chest? UnderlyingChest => this.GetChest();
 
 
     /*********

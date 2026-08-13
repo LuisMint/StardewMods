@@ -20,12 +20,11 @@ namespace Pathoschild.Stardew.Automate.Framework.Machines.Objects;
 /// enforced by <see cref="ChestHybridStorage.Store"/> directly, so it applies no matter which machine is
 /// pushing into it.
 ///
-/// See also <see cref="ShippingBinMachine"/> (the full-size shipping bin) — that one is NOT made
-/// bidirectional the same way, because it isn't chest-backed at all: it drops items straight into the
-/// farm's own live overnight shipping queue rather than an internal inventory, so there's nothing to
-/// wrap and pull back out of using this same technique.
+/// See also <see cref="Storage.ShippingBinContainer"/> (the full-size shipping bin) — that one isn't
+/// chest-backed either, but wraps the farm's own live shipping-bin inventory directly instead, achieving
+/// the same bidirectional pull-back-out behavior a different way.
 /// </remarks>
-internal class MiniShippingBinMachine : IContainer, IHasContainerPriority
+internal class MiniShippingBinMachine : IContainer, IHasContainerPriority, IHasUnderlyingChest
 {
     /*********
     ** Fields
@@ -66,6 +65,9 @@ internal class MiniShippingBinMachine : IContainer, IHasContainerPriority
 
     /// <inheritdoc />
     public int ContainerPriorityTier => this.Storage.ContainerPriorityTier;
+
+    /// <inheritdoc />
+    public Chest? UnderlyingChest => this.Storage.UnderlyingChest;
 
 
     /*********
