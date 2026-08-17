@@ -6,7 +6,7 @@ namespace Pathoschild.Stardew.Automate.Framework.Patches;
 
 /// <summary>
 /// MOD: added. Replaces the loot a Barrel/Crate gives when broken inside a Cave Hole (or Big Cave Hole)
-/// interior — per direct user request, these are purely decorative first-day flavor (see
+/// interior — these are purely decorative first-day flavor (see
 /// <see cref="CaveHoleQuarrySystem.SpawnCrateOrBarrel"/>), so they should only ever give 1-3 Cave Carrots
 /// or nothing, not vanilla's own <see cref="BreakableContainer.releaseContents"/> mine loot table (ore,
 /// coal, gems, mystery boxes, etc.).

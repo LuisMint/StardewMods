@@ -42,7 +42,7 @@ internal class AutoCrafterMachine : GenericObjectMachine<SObject>
     /// <summary>The index of the last press cycle (see <see cref="ProcessingStartMsModDataKey"/>) <see cref="Patches.AutoCrafterPatches"/> has already played the strike particle/sound for — see <see cref="GetLastHandledStrikeCycle"/>.</summary>
     internal const string LastHandledStrikeCycleModDataKey = "luisMint.PoweredAutomation/AutoCrafterLastHandledStrikeCycle";
 
-    /// <summary>MOD: changed, per direct request — every craft now takes a flat 20 in-game minutes, regardless of how many ingredients the recipe needs.</summary>
+    /// <summary>MOD: changed — every craft now takes a flat 20 in-game minutes, regardless of how many ingredients the recipe needs.</summary>
     internal const int ProcessingMinutes = 20;
 
 
@@ -122,7 +122,7 @@ internal class AutoCrafterMachine : GenericObjectMachine<SObject>
     /// <param name="displayItemQualifiedId">The qualified item ID of the item the player used to assign it, shown floating above the machine.</param>
     internal static void SetAssignedRecipe(SObject machine, CraftingRecipe recipe, string displayItemQualifiedId)
     {
-        // MOD: added, per direct request — swapping the assigned recipe while already primed (i.e. a
+        // MOD: added — swapping the assigned recipe while already primed (i.e. a
         // recipe was already assigned before this call) shouldn't replay the priming transition, since
         // the machine is already sitting at fully-extended (frame 4); only a fresh assignment from
         // completely unassigned needs to animate from pressed (1) up to extended (4).

@@ -14,8 +14,8 @@ namespace Pathoschild.Stardew.Automate.Framework;
 /// shape: clicking the Relay while holding a matching item (Prismatic Shard for the delay-reduction
 /// track, Radioactive Bar for the actions-per-window track) delivers it — consumed, one-way, same as a
 /// Power Silo tier — and otherwise opens <see cref="PowerRelayMenu"/>. An earlier version of this class
-/// let the player pull delivered items back out via the menu; per direct user request, delivery is now
-/// one-way and the menu is purely a status display.
+/// let the player pull delivered items back out via the menu; delivery is now
+/// one-way and the menu is purely a status display, for simplicity and to match the Power Silo's own flow.
 /// </summary>
 internal class PowerRelayInteraction
 {
@@ -98,14 +98,14 @@ internal class PowerRelayInteraction
         SObject? held = who.ActiveObject;
         if (held is not null)
         {
-            // MOD: added — per direct user request, each track's very first delivery (level 0→1) asks
+            // MOD: added — each track's very first delivery (level 0→1) asks
             // for a different item (see GetFirstShardItemId/GetFirstBarItemId's own remarks) before
             // reverting to the track's normal item from level 1 onward.
             string shardItemId = PowerRelayInteraction.GetCurrentItemId(this.PowerRelaySystem.GetShardLevel(relay), this.GetShardItemId, this.GetFirstShardItemId);
             string barItemId = PowerRelayInteraction.GetCurrentItemId(this.PowerRelaySystem.GetBarLevel(relay), this.GetBarItemId, this.GetFirstBarItemId);
 
-            // MOD: added — once the effective delay has been pushed down to its global floor, per direct
-            // user request no Relay's shard track accepts further deliveries at all (not just this one),
+            // MOD: added — once the effective delay has been pushed down to its global floor, no Relay's
+            // shard track accepts further deliveries at all (not just this one),
             // so a held shard is treated as no longer a valid delivery target and the click falls through
             // to opening the menu instead, same as an ordinary per-Relay-maxed track already does.
             bool shardTrackGloballyCapped = this.PowerRelaySystem.IsGlobalSpeedCapped();
@@ -142,7 +142,7 @@ internal class PowerRelayInteraction
     /// <param name="effectName">A short name for what the track boosts, used in the HUD message (e.g. "speed"/"actions").</param>
     /// <returns>
     /// Whether the held item matched this track AND it wasn't already maxed. A held item that matches
-    /// but the track is already fully maxed returns <c>false</c> too — per direct user request, a maxed
+    /// but the track is already fully maxed returns <c>false</c> too — a maxed
     /// track is no longer an interactable delivery target at all, so <see cref="Handle"/> falls through
     /// to opening the status menu instead of showing an "already at max" callout.
     /// </returns>
@@ -160,7 +160,7 @@ internal class PowerRelayInteraction
 
         // MOD: delivers as much of the held stack as it takes to complete the CURRENT level, same as
         // PowerSiloInteraction dumping a whole held stack in one click — but capped at the current
-        // level's own remaining need (getNeededForNextLevel), never more, per direct user request: a
+        // level's own remaining need (getNeededForNextLevel), never more: a
         // player holding e.g. 999 shards only ever completes ONE level per click, not several at once.
         int remainingForCurrentLevel = getNeededForNextLevel(relay);
         int delivering = Math.Min(held.Stack, remainingForCurrentLevel);
@@ -176,10 +176,10 @@ internal class PowerRelayInteraction
         int newLevel = getLevel(relay);
         if (newLevel > oldLevel)
         {
-            // MOD: deliberately no distinct level-up sound cue here — per direct user request, just the
+            // MOD: deliberately no distinct level-up sound cue here — just the
             // "give_gift" every delivery already plays above, unlike PowerSiloInteraction's own
             // tier-complete cue.
-            PowerRelayEffectPatches.TriggerLevelUpShake(relay); // MOD: added — the same whole-building shake a Power Silo gets, per direct user request.
+            PowerRelayEffectPatches.TriggerLevelUpShake(relay); // MOD: added — the same whole-building shake a Power Silo gets.
             Game1.addHUDMessage(new HUDMessage($"Automation Relay increased Power Grid's automation {effectName}!", HUDMessage.newQuest_type));
         }
         else

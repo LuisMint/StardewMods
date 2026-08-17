@@ -56,10 +56,13 @@ internal class MachineGroupBuilder
     /// <summary>MOD: added. Get the effective <c>ActionsPerDelayWindow</c> (after any Power Relay bonus) — see <see cref="ThrottledContainer"/>.</summary>
     private readonly Func<int> GetEffectiveActionsPerDelayWindow;
 
+    /// <summary>MOD: added. Get the real-time, pause-aware elapsed-milliseconds clock used to size a container's shared pacing window — see <see cref="ThrottledContainer"/>'s own remarks.</summary>
+    private readonly Func<double> GetElapsedMs;
+
     /// <summary>MOD: added. Get whether a container's lid animation/jolt/item sprite/sound should play — see <see cref="ThrottledContainer"/>.</summary>
     private readonly Func<bool> GetVisualEffectsEnabled;
 
-    /// <summary>MOD: added, per direct request. Proactively wake every active group covering a tile whose container just changed — <c>(location, tile, isJunimoChest)</c> — see <see cref="ThrottledContainer"/>'s own remarks for why this exists alongside SMAPI's own <c>ChestInventoryChanged</c> event.</summary>
+    /// <summary>MOD: added. Proactively wake every active group covering a tile whose container just changed — <c>(location, tile, isJunimoChest)</c> — see <see cref="ThrottledContainer"/>'s own remarks for why this exists alongside SMAPI's own <c>ChestInventoryChanged</c> event.</summary>
     private readonly Action<GameLocation, Vector2, bool> NotifyContainerChanged;
 
     /*********
@@ -72,9 +75,10 @@ internal class MachineGroupBuilder
     /// <param name="monitor">Encapsulates monitoring and logging.</param>
     /// <param name="getEffectiveActionDelaySeconds">MOD: added. Get the effective <c>ActionDelaySeconds</c> (after any Power Relay bonus), in seconds.</param>
     /// <param name="getEffectiveActionsPerDelayWindow">MOD: added. Get the effective <c>ActionsPerDelayWindow</c> (after any Power Relay bonus).</param>
+    /// <param name="getElapsedMs">MOD: added. Get the real-time, pause-aware elapsed-milliseconds clock — see <see cref="GetElapsedMs"/>.</param>
     /// <param name="getVisualEffectsEnabled">MOD: added. Get whether a container's lid animation/jolt/item sprite/sound should play.</param>
-    /// <param name="notifyContainerChanged">MOD: added, per direct request. Proactively wake every active group covering a tile whose container just changed — see <see cref="NotifyContainerChanged"/>.</param>
-    public MachineGroupBuilder(string locationKey, Func<IEnumerable<IMachine>, IEnumerable<IMachine>> sortMachines, Func<IContainer[], StorageManager> buildStorage, IMonitor monitor, Func<float> getEffectiveActionDelaySeconds, Func<int> getEffectiveActionsPerDelayWindow, Func<bool> getVisualEffectsEnabled, Action<GameLocation, Vector2, bool> notifyContainerChanged)
+    /// <param name="notifyContainerChanged">MOD: added. Proactively wake every active group covering a tile whose container just changed — see <see cref="NotifyContainerChanged"/>.</param>
+    public MachineGroupBuilder(string locationKey, Func<IEnumerable<IMachine>, IEnumerable<IMachine>> sortMachines, Func<IContainer[], StorageManager> buildStorage, IMonitor monitor, Func<float> getEffectiveActionDelaySeconds, Func<int> getEffectiveActionsPerDelayWindow, Func<double> getElapsedMs, Func<bool> getVisualEffectsEnabled, Action<GameLocation, Vector2, bool> notifyContainerChanged)
     {
         this.LocationKey = locationKey;
         this.SortMachines = sortMachines;
@@ -82,6 +86,7 @@ internal class MachineGroupBuilder
         this.Monitor = monitor;
         this.GetEffectiveActionDelaySeconds = getEffectiveActionDelaySeconds;
         this.GetEffectiveActionsPerDelayWindow = getEffectiveActionsPerDelayWindow;
+        this.GetElapsedMs = getElapsedMs;
         this.GetVisualEffectsEnabled = getVisualEffectsEnabled;
         this.NotifyContainerChanged = notifyContainerChanged;
     }
@@ -100,7 +105,8 @@ internal class MachineGroupBuilder
 
     /// <summary>Add a container to the group.</summary>
     /// <param name="container">The container to add.</param>
-    public void Add(IContainer container)
+    /// <param name="budget">MOD: added. The shared pacing state for the physical container being added — see <see cref="ThrottledContainerBudget"/> for why this must be resolved by the caller (keyed by the raw container's own identity, shared across every group reaching the same physical container) rather than created fresh here.</param>
+    public void Add(IContainer container, ThrottledContainerBudget budget)
     {
         // MOD: added — if this group has an item filter, wrap the container so both Automate's own
         // pull/push flow and its raw Inventory (read directly by some vanilla machines, e.g. via
@@ -108,10 +114,10 @@ internal class MachineGroupBuilder
         if (this.ItemFilter != null)
             container = new ItemFilteredContainer(container, this.ItemFilter);
 
-        // MOD: added — the outermost wrap, per direct request: chunked delivery + entry/exit visual
-        // effects apply to every container mod-wide, with no per-container-class changes needed. See
-        // ThrottledContainer's own remarks.
-        container = new ThrottledContainer(container, this.GetEffectiveActionDelaySeconds, this.GetEffectiveActionsPerDelayWindow, this.GetVisualEffectsEnabled, this.NotifyContainerChanged, this.Monitor);
+        // MOD: added — the outermost wrap: chunked delivery + entry/exit visual effects apply to every
+        // container mod-wide, with no per-container-class changes needed. See ThrottledContainer's own
+        // remarks.
+        container = new ThrottledContainer(container, budget, this.GetEffectiveActionDelaySeconds, this.GetEffectiveActionsPerDelayWindow, this.GetElapsedMs, this.GetVisualEffectsEnabled, this.NotifyContainerChanged);
 
         this.Containers.Add(container);
         this.Add(container.TileArea);

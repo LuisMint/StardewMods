@@ -7,19 +7,19 @@ using StardewValley.Buildings;
 namespace Pathoschild.Stardew.Automate.Framework.Patches;
 
 /// <summary>
-/// MOD: added. Per direct user request, reskins the vanilla under-construction/upgrading visual for
+/// MOD: added. Reskins the vanilla under-construction/upgrading visual for
 /// Dwarf-built structures only, using a custom "Cursors_Dwarf" variant of the same
 /// <c>LooseSprites/Cursors</c> sheet vanilla draws that visual from, plus a single ladder tile drawn
-/// one tile right and one tile down from the footprint's top-left corner (per direct user request —
-/// "the dwarves dug an access shaft"), but not until the day after construction/upgrading starts —
-/// matching the same "vanilla's own visual changes the next day" reasoning as the reskin itself, per
-/// direct user request — and gone again once construction/upgrading finishes.
+/// one tile right and one tile down from the footprint's top-left corner (the dwarves dug an access
+/// shaft), but not until the day after construction/upgrading starts —
+/// matching the same "vanilla's own visual changes the next day" reasoning as the reskin itself —
+/// and gone again once construction/upgrading finishes.
 ///
-/// Modeled directly on the user's own "[CP] Seasonal Construction" content pack, which reskins the
+/// Modeled directly on the "[CP] Seasonal Construction" content pack, which reskins the
 /// same construction visual for everyone by fully overlaying <c>LooseSprites/Cursors</c> per season
 /// (its <c>content.json</c> confirmed the target asset and that its overlay PNGs are full copies of
 /// the vanilla sheet's own dimensions, mostly transparent except for the edited construction-icon
-/// region — <see cref="DwarfAssetName"/>'s PNG, provided by the user, follows the same convention).
+/// region — <see cref="DwarfAssetName"/>'s PNG follows the same convention).
 /// Content Patcher alone can't scope a reskin to only SOME buildings (its conditions are global game
 /// state, not per-building-instance), so this achieves the same "full sheet swap" trick via Harmony
 /// instead: <see cref="Draw_Prefix"/>/<see cref="Draw_Postfix"/> temporarily swap the shared
@@ -45,10 +45,10 @@ internal static class DwarfConstructionSpritePatches
     /// <summary>The <c>Data/Buildings</c> "Builder" value a structure must be tagged with for this to apply — matches <see cref="DwarfBuildMenuPatches"/>'s own constant of the same name.</summary>
     private const string BuilderName = "Dwarf";
 
-    /// <summary>The asset name of the Dwarf-reskinned <c>LooseSprites/Cursors</c> variant (loaded by the PoweredAutomation content pack from the user-provided <c>Cursors_Dwarf.png</c>).</summary>
+    /// <summary>The asset name of the Dwarf-reskinned <c>LooseSprites/Cursors</c> variant (loaded by the PoweredAutomation content pack from <c>Cursors_Dwarf.png</c>).</summary>
     private const string DwarfAssetName = "Mods/luisMint.PoweredAutomation/Cursors_Dwarf";
 
-    /// <summary>The asset name of the single-tile ladder decoration (loaded by the PoweredAutomation content pack from the user-provided <c>DwarfLadder.png</c>, a 16x16 single tile).</summary>
+    /// <summary>The asset name of the single-tile ladder decoration (loaded by the PoweredAutomation content pack from <c>DwarfLadder.png</c>, a 16x16 single tile).</summary>
     private const string LadderAssetName = "Mods/luisMint.PoweredAutomation/DwarfLadder";
 
     /// <summary>The ladder tile's full source rectangle — it's a dedicated single-tile image, not a region within a larger sheet.</summary>
@@ -155,7 +155,7 @@ internal static class DwarfConstructionSpritePatches
         Game1.mouseCursors = __state;
 
         // MOD: added — hold off drawing the ladder until at least one in-game day has passed since this
-        // building started (or started upgrading), per direct user request. See this class's own remarks.
+        // building started (or started upgrading). See this class's own remarks.
         int remainingDays = __instance.daysOfConstructionLeft.Value > 0
             ? __instance.daysOfConstructionLeft.Value
             : __instance.daysUntilUpgrade.Value;
@@ -171,7 +171,7 @@ internal static class DwarfConstructionSpritePatches
 
         // MOD: added — vanilla's own "floor" pieces of the construction visual (as opposed to the
         // scaffolding/posts, which already show every day) only ever appear on daysOfConstructionLeft==1
-        // (the very last day) — see this class's own remarks for why. Per direct user request, draw them
+        // (the very last day) — see this class's own remarks for why. Draw them
         // ourselves every day from here on instead, reusing vanilla's own per-tile corner/edge selection
         // logic (see DrawFloorPieces) but without that restriction. MOD: uses the Dwarf-reskinned texture
         // (not __state, which is the ORIGINAL vanilla texture Draw_Prefix saved off for restoration).

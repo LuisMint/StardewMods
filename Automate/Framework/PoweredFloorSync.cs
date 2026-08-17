@@ -7,7 +7,7 @@ namespace Pathoschild.Stardew.Automate.Framework;
 
 /// <summary>
 /// MOD: changed. Swaps a connector's displayed appearance between an "unpowered" and "powered" look
-/// while it's within power system range — per direct user request, no longer via the Alternative
+/// while it's within power system range — no longer via the Alternative
 /// Textures mod (see <see cref="Patches.ConnectorTexturePatches"/>'s own remarks for why); this class
 /// now just stamps each managed connector's own <see cref="Patches.ConnectorTexturePatches.ConnectorVariantModDataKey"/>
 /// with its current variant, which that class's <see cref="Flooring.GetTexture"/> patch reads directly

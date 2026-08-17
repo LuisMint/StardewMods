@@ -37,6 +37,22 @@ internal class MachineGroup : IMachineGroup
     /// <summary>The storage manager for the group.</summary>
     protected readonly StorageManager StorageManager;
 
+    /// <summary>
+    /// MOD: added. Passthrough for <see cref="StorageManager.WasLastPushRejectedForBudget"/> — whether
+    /// the group's MOST RECENT output push failed purely because a shared container's own budget was
+    /// already spent this window, not because the output is genuinely unwelcome anywhere. Checked
+    /// immediately after each <see cref="TryPushOutput"/> call (in both <see cref="TryPushMachineOutput"/>
+    /// and <see cref="Automate"/>) to skip adding that output type to <see cref="OutputPauseExpiries"/> —
+    /// remembering a purely-rotational rejection for <see cref="OutputPauseMilliseconds"/> would silently
+    /// block every OTHER machine in this group producing the same output type from even being offered a
+    /// turn for that whole duration, even though the container will happily accept it again once its
+    /// window rolls over. Confirmed via a diagnostic log capture: several Mushroom Boxes sharing one
+    /// Powered Chest's budget went a full 80-second capture without a single one landing a delivery, with
+    /// the diagnostics showing genuine budget rejections being immediately compounded by this same-group,
+    /// same-output-type pause.
+    /// </summary>
+    internal bool WasLastPushRejectedForBudget => this.StorageManager.WasLastPushRejectedForBudget;
+
     /// <summary>The tiles covered by this machine group.</summary>
     private readonly HashSet<Vector2> Tiles;
 
@@ -348,8 +364,10 @@ internal class MachineGroup : IMachineGroup
                     continue;
                 }
 
-                // ignore output that can't be stored in chest
-                this.OutputPauseExpiries[outputKey] = curTime + this.OutputPauseMilliseconds;
+                // ignore output that can't be stored in chest — but NOT if the only reason was a shared
+                // container's budget being spent this window (see WasLastPushRejectedForBudget's own remarks)
+                if (!this.WasLastPushRejectedForBudget)
+                    this.OutputPauseExpiries[outputKey] = curTime + this.OutputPauseMilliseconds;
             }
             catch (Exception ex)
             {
@@ -451,7 +469,9 @@ internal class MachineGroup : IMachineGroup
             if (this.TryPushOutput(machine, storage, output))
                 return machine.GetState() is MachineState.Empty;
 
-            this.OutputPauseExpiries[outputKey] = curTime + this.OutputPauseMilliseconds;
+            // see WasLastPushRejectedForBudget's own remarks for why a purely-budget rejection is exempt here
+            if (!this.WasLastPushRejectedForBudget)
+                this.OutputPauseExpiries[outputKey] = curTime + this.OutputPauseMilliseconds;
             return false;
         }
         catch (Exception ex)
@@ -469,10 +489,9 @@ internal class MachineGroup : IMachineGroup
     /// MOD: added. The input-side counterpart to <see cref="TryPushMachineOutput"/> — split into its own
     /// method (rather than an immediate chained call right after a successful push, as an earlier version
     /// of this class did) specifically so feeding a machine can be scheduled as its OWN independent event,
-    /// paced separately via <see cref="Models.ModConfig.ActionDelaySeconds"/>. Confirmed, via direct user
-    /// feedback, that chaining the two together instantly defeated the point of that pacing: a push
-    /// immediately followed by an undelayed pull looked identical to one instantaneous action instead of
-    /// two independently-paced ones.
+    /// paced separately via <see cref="Models.ModConfig.ActionDelaySeconds"/>. Chaining the two together
+    /// instantly defeated the point of that pacing: a push immediately followed by an undelayed pull
+    /// looked identical to one instantaneous action instead of two independently-paced ones.
     ///
     /// MOD: fixed — now returns <see cref="IMachine.SetInput"/>'s own result instead of discarding it. A
     /// caller inferring "did this do anything" by comparing <see cref="IMachine.GetState"/> before and after

@@ -10,11 +10,11 @@ using StardewValley.Objects;
 namespace Pathoschild.Stardew.Automate.Framework;
 
 /// <summary>
-/// MOD: added, per direct request. Plays a lid-open animation, a flying item-icon sprite, and a
+/// MOD: added. Plays a lid-open animation, a flying item-icon sprite, and a
 /// matching sound whenever an item enters or leaves a container through automation — so
 /// a farmer can always see, at the container itself, what's moving in or out of it. Never draws
-/// anything on a machine's own tile; the effect always renders at the CONTAINER end of a transfer, per
-/// direct user request ("i only want it on the container" — a machine consuming from, or depositing
+/// anything on a machine's own tile; the effect always renders at the CONTAINER end of a transfer
+/// (a machine consuming from, or depositing
 /// into, a container still shows the effect on the container, just never on the machine itself).
 ///
 /// The lid animation (see <see cref="TriggerLidAnimation"/>) is written as a start timestamp in the
@@ -23,7 +23,7 @@ namespace Pathoschild.Stardew.Automate.Framework;
 /// (rather than a per-tick incremental mutation, as an earlier reverted shipping-bin lid attempt did)
 /// avoids fighting vanilla's own per-tick lid-close logic.
 ///
-/// MOD: added, per direct request ("only runs in areas loaded by the players") — <see cref="PlayEffect"/>
+/// MOD: added — this effect only runs in areas loaded by the players: <see cref="PlayEffect"/>
 /// is a no-op for any location no player is currently standing in, since automation itself runs
 /// location-agnostically in the background but nobody could see or hear this effect there anyway.
 /// </summary>
@@ -32,7 +32,7 @@ internal static class ContainerVisualEffects
     /*********
     ** Fields
     *********/
-    /// <summary>MOD: changed, per direct request ("the containers should be held open for longer") — how long a chest's lid stays visually open, in milliseconds — see <see cref="TriggerLidAnimation"/> and <see cref="Patches.ChestLidAnimationPatches"/>.</summary>
+    /// <summary>MOD: changed — containers now stay open longer, for clearer visual feedback; how long a chest's lid stays visually open, in milliseconds — see <see cref="TriggerLidAnimation"/> and <see cref="Patches.ChestLidAnimationPatches"/>.</summary>
     public const int LidAnimationDurationMs = 1200;
 
     /// <summary>MOD: added. The mod data key storing when a chest's lid animation started (see <see cref="TriggerLidAnimation"/>).</summary>
@@ -76,7 +76,7 @@ internal static class ContainerVisualEffects
     {
         GameLocation location = container.Location;
 
-        // MOD: added, per direct request ("only runs in areas loaded by the players") — a machine group
+        // MOD: added — this effect only runs in areas loaded by the players: a machine group
         // automates regardless of which location any player is actually in, but nobody can see (or
         // hear) this effect in a location nobody's standing in, so skip all of the work below entirely
         // — building/broadcasting a sprite, playing a sound, writing lid modData — for one that isn't
@@ -87,7 +87,7 @@ internal static class ContainerVisualEffects
 
         Vector2 tile = new(container.TileArea.X, container.TileArea.Y);
 
-        // MOD: changed, per direct request — the jolt (chest.shakeTimer) is removed entirely; the lid
+        // MOD: changed — the jolt (chest.shakeTimer) is removed entirely; the lid
         // animation alone is enough, and vanilla's own draw code applies that jolt as a real ±1px
         // horizontal jitter to the CONTAINER's own sprite every frame it's active — a likely contributor
         // to the "diagonal" look reported for the item's flight path, even though the item sprite's own
@@ -95,14 +95,14 @@ internal static class ContainerVisualEffects
         if (container.GetUnderlyingChest() is { } chest)
             ContainerVisualEffects.TriggerLidAnimation(chest);
 
-        // MOD: added, per direct request ("the shipping bin is a larger container, bigger than 1 tile...
-        // consider that in case there ever are larger containers from other mods") — TileArea.Width is
+        // MOD: added — the shipping bin is a larger container, bigger than 1 tile, and there could be
+        // larger containers from other mods too, so this needs to account for that — TileArea.Width is
         // in TILES (e.g. 2 for the shipping bin's real footprint), so its horizontal center is that many
         // tiles wide, not a flat half-tile assumption that would only be correct for a 1x1 container.
         float containerWidthPixels = container.TileArea.Width * 64f;
         ContainerVisualEffects.SpawnItemSprite(location, tile * 64f, containerWidthPixels, sample, isEntry, slot);
 
-        // MOD: changed, per direct request — no sound at all for an item leaving; for one arriving,
+        // MOD: changed — no sound at all for an item leaving; for one arriving,
         // reuse "Ship" (the same cue ShippingBinContainer.Store already plays for an automated shipment
         // — vanilla's ShippingBin.showShipment only plays "backpackIN" when playThrowSound is true,
         // which Automate's own shipment calls deliberately pass false for, so "Ship" is the one that
@@ -123,10 +123,10 @@ internal static class ContainerVisualEffects
     private const int MaxStackingSlots = 5;
 
     /// <summary>
-    /// MOD: rewritten, per direct request, to port Convenient Inventory's own "drop into the chest"
-    /// stage instead of vanilla's shipping-bin recipe — the user pointed at that mod's real source
+    /// MOD: rewritten to port Convenient Inventory's own "drop into the chest"
+    /// stage instead of vanilla's shipping-bin recipe — that mod's real source
     /// (checked out locally at <c>E:\CodeProjects\convenientInventory</c>,
-    /// <c>ConvenientInventory/QuickStack/QuickStackAnimation.cs</c>) as the one that actually looks
+    /// <c>ConvenientInventory/QuickStack/QuickStackAnimation.cs</c>) is the one that actually looks
     /// right. That method builds a THREE-stage animation (toss from the farmer's hand, a brief hover,
     /// then drop into the chest); only the last "drop" stage applies here, since nothing is being
     /// thrown from a farmer — its motion/acceleration/scaleChange/alphaFade values are ported directly
@@ -163,7 +163,7 @@ internal static class ContainerVisualEffects
         const float baseScaleChange = -0.07f;
         const float baseAlphaFade = 0.04f;
 
-        // MOD: added, per direct request ("slowed down") — see this method's own remarks for why
+        // MOD: added — slowed down; see this method's own remarks for why
         // acceleration needs the SQUARE of this factor to preserve the original trajectory.
         const float speedFactor = 0.4f;
         const float motionY = baseMotionY * speedFactor;
@@ -178,14 +178,14 @@ internal static class ContainerVisualEffects
         float fallDistance = baseMotionY * baseTicksToFade + 0.5f * baseAccelerationY * baseTicksToFade * baseTicksToFade;
         float point2Scale = baseScale + baseScaleChange * baseTicksToFade;
 
-        // MOD: added, per direct request ("add a vertical offset... only display up to 5 at a time") —
+        // MOD: added — a vertical offset, with only up to 5 displayed at a time —
         // each item type gets its own fixed slot (0-4, capped so a burst of many different types can't
         // stack arbitrarily far away) among others animating at the same container in the same window.
         int cappedSlot = Math.Min(slot, ContainerVisualEffects.MaxStackingSlots - 1);
         float slotOffsetY = -cappedSlot * 20f;
 
-        // MOD: fixed, per direct request ("missing half tile offset" / "consider [containers] bigger
-        // than 1 tile") — point1/point2 represent the sprite's actual visual CENTER now (see the
+        // MOD: fixed — was missing a half tile offset, and needed to account for containers bigger
+        // than 1 tile — point1/point2 represent the sprite's actual visual CENTER now (see the
         // corner-anchor compensation below), not a corner reference the draw call happens to offset on
         // its own — so this needs to be the container's real horizontal center (half its full footprint
         // width, not a flat +32px half-tile assumption that only happens to be correct for a 1x1
@@ -206,8 +206,8 @@ internal static class ContainerVisualEffects
         float motionYUsed = isEntry ? motionY : -motionY;
         float accelerationYUsed = isEntry ? accelerationY : -accelerationY;
 
-        // MOD: added, per direct request ("the scale is not center anchored... making it look like
-        // it's still shifting") — TemporaryAnimatedSprite always draws with the sprite's CENTER placed
+        // MOD: added — the scale is not center anchored, which was making it look like
+        // it's still shifting — TemporaryAnimatedSprite always draws with the sprite's CENTER placed
         // at (trackedPosition + (sourceRect.Width/2, sourceRect.Height/2) * scale) — i.e. it treats
         // trackedPosition as a fixed CORNER reference, not the visual center. Since scale changes over
         // time here, that corner-relative center offset changes too, so a straightforwardly-computed
@@ -232,7 +232,7 @@ internal static class ContainerVisualEffects
         sprite.acceleration = new Vector2(0f, accelerationYUsed);
         sprite.scaleChange = scaleChangeUsed;
 
-        // MOD: added, per direct request ("straight down/up" — an earlier version drifted diagonally).
+        // MOD: added — the motion should be straight down/up; an earlier version drifted diagonally.
         // GetTemporaryAnimatedSprite pulls from the game's own pooled sprite instances, which can carry
         // over a nonzero rotation/rotationChange/xPeriodic left behind by some ENTIRELY UNRELATED piece
         // of vanilla code that used the same pooled object earlier — motion.X/acceleration.X above are

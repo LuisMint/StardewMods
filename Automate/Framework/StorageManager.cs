@@ -134,7 +134,7 @@ internal class StorageManager : IStorage
         // Omni) connects them. A container and a real machine only ever end up sharing a group by both
         // touching the same connector network (see MachineGroupFactory's own remarks on how groups are
         // built) — nothing about that shared membership implies they're allowed to interact directly,
-        // and per direct user request they never should: a plain container may only ever be reached by
+        // and they never should: a plain container may only ever be reached by
         // a Powered Chest's own active pull/push (which reads AllContainers directly, unaffected by
         // this — see AllContainers's own remarks). Uses GetContainerPriorityTier() rather than a type
         // check so it still works correctly through a RoleRestrictedContainer wrapper, which forwards
@@ -258,6 +258,18 @@ internal class StorageManager : IStorage
         return false;
     }
 
+    /// <summary>
+    /// MOD: added. Whether the MOST RECENT <see cref="TryPush"/> call failed for a reason that's purely
+    /// rotational — every candidate container it tried rejected the item specifically because ITS OWN
+    /// shared budget window was already spent this round (see <see cref="ThrottledContainer.WasLastStoreRejectedForBudget"/>),
+    /// not because the item genuinely doesn't fit anywhere. <c>false</c> whenever the push succeeded, or
+    /// when at least one tried container rejected it for any OTHER reason (wrong type, no space) — in
+    /// that mixed case a caller can't tell which rejection actually mattered, so this deliberately stays
+    /// conservative and reports "not purely budget" rather than risk masking a real incompatibility. See
+    /// <see cref="MachineGroup.WasLastPushRejectedForBudget"/> for why this distinction exists at all.
+    /// </summary>
+    internal bool WasLastPushRejectedForBudget { get; private set; }
+
     /****
     ** TryPush
     ****/
@@ -265,20 +277,34 @@ internal class StorageManager : IStorage
     public bool TryPush(ITrackedStack? item)
     {
         if (item is not { Count: > 0 })
+        {
+            this.WasLastPushRejectedForBudget = false;
             return false;
+        }
+
+        bool anyBudgetRejection = false;
+        bool anyNonBudgetAttempt = false;
 
         // try chests marked "put items in this chest first"
         int fallbackStartAt = this.FirstNonPreferredInput;
         bool pushedToPreferred = false;
-        if (fallbackStartAt > 0 && this.TryPushImpl(item, startAt: 0, endBefore: fallbackStartAt))
+        if (fallbackStartAt > 0 && this.TryPushImpl(item, startAt: 0, endBefore: fallbackStartAt, anyBudgetRejection: ref anyBudgetRejection, anyNonBudgetAttempt: ref anyNonBudgetAttempt))
         {
             pushedToPreferred = true;
             if (item.Count < 1)
+            {
+                this.WasLastPushRejectedForBudget = false;
                 return true;
+            }
         }
 
         // try remaining chests
-        return this.TryPushImpl(item, startAt: fallbackStartAt) || pushedToPreferred;
+        bool pushedRemaining = this.TryPushImpl(item, startAt: fallbackStartAt, endBefore: null, anyBudgetRejection: ref anyBudgetRejection, anyNonBudgetAttempt: ref anyNonBudgetAttempt);
+        bool result = pushedRemaining || pushedToPreferred;
+
+        this.WasLastPushRejectedForBudget = !result && anyBudgetRejection && !anyNonBudgetAttempt;
+
+        return result;
     }
 
 
@@ -289,8 +315,10 @@ internal class StorageManager : IStorage
     /// <param name="item">The item stack to push.</param>
     /// <param name="startAt">The index in <see cref="MachineInputContainers"/> at which to start pushing (inclusive).</param>
     /// <param name="endBefore">The index in <see cref="MachineInputContainers"/> at which to stop pushing (exclusive), or <c>null</c> to continue to the end of the array.</param>
+    /// <param name="anyBudgetRejection">MOD: added. Set to <c>true</c> if any tried container rejected the item specifically due to its own shared budget being spent this window.</param>
+    /// <param name="anyNonBudgetAttempt">MOD: added. Set to <c>true</c> if any tried container was actually offered the item (via <see cref="IContainer.Store"/>) and didn't fully accept it for a reason OTHER than budget.</param>
     /// <returns>Returns whether at least some of the item stack was received.</returns>
-    private bool TryPushImpl(ITrackedStack item, int startAt, int? endBefore = null)
+    private bool TryPushImpl(ITrackedStack item, int startAt, int? endBefore, ref bool anyBudgetRejection, ref bool anyNonBudgetAttempt)
     {
         int originalCount = item.Count;
         IContainer[] containers = this.MachineInputContainers;
@@ -308,9 +336,16 @@ internal class StorageManager : IStorage
             if (!container.Inventory.ContainsId(qualifiedItemId))
                 continue;
 
+            int beforeCount = item.Count;
             container.Store(item);
             if (item.Count < 1)
                 return true;
+
+            // MOD: added — see this method's own <paramref name="anyBudgetRejection"/>/<paramref name="anyNonBudgetAttempt"/> remarks.
+            if (item.Count == beforeCount && container is ThrottledContainer { WasLastStoreRejectedForBudget: true })
+                anyBudgetRejection = true;
+            else
+                anyNonBudgetAttempt = true;
 
             if (i == fallbackStartAt)
                 fallbackStartAt++; // we can skip this one too since we just checked it
@@ -321,9 +356,16 @@ internal class StorageManager : IStorage
         {
             IContainer container = containers[i];
 
+            int beforeCount = item.Count;
             container.Store(item);
             if (item.Count < 1)
                 return true;
+
+            // MOD: added — see this method's own <paramref name="anyBudgetRejection"/>/<paramref name="anyNonBudgetAttempt"/> remarks.
+            if (item.Count == beforeCount && container is ThrottledContainer { WasLastStoreRejectedForBudget: true })
+                anyBudgetRejection = true;
+            else
+                anyNonBudgetAttempt = true;
         }
 
         return item.Count < originalCount;

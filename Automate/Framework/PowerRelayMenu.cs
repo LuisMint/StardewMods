@@ -19,7 +19,7 @@ namespace Pathoschild.Stardew.Automate.Framework;
 ///
 /// This is a pure status display — no click targets besides the OK button. Two earlier versions of this
 /// menu let the player insert/remove items directly here (first via a custom held-slot system, then via
-/// a full player-inventory drag-and-drop panel); per direct user request, delivery now only happens by
+/// a full player-inventory drag-and-drop panel); delivery now only happens by
 /// clicking the Relay building itself while holding the item (see <see cref="PowerRelayInteraction"/>),
 /// exactly like a Power Silo tier.
 ///
@@ -269,7 +269,7 @@ internal class PowerRelayMenu : IClickableMenu
         // (main zone ends here — BodyBottomMargin above the partition line below.)
 
         // bottom zone — below a horizontal partition. Always 2 status lines — either a "Bring:" prompt
-        // or a "reached max" message per track — per direct user request (an earlier version blanked
+        // or a "reached max" message per track (an earlier version blanked
         // this zone out entirely once both tracks were maxed; the reached-max messages now stay
         // permanently instead of disappearing).
         int partitionY = boxTop + mainZoneHeight;
@@ -283,7 +283,7 @@ internal class PowerRelayMenu : IClickableMenu
         float rowTop = partitionY + PowerRelayMenu.BottomTopMargin;
         float rowCenterY = rowTop + PowerRelayMenu.BringRowHeight / 2f;
 
-        // MOD: added — once the delay's been pushed down to its global floor, per direct user request
+        // MOD: added — once the delay's been pushed down to its global floor,
         // EVERY Relay's shard row shows this instead of either its own bring-prompt or its own
         // per-Relay-maxed message, since neither would be true/useful anymore at that point.
         if (this.PowerRelaySystem.IsGlobalSpeedCapped())
@@ -321,7 +321,7 @@ internal class PowerRelayMenu : IClickableMenu
     /*********
     ** Private methods
     *********/
-    /// <summary>Draw a "Bring: [icon]xN {trailing text}" row — the same animated arrow + icon layout <see cref="PowerSiloMenu"/>'s own bring rows use (including the tiny-digit count badge when more than 1 is still needed), plus the original descriptive sentence after the icon, per direct user request.</summary>
+    /// <summary>Draw a "Bring: [icon]xN {trailing text}" row — the same animated arrow + icon layout <see cref="PowerSiloMenu"/>'s own bring rows use (including the tiny-digit count badge when more than 1 is still needed), plus the original descriptive sentence after the icon.</summary>
     /// <param name="b">The sprite batch to draw to.</param>
     /// <param name="itemId">The item ID to draw the icon for.</param>
     /// <param name="neededCount">How many more of the item are needed to reach the next level.</param>
@@ -346,8 +346,7 @@ internal class PowerRelayMenu : IClickableMenu
         b.Draw(texture, iconPos, sourceRect, Color.White, 0f, Vector2.Zero, iconScale, SpriteEffects.None, 1f);
 
         // MOD: added — the same tiny-digit "how many more" badge PowerSiloMenu's own bring rows draw
-        // when more than 1 is still needed, per direct user request ("update the number for the >bring
-        // parts") now that each level can cost more than a single item.
+        // when more than 1 is still needed, now that each level can cost more than a single item.
         if (neededCount > 1)
             Utility.drawTinyDigits(neededCount, b, iconPos + new Vector2(sourceRect.Width * iconScale * 0.75f, PowerRelayMenu.BringRowHeight * 0.6875f), 3f, 1f, Color.White);
 
@@ -387,8 +386,8 @@ internal class PowerRelayMenu : IClickableMenu
             // how many raw items have actually been delivered so far.
             SObject slotIcon = i == 0 ? firstIcon : icon;
 
-            // MOD: three-tier visual matching PowerSiloMenu's own capacity grid, per direct user
-            // request — delivered slots are full opacity/untinted; the NEXT slot to be filled pulses
+            // MOD: three-tier visual matching PowerSiloMenu's own capacity grid —
+            // delivered slots are full opacity/untinted; the NEXT slot to be filled pulses
             // between a full black tint and no tint at all (a preview of what's coming next); everything
             // beyond that sits dimmed with a full black tint.
             Color tint;
@@ -412,8 +411,8 @@ internal class PowerRelayMenu : IClickableMenu
 
             slotIcon.drawInMenu(b, iconPosition, 0.75f, alpha, 0f, StackDrawType.Hide, tint, drawShadow: false);
 
-            // MOD: a per-slot cost label (this slot's own level cost — see PowerRelaySystem.GetLevelCost),
-            // per direct user request. MOD: fixed — checks the actual cost rather than just "i > 0": with
+            // MOD: a per-slot cost label (this slot's own level cost — see PowerRelaySystem.GetLevelCost).
+            // MOD: fixed — checks the actual cost rather than just "i > 0": with
             // the 1/1/2/3 cost curve, slot 1 (level 2) now costs 1 too, same as slot 0, so it needs the
             // same "no badge for a cost of 1" treatment rather than showing a redundant "1". Only drawn
             // once a slot has actually come up (filled, or the current pulsing "next" slot) — a slot

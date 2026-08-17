@@ -60,13 +60,13 @@ internal static class PowerSiloCapPatches
     /// <summary>How far the shake moves side to side at full strength, in screen pixels.</summary>
     private const float ShakeAmplitude = 1.25f;
 
-    /// <summary>MOD: changed — how far through the rise (as a fraction of <see cref="RiseDurationSeconds"/>) the overshoot peaks, before settling back down for the rest of the duration. Nudged later slightly from an earlier 0.35f, per feedback.</summary>
+    /// <summary>MOD: changed — how far through the rise (as a fraction of <see cref="RiseDurationSeconds"/>) the overshoot peaks, before settling back down for the rest of the duration. Nudged later slightly from an earlier 0.35f.</summary>
     private const float OvershootPeakFraction = 0.6f;//0.45f;
 
-    /// <summary>MOD: changed — how far PAST the target the rise overshoots at its peak, as a fraction of the total rise distance (e.g. 0.4 = overshoots 40% of the way again past the target before coming back). Toned down slightly from an earlier 0.6f, per feedback.</summary>
+    /// <summary>MOD: changed — how far PAST the target the rise overshoots at its peak, as a fraction of the total rise distance (e.g. 0.4 = overshoots 40% of the way again past the target before coming back). Toned down slightly from an earlier 0.6f.</summary>
     private const float OvershootAmount = 0.1f;
 
-    /// <summary>MOD: added. The cap's light radius — per direct user request, "the strength of a lamppost". Matches vanilla's own generic <c>isLamp</c> light radius (see <see cref="SObject.checkForAction"/>'s decompiled source, the plain <c>lightSource = new LightSource(4, ..., 3f, ...)</c> branch used for lamp-flagged objects), rather than <see cref="PoweredChestPatches.LightRadius"/>'s much smaller radius.</summary>
+    /// <summary>MOD: added. The cap's light radius — tuned to roughly the strength of a lamppost. Matches vanilla's own generic <c>isLamp</c> light radius (see <see cref="SObject.checkForAction"/>'s decompiled source, the plain <c>lightSource = new LightSource(4, ..., 3f, ...)</c> branch used for lamp-flagged objects), rather than <see cref="PoweredChestPatches.LightRadius"/>'s much smaller radius.</summary>
     private const float LampLightRadius = 2f;
 
     /// <summary>
@@ -239,7 +239,7 @@ internal static class PowerSiloCapPatches
                 PowerSiloCapPatches.RiseState[building] = state;
             }
 
-            // MOD: added — per direct user request, a lamppost-strength light that moves with the
+            // MOD: added — a lamppost-strength light that moves with the
             // cap's own rise animation (see UpdateCapLight's own remarks).
             seenBuildings.Add(building);
             PowerSiloCapPatches.UpdateCapLight(location, building, PowerSiloCapPatches.EvaluateRise(state));
@@ -359,8 +359,8 @@ internal static class PowerSiloCapPatches
 
     /// <summary>
     /// MOD: added. Create (the first time a Silo is seen) or reposition (every tick after) a light source
-    /// that tracks the cap's own current rise animation — per direct user request, "the strength of a
-    /// lamppost" that "moves with the power silo top". Reuses <see cref="PowerCoilPatches.LightColor"/>
+    /// that tracks the cap's own current rise animation — roughly the strength of a
+    /// lamppost, moving with the power silo top. Reuses <see cref="PowerCoilPatches.LightColor"/>
     /// (the same hand-tuned tint every other power-related light in this mod already uses) at
     /// <see cref="LampLightRadius"/>, rather than <see cref="PoweredChestPatches.LightRadius"/>'s much
     /// smaller one — this is meant to actually light up the area around the Silo, not just glow softly
@@ -450,7 +450,7 @@ internal static class PowerSiloCapPatches
     /// MOD: added. Get how many tiles above the ground a Silo's cap should currently be aiming for,
     /// based on its tier — <see cref="BaseGapTiles"/> at tier 0, +<see cref="RisePerTier"/> tiles for
     /// EVERY tier reached after that (one rise step per item quest completed), all the way through the
-    /// terminal solar tier itself (reaching it, per request, still counts as "one more item quest done"
+    /// terminal solar tier itself (reaching it still counts as "one more item quest done"
     /// — it's the tier before it, the one that actually asks for a Solar Panel as an ingredient, that
     /// finishes the last quest). It naturally stops there since there's no tier beyond the last one to
     /// keep rising toward — the solar tier's own unbounded connected-panel bonus afterward doesn't move

@@ -7,7 +7,7 @@ using SObject = StardewValley.Object;
 namespace Pathoschild.Stardew.Automate.Framework.Patches;
 
 /// <summary>
-/// MOD: added. Per direct user request, having read Dwarf Research Notes #1, #2, and #3 (Input,
+/// MOD: added. Having read Dwarf Research Notes #1, #2, and #3 (Input,
 /// Output, and Omni Conduit) unlocks a one-time gem drop on the Mountain map: standing on tile
 /// (37,37), facing tile (37,38) (i.e. facing down), while holding any Dwarf Scroll (I-IV) and
 /// pressing the action button consumes the scroll and drops a Ruby, a Jade, and an Aquamarine, once

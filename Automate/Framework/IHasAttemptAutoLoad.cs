@@ -4,7 +4,7 @@ using SObject = StardewValley.Object;
 namespace Pathoschild.Stardew.Automate.Framework;
 
 /// <summary>
-/// MOD: added, per direct request. Implemented by an <see cref="IContainer"/> that needs to intercept a
+/// MOD: added. Implemented by an <see cref="IContainer"/> that needs to intercept a
 /// vanilla data-driven machine's own raw-inventory ingredient consumption (<c>SObject.AttemptAutoLoad</c>,
 /// used by most vanilla machines — a Furnace, Keg, Cheese Press, etc. — via
 /// <see cref="Machines.DataBasedObjectMachine"/>) instead of letting it read straight from

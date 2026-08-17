@@ -5,8 +5,8 @@ using StardewValley;
 namespace Pathoschild.Stardew.Automate.Framework.Patches;
 
 /// <summary>
-/// MOD: added. Blocks placing anything on the Cave Hole interior's arrival/departure tile — per direct
-/// user request, since it's the exact spot the player warps in and out on (see
+/// MOD: added. Blocks placing anything on the Cave Hole interior's arrival/departure tile, since it's
+/// the exact spot the player warps in and out on (see
 /// <see cref="CaveHoleInteraction"/>/<see cref="CaveHoleExitPatches"/>), and something placed there (a
 /// chest, a crafting station, anything) would visually collide with the player every time they arrive.
 ///

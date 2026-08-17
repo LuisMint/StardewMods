@@ -33,7 +33,7 @@ internal class AutomationFactory : IAutomationFactory
     /// <summary>Simplifies access to private code.</summary>
     private readonly IReflectionHelper Reflection;
 
-    /// <summary>MOD: added, per direct request. Get the effective <c>ActionsPerDelayWindow</c> (after any Power Relay bonus) — passed to <see cref="PoweredChestMachine"/> so its own single paced turn can perform up to that many individual transfers instead of always exactly one.</summary>
+    /// <summary>MOD: added. Get the effective <c>ActionsPerDelayWindow</c> (after any Power Relay bonus) — passed to <see cref="PoweredChestMachine"/> so its own single paced turn can perform up to that many individual transfers instead of always exactly one.</summary>
     private readonly Func<int> GetEffectiveActionsPerDelayWindow;
 
 
@@ -44,7 +44,7 @@ internal class AutomationFactory : IAutomationFactory
     /// <param name="config">The mod configuration.</param>
     /// <param name="monitor">Encapsulates monitoring and logging.</param>
     /// <param name="reflection">Simplifies access to private code.</param>
-    /// <param name="getEffectiveActionsPerDelayWindow">MOD: added, per direct request. Get the effective <c>ActionsPerDelayWindow</c> (after any Power Relay bonus) — see <see cref="GetEffectiveActionsPerDelayWindow"/>.</param>
+    /// <param name="getEffectiveActionsPerDelayWindow">MOD: added. Get the effective <c>ActionsPerDelayWindow</c> (after any Power Relay bonus) — see <see cref="GetEffectiveActionsPerDelayWindow"/>.</param>
     public AutomationFactory(Func<ModConfig> config, IMonitor monitor, IReflectionHelper reflection, Func<int> getEffectiveActionsPerDelayWindow)
     {
         this.Config = config;
@@ -67,7 +67,7 @@ internal class AutomationFactory : IAutomationFactory
             // PoweredChestMachine's own remarks for why it needs its own dedicated entity type rather
             // than falling into the generic ChestContainer case below.
             if (chest.QualifiedItemId == PoweredChestMachine.QualifiedItemId)
-                return new PoweredChestMachine(chest, location, tile, () => this.Config().PoweredChestsCanAutomate, this.GetEffectiveActionsPerDelayWindow, this.Monitor); // MOD: added monitor arg, temporary diagnostic
+                return new PoweredChestMachine(chest, location, tile, () => this.Config().PoweredChestsCanAutomate, this.GetEffectiveActionsPerDelayWindow);
 
             // MOD: added — the vanilla Hopper needs its own dedicated entity type for the same reason
             // as the Mini-Shipping Bin: a plain tagged ChestContainer isn't otherwise distinguishable
@@ -193,15 +193,15 @@ internal class AutomationFactory : IAutomationFactory
             case JunimoHut hut:
                 return hut.isUnderConstruction() ? null : new JunimoHutMachine(hut, location);
 
-            // MOD: changed, per direct request — the bin is always a plain readable/writable
-            // ItemFilteredContainer-eligible IContainer (see ShippingBinContainer's own remarks) instead
-            // of the active-pull-only ShippingBinMachine, so a whitelist/blacklist sign's numeric cap and
-            // conduits pulling FROM the bin both actually work. This used to be gated behind the "Better
-            // Shipping Bin" companion mod being installed (its own player-facing menu was the only way to
-            // browse/withdraw the bin's contents before the nightly auto-sell) — per direct follow-up
-            // request, that gate is gone: the user explicitly accepted the bin behaving like ordinary
-            // bidirectional storage even without that companion mod's UI, in exchange for the filter and
-            // conduit pull-out actually working. ShippingBinMachine itself is now unused everywhere.
+            // MOD: changed — the bin is always a plain readable/writable ItemFilteredContainer-eligible
+            // IContainer (see ShippingBinContainer's own remarks) instead of the active-pull-only
+            // ShippingBinMachine, so a whitelist/blacklist sign's numeric cap and conduits pulling FROM
+            // the bin both actually work. This used to be gated behind the "Better Shipping Bin" companion
+            // mod being installed (its own player-facing menu was the only way to browse/withdraw the
+            // bin's contents before the nightly auto-sell) — that gate is gone: the bin now behaves like
+            // ordinary bidirectional storage even without that companion mod's UI, in exchange for the
+            // filter and conduit pull-out actually working. ShippingBinMachine itself is now unused
+            // everywhere.
             case ShippingBin bin:
                 return new ShippingBinContainer(location, BaseMachine.GetTileAreaFor(bin), bin);
 

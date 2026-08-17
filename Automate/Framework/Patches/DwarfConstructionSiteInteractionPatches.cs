@@ -7,9 +7,9 @@ using StardewValley.Buildings;
 namespace Pathoschild.Stardew.Automate.Framework.Patches;
 
 /// <summary>
-/// MOD: added. Per direct user request ("like trash cans, only once per day"), clicking a Dwarf
-/// construction site while its ladder tile is showing (see <see cref="DwarfConstructionSpritePatches.HasLadderAppeared"/>)
-/// spits out a random item from the ladder hole, once per building per day.
+/// MOD: added. Clicking a Dwarf construction site while its ladder tile is showing (see
+/// <see cref="DwarfConstructionSpritePatches.HasLadderAppeared"/>) spits out a random item from the
+/// ladder hole, once per building per day — the same cadence as the vanilla trash cans.
 ///
 /// Deliberately scoped to <see cref="Building.daysOfConstructionLeft"/> only, not
 /// <see cref="Building.daysUntilUpgrade"/> — vanilla's own <see cref="Building.doAction(Vector2, Farmer)"/>
@@ -22,7 +22,7 @@ namespace Pathoschild.Stardew.Automate.Framework.Patches;
 /// fires, it returns <c>false</c> to skip vanilla's own handling entirely (which would otherwise just
 /// show the generic "this building is under construction" message) rather than running both.
 ///
-/// MOD: added. Per direct user request, once a player has read Dwarf Research Note #7, their very
+/// MOD: added. Once a player has read Dwarf Research Note #7, their very
 /// next construction-site loot pull (whichever building they hit next) is guaranteed to be a Diamond
 /// instead of a normal <see cref="LootTable"/> roll — a one-time, per-player nudge toward having a
 /// Diamond in hand for the Note #7-gated Statue Of The Dwarf King trade (see
@@ -47,7 +47,7 @@ internal static class DwarfConstructionSiteInteractionPatches
     private static readonly string[] GemItemIds = ["(O)60", "(O)62", "(O)64", "(O)66", "(O)68"];
 
     /// <summary>
-    /// The loot table: each entry's chosen item ID (or <c>null</c> to roll a random <see cref="GemItemIds"/> entry instead), its relative weight out of the table's total, and the inclusive quantity range to spawn. Per direct user request: cave carrot most common, Dwarvish Helm rarest, and coal/copper ore/iron ore spawn 1-5 at a time rather than a flat 1.
+    /// The loot table: each entry's chosen item ID (or <c>null</c> to roll a random <see cref="GemItemIds"/> entry instead), its relative weight out of the table's total, and the inclusive quantity range to spawn. Cave carrot is most common, Dwarvish Helm rarest, and coal/copper ore/iron ore spawn 1-5 at a time rather than a flat 1.
     /// </summary>
     private static readonly (string? ItemId, int Weight, int MinQuantity, int MaxQuantity)[] LootTable =
     [

@@ -7,7 +7,7 @@ using StardewValley.Tools;
 namespace Pathoschild.Stardew.Automate.Framework.Patches;
 
 /// <summary>
-/// MOD: added. Per direct user request, reading Dwarf Research Note #4 ("Powered Chest - Power
+/// MOD: added. Reading Dwarf Research Note #4 ("Powered Chest - Power
 /// Coil") unlocks a one-time hidden Power Coil at a specific Mine level 120 tile: hitting tile
 /// (3,8) with a Hoe, Pickaxe, or Axe drops a Power Coil there, once ever for the whole save (not
 /// per player) — whoever finds it first after reading the note claims it, and it's gone for

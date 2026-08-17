@@ -11,7 +11,7 @@ using StardewValley.Extensions;
 namespace Pathoschild.Stardew.Automate.Framework.Patches;
 
 /// <summary>
-/// MOD: added. Two small cosmetic touches for the Power Relay, per direct user request:
+/// MOD: added. Two small cosmetic touches for the Power Relay:
 /// <list type="bullet">
 /// <item>A static lamppost-strength light on every fully-built Relay — reuses the exact same tint/radius
 /// convention <see cref="PowerSiloCapPatches"/> already established for its own cap light (<see cref="PowerCoilPatches.LightColor"/>
@@ -56,7 +56,7 @@ internal static class PowerRelayEffectPatches
     /// light. Originally created once and left alone (a Relay has no ANIMATED piece to track, unlike the
     /// Silo's cap) — but a Relay can still be RELOCATED via the carpenter menu's "move buildings" flow,
     /// which changes <see cref="Building.tileX"/>/<see cref="Building.tileY"/> on the same instance
-    /// without any dedicated event to hook (confirmed via direct user report: the light stayed behind at
+    /// without any dedicated event to hook (confirmed via testing: the light stayed behind at
     /// the old position after moving a Relay). Recomputing position every tick from the building's
     /// CURRENT tile — cheap, since it only runs over <see cref="KnownRelays"/>, not a world scan — fixes
     /// that for free, the same way it already worked for the Silo.

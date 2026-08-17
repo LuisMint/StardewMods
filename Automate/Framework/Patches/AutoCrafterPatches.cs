@@ -39,7 +39,7 @@ internal static class AutoCrafterPatches
     private const double TransitionDurationMs = 400;
 
     /// <summary>
-    /// MOD: changed, per direct request — the press-stroke's own visual rhythm is now anchored to the
+    /// MOD: changed — the press-stroke's own visual rhythm is now anchored to the
     /// moment processing began (<see cref="AutoCrafterMachine.GetProcessingStartMs"/>, set once when the
     /// craft starts) and scaled so a whole number of press-cycles exactly fills the craft's own
     /// <see cref="AutoCrafterMachine.ProcessingMinutes"/>-minute real-world duration — see
@@ -53,7 +53,7 @@ internal static class AutoCrafterPatches
     /// </summary>
     private const double BasePressDownMs = 200;
 
-    /// <summary>MOD: added, per direct request — the pressed-hold (frame 1) and extended-hold (frame 4) are now equal length, and shorter than the old extended-only hold. This is the shared BASE duration for both — see <see cref="BasePressDownMs"/>'s own remarks on scaling.</summary>
+    /// <summary>MOD: added — the pressed-hold (frame 1) and extended-hold (frame 4) are now equal length, and shorter than the old extended-only hold. This is the shared BASE duration for both — see <see cref="BasePressDownMs"/>'s own remarks on scaling.</summary>
     private const double BaseHoldMs = 300;
 
     /// <summary>See <see cref="BasePressDownMs"/> — the return stroke's own BASE duration, frame 1 back up to frame 4.</summary>
@@ -62,7 +62,7 @@ internal static class AutoCrafterPatches
     /// <summary>The full press-stroke cycle's own BASE duration — <see cref="BasePressDownMs"/> + <see cref="BaseHoldMs"/> (pressed) + <see cref="BasePressUpMs"/> + <see cref="BaseHoldMs"/> (extended) — used only to pick how many whole cycles fit the craft's real-world duration; see <see cref="GetPressCycleTiming"/>.</summary>
     private const double BasePressCycleMs = AutoCrafterPatches.BasePressDownMs + AutoCrafterPatches.BaseHoldMs + AutoCrafterPatches.BasePressUpMs + AutoCrafterPatches.BaseHoldMs;
 
-    /// <summary>MOD: widened further, per direct request ("wider still") — how much WIDER the sprite gets at the bottom of a press stroke (squash), as a fraction of its normal size. Kept separate from <see cref="SquashAmplitudeY"/>/<see cref="StretchAmplitude"/> so the horizontal squash specifically could be made thicker without also exaggerating the vertical flatten or the spring-back overshoot.</summary>
+    /// <summary>MOD: widened further — how much WIDER the sprite gets at the bottom of a press stroke (squash), as a fraction of its normal size. Kept separate from <see cref="SquashAmplitudeY"/>/<see cref="StretchAmplitude"/> so the horizontal squash specifically could be made thicker without also exaggerating the vertical flatten or the spring-back overshoot.</summary>
     private const float SquashAmplitudeX = 0.20f;
 
     /// <summary>How much SHORTER the sprite gets at the bottom of a press stroke (squash), as a fraction of its normal size.</summary>
@@ -181,7 +181,7 @@ internal static class AutoCrafterPatches
         if (__instance.readyForHarvest.Value)
             return true; // let vanilla collect the finished output normally
 
-        // MOD: added, per direct request — a starved machine can still have its output collected above
+        // MOD: added — a starved machine can still have its output collected above
         // (that's deliberately never blocked, same as every other power-required machine — see
         // PowerRequiredMachinePatches's own remarks), but every OTHER interaction (assign/remove/swap)
         // is refused outright while starved, showing only the generic "Machine needs power" reminder
@@ -193,7 +193,7 @@ internal static class AutoCrafterPatches
             return false;
         }
 
-        // MOD: changed, per direct request — assign/remove/swap is now allowed even mid-craft. This is
+        // MOD: changed — assign/remove/swap is now allowed even mid-craft. This is
         // safe because a craft that's already started is entirely self-contained in heldObject/
         // MinutesUntilReady once SetInput sets them (see AutoCrafterMachine.SetInput) — changing or
         // clearing the assigned recipe here only affects what happens for the NEXT craft after this one
@@ -204,7 +204,7 @@ internal static class AutoCrafterPatches
         Item? held = who.CurrentItem;
         if (held == null)
         {
-            // MOD: added, per direct request — plays the Crystalarium's own "toggle off" cue, via the
+            // MOD: added — plays the Crystalarium's own "toggle off" cue, via the
             // standard vanilla GameLocation.playSound (multiplayer-safe: broadcasts to other clients via
             // its own netAudio sync when needed, unlike Game1.sounds.PlayLocal which is local-only).
             if (AutoCrafterMachine.TryRemoveAssignedRecipe(__instance) && __instance.Location != null && !Game1.paused) // no-op if nothing assigned; starts the 4→1 unprime animation either way
@@ -213,7 +213,7 @@ internal static class AutoCrafterPatches
             return false;
         }
 
-        // MOD: added, per direct request — re-using the SAME item that's already assigned toggles the
+        // MOD: added — re-using the SAME item that's already assigned toggles the
         // assignment off (matching the category signs' own "hold the same item again" gesture, just
         // with a different effect: those signs show info, this machine clears itself), rather than just
         // re-confirming the same recipe over and over.
@@ -221,12 +221,12 @@ internal static class AutoCrafterPatches
         {
             AutoCrafterMachine.TryRemoveAssignedRecipe(__instance);
             if (__instance.Location != null && !Game1.paused)
-                __instance.Location.playSound("smallSelect", __instance.TileLocation); // MOD: added, per direct request
+                __instance.Location.playSound("smallSelect", __instance.TileLocation); // MOD: added
             __result = true;
             return false;
         }
 
-        // MOD: changed, per direct request — both "no recipe in the game produces this item" and "a
+        // MOD: changed — both "no recipe in the game produces this item" and "a
         // recipe exists, but this player hasn't learned it" now show the same message, since from the
         // player's perspective the machine just can't make it either way (Game1.showRedMessage already
         // plays its own "cancel" cue, so no separate sound here).
@@ -239,7 +239,7 @@ internal static class AutoCrafterPatches
         {
             AutoCrafterMachine.SetAssignedRecipe(__instance, recipe, held.QualifiedItemId);
             if (__instance.Location != null && !Game1.paused)
-                __instance.Location.playSound("select", __instance.TileLocation); // MOD: added, per direct request — the Crystalarium's own "toggle on" cue
+                __instance.Location.playSound("select", __instance.TileLocation); // MOD: added — the Crystalarium's own "toggle on" cue
 
             // MOD: added — nudge event-based automation to recheck this tile's group soon, in case the
             // connected Powered Chest already has every ingredient sitting there ready (see
@@ -258,7 +258,7 @@ internal static class AutoCrafterPatches
     }
 
     /// <summary>
-    /// MOD: added, per direct request. Get the press-cycle's actual phase durations, scaled so a whole
+    /// MOD: added. Get the press-cycle's actual phase durations, scaled so a whole
     /// number of cycles exactly fills the craft's own real-world <see cref="AutoCrafterMachine.ProcessingMinutes"/>
     /// duration (<see cref="Game1.realMilliSecondsPerGameTenMinutes"/> — the real seconds one 10-minute
     /// segment actually takes at the current game speed, scaled up to the full processing time) with zero
@@ -308,7 +308,7 @@ internal static class AutoCrafterPatches
             double afterDown = strokeProgressMs - pressDownMs;
             if (afterDown < holdMs)
             {
-                // MOD: added, per direct request — fire the strike particle/sound once per cycle, right
+                // MOD: added — fire the strike particle/sound once per cycle, right
                 // as it reaches fully-pressed. Tracked by cycle index (not a "did we juuust cross the
                 // threshold" instant check) so it's still reliably caught even if this machine wasn't
                 // drawn for a stretch (e.g. off-screen) — it just fires once, for whatever the CURRENT
@@ -348,7 +348,7 @@ internal static class AutoCrafterPatches
     }
 
     /// <summary>
-    /// MOD: added, per direct request. Get the squash-and-stretch scale for the current point in a press
+    /// MOD: added. Get the squash-and-stretch scale for the current point in a press
     /// stroke — squashes (widens/flattens) through the down-stroke, overshoots into a stretch
     /// (narrows/elongates) right after springing back up, then eases back to a neutral scale.
     /// </summary>
@@ -389,7 +389,7 @@ internal static class AutoCrafterPatches
     }
 
     /// <summary>
-    /// MOD: changed, per direct request — <see cref="Utility.addDirtPuffs"/> turned out to spawn FOUR
+    /// MOD: changed — <see cref="Utility.addDirtPuffs"/> turned out to spawn FOUR
     /// overlapping 64x64 sprites per call (a random pick of two, PLUS one more always added
     /// regardless of the requested count): "TileSheets\animations" row 46 (pixel Y=2944) and row 12
     /// (pixel Y=768), which are the exact same two-layer "construction dust cloud" asset Building.cs
@@ -403,8 +403,8 @@ internal static class AutoCrafterPatches
     /// <param name="y">The tile Y position being drawn.</param>
     private static void SpawnStrikePlume(GameLocation location, int x, int y)
     {
-        // MOD: fixed, per direct request — the previous Game1.paused check didn't cover the actual
-        // reported case: an UNFOCUSED window isn't necessarily Game1.paused (e.g. "pause when out of
+        // MOD: fixed — the previous Game1.paused check didn't cover the actual
+        // failure case: an UNFOCUSED window isn't necessarily Game1.paused (e.g. "pause when out of
         // focus" off, or a windowed/borderless game that keeps simulating and drawing while the OS
         // considers a different window focused). Game1.currentGameTime.TotalGameTime keeps advancing off
         // real wall-clock time regardless of focus (this is what GetFrameIndex's own cycle timing is
@@ -418,7 +418,7 @@ internal static class AutoCrafterPatches
         if (Game1.paused || Game1.game1?.IsActive == false)
             return;
 
-        // MOD: changed, per direct request ("center them more") — centered on the tile's own bottom
+        // MOD: changed — centered further, on the tile's own bottom
         // (matching where the press sprite's own anchor sits — see Draw_Prefix's anchorPoint), with a
         // tight, symmetric jitter instead of the old spread, which was both anchored off the tile's
         // top-left corner (not the sprite at all) and asymmetric (-16 to +31, biased down-right).
@@ -461,7 +461,7 @@ internal static class AutoCrafterPatches
             int frameIndex = AutoCrafterPatches.GetFrameIndex(__instance, out isProcessing, out strokeProgressMs, out bool justStruck);
             sourceRect = new Rectangle(frameIndex * AutoCrafterPatches.FrameWidth, 0, AutoCrafterPatches.FrameWidth, AutoCrafterPatches.FrameHeight);
 
-            // MOD: changed, per direct request — a light dust puff every press-cycle right as it reaches
+            // MOD: changed — a light dust puff every press-cycle right as it reaches
             // fully-pressed, plus the "crafting" cue but ONLY for the craft's first three strikes (cycle
             // index 0-2 — GetFrameIndex already records the just-handled cycle index via
             // AutoCrafterMachine.SetLastHandledStrikeCycle, so it's read back here right after justStruck
@@ -486,7 +486,7 @@ internal static class AutoCrafterPatches
             sourceRect = new Rectangle(0, 0, texture.Width, texture.Height);
         }
 
-        // MOD: added, per direct request — squash-and-stretch driven by the press stroke itself (see
+        // MOD: added — squash-and-stretch driven by the press stroke itself (see
         // GetSquashStretchScale), only while actively processing (not while idle/primed/unpowered).
         Vector2 scale = isProcessing
             ? AutoCrafterPatches.GetSquashStretchScale(strokeProgressMs)
@@ -537,7 +537,7 @@ internal static class AutoCrafterPatches
                 ParsedItemData heldItemData = ItemRegistry.GetDataOrErrorItem(__instance.heldObject.Value.QualifiedItemId);
                 Texture2D heldTexture = heldItemData.GetTexture();
 
-                // MOD: changed, per direct request — a bigcraftable's own source sprite is 16x32 (twice as
+                // MOD: changed — a bigcraftable's own source sprite is 16x32 (twice as
                 // tall as a plain Object's 16x16), so drawing it at the same scale/origin vanilla's bubble
                 // code uses (Object.cs:5473, which never has to handle a bigcraftable held item since no
                 // vanilla machine ever produces one) made it spill way outside the bubble. Scaled down and

@@ -15,7 +15,7 @@ namespace Pathoschild.Stardew.Automate.Framework;
 /// <see cref="PoweredFloorSync"/> instead — this class only touches tiles in the "powered but
 /// orphaned" state, so it never fights with that class over the same tile.
 ///
-/// MOD: per direct user request, no longer drives Alternative Textures' own <c>modData</c> keys — see
+/// MOD: changed — no longer drives Alternative Textures' own <c>modData</c> keys — see
 /// <see cref="Patches.ConnectorTexturePatches"/>'s own remarks for why. The timing/ping-pong logic
 /// below is otherwise completely unchanged from the Alternative Textures version, so the animation's
 /// actual rhythm (frame timing, hold-on-unpowered pacing) stays identical; only WHAT gets written each

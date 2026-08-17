@@ -12,14 +12,14 @@ using StardewValley.Mods;
 namespace Pathoschild.Stardew.Automate.Framework.Storage;
 
 /// <summary>
-/// MOD: added, per direct request. Wraps the farm's own shipping bin inventory (see
+/// MOD: added. Wraps the farm's own shipping bin inventory (see
 /// <see cref="Farm.getShippingBin"/>) as a plain <see cref="IContainer"/> — readable, writable, and
 /// (critically) countable via <see cref="Inventory"/>'s own <c>CountId</c> — so a whitelist/blacklist
 /// sign's numeric cap (enforced entirely by <see cref="ItemFilteredContainer.Store"/> reading
 /// <c>Inventory.CountId</c>) has something to apply itself to, and a conduit can pull the bin's own
 /// contents back out.
 ///
-/// MOD: changed, per direct request — this used to be constructed only when the "Better Shipping Bin"
+/// MOD: changed — this used to be constructed only when the "Better Shipping Bin"
 /// companion mod was installed (its own player-facing menu was the only way to browse/withdraw the bin's
 /// contents before they're sold overnight otherwise, via a separate active-pull-only machine the rest of
 /// the time); that gate is gone now, and this is always what a shipping bin resolves to (see
@@ -79,7 +79,7 @@ internal class ShippingBinContainer : IContainer, IHasContainerPriority, IHasOwn
     /// <inheritdoc />
     public int ContainerPriorityTier => ContainerPriorityTiers.ChestHybrid;
 
-    /// <summary>MOD: added, per direct request — <see cref="Store"/> always plays vanilla's own shipment animation/sound, so the generic one would otherwise double up on top of it.</summary>
+    /// <summary>MOD: added — <see cref="Store"/> always plays vanilla's own shipment animation/sound, so the generic one would otherwise double up on top of it.</summary>
     /// <inheritdoc />
     public bool HasOwnEntryEffect => true;
 
@@ -139,8 +139,20 @@ internal class ShippingBinContainer : IContainer, IHasContainerPriority, IHasOwn
             inventory.Add(stack.Take(stack.Count));
 
         // play the shipment animation/sound for whatever was actually stored just now
+        //
+        // MOD: added — without this guard, the shipment sound plays globally regardless of where the
+        // player actually is. Vanilla's own showShipment (Farm.cs/ShippingBin.cs/IslandWest.cs) plays its "Ship" cue via
+        // DelayedAction.playSoundAfterDelay WITHOUT passing a location, which falls through to a plain
+        // Game1.playSound call — a genuinely global sound with no location/distance filtering at all
+        // (confirmed directly in the decompiled source). That's harmless for vanilla's own use, since the
+        // player is always standing right at the bin when they toss something in by hand, but Automate
+        // calls this once per automated shipment from anywhere in the background — so without this guard,
+        // the player hears it constantly regardless of where they actually are. Every other container's
+        // own entry sound (see ContainerVisualEffects.PlayEffect) already skips itself the same way
+        // unless a farmer is actually standing in this container's own location; this matches that same
+        // rule instead of relying on vanilla's own (location-blind) method.
         int moved = before - stack.Count;
-        if (moved > 0)
+        if (moved > 0 && this.Location.farmers.Any())
         {
             Item shipped = stack.Sample.getOne();
             shipped.Stack = moved;

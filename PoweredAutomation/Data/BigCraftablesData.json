@@ -7,7 +7,7 @@
                 "{{ModId}}_PowerCoil": {
                     "Name": "{{ModId}}_PowerCoil",
                     "DisplayName": "Power Coil",
-                    "Description": "Provides power to nearby conduits and machines.",
+                    "Description": "Provides power to nearby conduits and machines. Has a limited radius.",
                     "Price": 50,
                     "Fragility": 0,
                     "CanBePlacedOutdoors": true,
@@ -95,7 +95,7 @@
                 },
 
                 "{{ModId}}_AutoCrafter": {
-                    "Name": "AutoCrafter",
+                    "Name": "{{ModId}}_AutoCrafter",
                     "DisplayName": "Auto Crafter",
                     "Description": "Use an item on this machine to assign and craft any known recipes via automation. The item won't be consumed.",
                     "Price": 200,

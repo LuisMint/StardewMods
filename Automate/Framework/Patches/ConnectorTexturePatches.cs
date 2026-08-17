@@ -9,8 +9,8 @@ namespace Pathoschild.Stardew.Automate.Framework.Patches;
 /// <summary>
 /// MOD: added. Swaps a connector floor tile's world texture between its normal ("powered"),
 /// dedicated "_UnPowered", and two opacity-blended intermediate ("_Dimmer"/"_Dimmest" — the powered
-/// texture composited over the unpowered one at 66%/33% opacity, baked as static PNGs) variants — per
-/// direct user request, replacing the previous Alternative Textures-driven swap
+/// texture composited over the unpowered one at 66%/33% opacity, baked as static PNGs) variants,
+/// replacing the previous Alternative Textures-driven swap
 /// (<see cref="PoweredFloorSync"/>/<see cref="PoweredFloorAnimator"/> now write
 /// <see cref="ConnectorVariantModDataKey"/> here instead of AT's own <c>modData</c> keys).
 ///
@@ -36,7 +36,7 @@ namespace Pathoschild.Stardew.Automate.Framework.Patches;
 /// <see cref="Patches.PowerCoilPatches"/>/<see cref="Patches.SignValidityPatches"/> already do for
 /// their own powered/unpowered swaps. Only the THIRD state — powered but not part of a valid (active)
 /// automation group, previously Alternative Textures' 4-frame ping-pong — actually needed a texture
-/// drawn over another texture at reduced opacity (per direct user request); since <see cref="Flooring.draw"/>
+/// drawn over another texture at reduced opacity; since <see cref="Flooring.draw"/>
 /// has no per-call alpha/tint hook to inject a live blend into, the two INTERMEDIATE frames of that
 /// animation are pre-baked once as their own flat PNGs (see the Pipes/*_Dimmer.png, *_Dimmest.png
 /// files) rather than composited live — visually identical to a real-time overlay, since the source

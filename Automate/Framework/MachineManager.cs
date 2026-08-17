@@ -95,7 +95,7 @@ internal class MachineManager
     /// (nothing was stored/removed, it just became reachable), and a machine joining isn't itself
     /// "becoming ready." Without this, a newly-connected chest/machine just sat there doing nothing until
     /// the player happened to open/edit some unrelated chest, or the periodic backstop scan eventually
-    /// caught it — reported directly by a user.
+    /// caught it.
     /// </summary>
     private readonly List<IMachineGroup> GroupsWithNewMembers = new();
 
@@ -196,9 +196,10 @@ internal class MachineManager
     /// <param name="powerSiloTierRoller">MOD: added. Resolves <see cref="ModConfig.PowerSiloTierPools"/> into this save's rolled Power Silo tier requirements — constructed by the caller (see its own remarks for why) rather than here, so it's the same shared instance used elsewhere.</param>
     /// <param name="getEffectiveActionDelaySeconds">MOD: added. Get the effective <c>ActionDelaySeconds</c> (after any Power Relay bonus), in seconds — see <see cref="ThrottledContainer"/>.</param>
     /// <param name="getEffectiveActionsPerDelayWindow">MOD: added. Get the effective <c>ActionsPerDelayWindow</c> (after any Power Relay bonus) — see <see cref="ThrottledContainer"/>.</param>
+    /// <param name="getElapsedMs">MOD: added. Get the real-time, pause-aware elapsed-milliseconds clock used to size a container's shared pacing window — see <see cref="ThrottledContainer"/>'s own remarks.</param>
     /// <param name="getVisualEffectsEnabled">MOD: added. Get whether a container's lid animation/jolt/item sprite/sound should play — see <see cref="ThrottledContainer"/>.</param>
-    /// <param name="notifyContainerChanged">MOD: added, per direct request. Proactively wake every active group covering a tile whose container just changed — see <see cref="ThrottledContainer"/>'s own remarks.</param>
-    public MachineManager(Func<ModConfig> config, DataModel data, IAutomationFactory defaultFactory, IMonitor monitor, PowerSiloTierRoller powerSiloTierRoller, Func<float> getEffectiveActionDelaySeconds, Func<int> getEffectiveActionsPerDelayWindow, Func<bool> getVisualEffectsEnabled, Action<GameLocation, Vector2, bool> notifyContainerChanged)
+    /// <param name="notifyContainerChanged">MOD: added. Proactively wake every active group covering a tile whose container just changed — see <see cref="ThrottledContainer"/>'s own remarks.</param>
+    public MachineManager(Func<ModConfig> config, DataModel data, IAutomationFactory defaultFactory, IMonitor monitor, PowerSiloTierRoller powerSiloTierRoller, Func<float> getEffectiveActionDelaySeconds, Func<int> getEffectiveActionsPerDelayWindow, Func<double> getElapsedMs, Func<bool> getVisualEffectsEnabled, Action<GameLocation, Vector2, bool> notifyContainerChanged)
     {
         this.Config = config;
         this.Data = data;
@@ -281,6 +282,7 @@ internal class MachineManager
             monitor: monitor,
             getEffectiveActionDelaySeconds: getEffectiveActionDelaySeconds, // MOD: added
             getEffectiveActionsPerDelayWindow: getEffectiveActionsPerDelayWindow, // MOD: added
+            getElapsedMs: getElapsedMs, // MOD: added
             getVisualEffectsEnabled: getVisualEffectsEnabled, // MOD: added
             notifyContainerChanged: notifyContainerChanged // MOD: added
         );

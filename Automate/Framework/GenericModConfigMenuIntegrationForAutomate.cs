@@ -155,7 +155,7 @@ internal class GenericModConfigMenuIntegrationForAutomate : IGenericModConfigMen
             );
 
         // MOD: removed the "connectors" section — a per-vanilla-path checkbox list plus a custom-IDs
-        // textbox — per direct user request. This mod only ever uses its own three conduits (Input,
+        // textbox. This mod only ever uses its own three conduits (Input,
         // Output, Omni) as connectors, so exposing every vanilla path as a togglable connector was
         // unnecessary clutter. Config.Connectors/ChestInputConnectors/ChestOutputConnectors are
         // untouched otherwise — still hand-editable in the config file, just no longer surfaced here.

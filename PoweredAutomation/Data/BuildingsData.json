@@ -22,10 +22,10 @@
                     "AdditionalPlacementTiles": null,
                     "Builder": "Dwarf",
                     "BuildCondition": null,
-                    "BuildDays": 1,
+                    "BuildDays": 2,
                     "BuildCost": 15000,
                     "BuildMaterials": [
-                        { "ItemId": "(O)378", "Amount": 100 },
+                        { "ItemId": "(O)378", "Amount": 50 },
                         { "ItemId": "(O)388", "Amount": 100 },
                         { "ItemId": "(O)330", "Amount": 20 }
                     ],
@@ -83,7 +83,7 @@
                     "BuildDays": 2,
                     "BuildCost": 20000,
                     "BuildMaterials": [
-                        { "ItemId": "(O)378", "Amount": 200 },
+                        { "ItemId": "(O)378", "Amount": 75 },
                         { "ItemId": "(O)388", "Amount": 200 },
                         { "ItemId": "(O)330", "Amount": 50 }
                     ],
@@ -141,8 +141,8 @@
                     "BuildDays": 4,
                     "BuildCost": 30000,
                     "BuildMaterials": [
-                        { "ItemId": "(O)334", "Amount": 20 },
-                        { "ItemId": "(O)787", "Amount": 5 },
+                        { "ItemId": "(O)334", "Amount": 15 },
+                        { "ItemId": "(O)787", "Amount": 10 },
                         { "ItemId": "(O)122", "Amount": 1 }
                     ],
                     "BuildingToUpgrade": null,
@@ -197,7 +197,7 @@
                     "BuildDays": 3,
                     "BuildCost": 30000,
                     "BuildMaterials": [
-                        { "ItemId": "(O)334", "Amount": 15 },
+                        { "ItemId": "(O)334", "Amount": 10 },
                         { "ItemId": "(O)787", "Amount": 5 },
                         { "ItemId": "(O)74", "Amount": 1 }
                     ],

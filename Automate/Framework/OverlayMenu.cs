@@ -64,7 +64,7 @@ internal class OverlayMenu : BaseOverlay
     /// <summary>MOD: added. The size of the white/black sign-detection debug marker, as a fraction of the full tile size — drawn smaller (and centered) than the tile so the connector-role color underneath stays visible around its edges too, not just through its own translucency.</summary>
     private const float SignMarkerSizeScale = 0.65f;
 
-    /// <summary>MOD: added. The size of the power-coil grid-usage marker, as a fraction of the full tile size, per the user's request.</summary>
+    /// <summary>MOD: added. The size of the power-coil grid-usage marker, as a fraction of the full tile size.</summary>
     private const float PowerCoilMarkerSizeScale = 0.4f; //1f / 3f;
 
     /// <summary>MOD: added. The fill opacity for the power-coil grid-usage marker — deliberately more solid than the tile's own background fill, so it reads as a clear marker rather than another translucent tint layered on top.</summary>

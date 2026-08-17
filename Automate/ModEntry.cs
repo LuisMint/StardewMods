@@ -134,7 +134,7 @@ internal class ModEntry : Mod
     /// rediscovers it as "still ready" before its turn comes up.
     ///
     /// Deliberately keyed by <see cref="IMachineGroup"/> reference, with NO attempt to carry a queue forward
-    /// across a rebuild that recreates the group instance — per direct user feedback, that's an acceptable
+    /// across a rebuild that recreates the group instance — that's an acceptable
     /// trade: a rebuild just resets the affected group's pacing to fresh (its machines get rediscovered and
     /// re-queued from scratch by the normal triggers), rather than trying to bridge old-to-new group
     /// instances, which is what caused most of the fragility in earlier attempts at this feature.
@@ -160,7 +160,7 @@ internal class ModEntry : Mod
     /// Done/Empty between being queued and being serviced — e.g. <see cref="Machines.Objects.PoweredChestMachine"/>,
     /// which always reports <see cref="MachineState.Empty"/>. Without this dedup, such a machine would get
     /// rediscovered (and would try to jump the queue) far more often than a normal machine that's only
-    /// occasionally ready, structurally starving everything queued behind it — reported directly by a user as
+    /// occasionally ready, structurally starving everything queued behind it — observed as
     /// an unexpectedly long stall in event-based mode and multiple machines committing at once in interval mode.
     /// </summary>
     private readonly HashSet<IMachine> QueuedMachines = new(new ObjectReferenceComparer<IMachine>());
@@ -169,7 +169,7 @@ internal class ModEntry : Mod
     private readonly HashSet<IMachineGroup> ArmedGroupBatches = new(new ObjectReferenceComparer<IMachineGroup>());
 
     /// <summary>
-    /// MOD: added, per direct request. Container changes reported by <see cref="ThrottledContainer"/> via
+    /// MOD: added. Container changes reported by <see cref="ThrottledContainer"/> via
     /// its <c>notifyContainerChanged</c> delegate, queued here instead of being acted on immediately — see
     /// <see cref="ProcessPendingContainerChangeNotifications"/> for why this indirection is required.
     ///
@@ -276,21 +276,26 @@ internal class ModEntry : Mod
                 config: () => this.Config,
                 monitor: this.Monitor,
                 reflection: this.Helper.Reflection,
-                // MOD: added, per direct request — see PoweredChestMachine's own remarks for why its
+                // MOD: added — see PoweredChestMachine's own remarks for why its
                 // own single paced turn needs this to perform more than one transfer per call.
                 getEffectiveActionsPerDelayWindow: () => this.GetEffectiveActionsPerDelayWindow()
             ),
             monitor: this.Monitor,
             powerSiloTierRoller: this.PowerSiloTierRoller,
-            // MOD: added, per direct request — see ThrottledContainer's own remarks for why chunked
+            // MOD: added — see ThrottledContainer's own remarks for why chunked
             // container delivery reuses this exact same Relay-upgrade-aware pacing.
             getEffectiveActionDelaySeconds: () => this.GetEffectiveActionDelaySeconds(),
             getEffectiveActionsPerDelayWindow: () => this.GetEffectiveActionsPerDelayWindow(),
+            // MOD: added — see ThrottledContainer's own remarks for why its shared
+            // per-container-per-window budget needs THIS exact real-time clock (not Game1.currentGameTime)
+            // to actually enforce N-per-window against real elapsed seconds, matching the group-level
+            // ActionDelaySeconds timer's own already-proven clock.
+            getElapsedMs: () => this.UnpausedElapsedMs,
             getVisualEffectsEnabled: () => this.Config.AnimatedItemTransfers,
-            // MOD: added, per direct request — a Powered Chest (or any container) whose contents change
+            // MOD: added — a Powered Chest (or any container) whose contents change
             // through automation now proactively wakes every active group covering its own tile directly,
-            // instead of relying solely on SMAPI's own ChestInventoryChanged event round-trip. Per direct
-            // user report, a container reachable from MULTIPLE separate machine groups (e.g. one group's
+            // instead of relying solely on SMAPI's own ChestInventoryChanged event round-trip. A container
+            // reachable from MULTIPLE separate machine groups (e.g. one group's
             // conduit feeds it, a completely different group's pull-conduit — possibly whitelist/category
             // filtered — reads from it) could go unnoticed by that OTHER group until the periodic hourly
             // backstop scan happened to catch it. This mirrors AutomateMachine's own existing cross-group
@@ -302,7 +307,7 @@ internal class ModEntry : Mod
             notifyContainerChanged: (location, tile, isJunimoChest) => this.PendingContainerChangeNotifications.Add((location, tile, isJunimoChest))
         );
 
-        this.CommandHandler = new CommandHandler(this.Monitor, () => this.Config, this.MachineManager, this.PowerSiloTierRoller);
+        this.CommandHandler = new CommandHandler(this.Monitor, () => this.Config, this.MachineManager, this.PowerSiloTierRoller, this.TogglePerfOverlay);
 
         // MOD: added — the Power Relay's global efficiency-bonus mechanic (see PowerRelaySystem's own
         // remarks). Deliberately NOT owned by MachineManager.Factory like PowerSiloSystem is — unlike a
@@ -343,18 +348,18 @@ internal class ModEntry : Mod
         SignColliderPatches.Apply(harmony);
 
         // MOD: added — swaps a managed sign's world sprite to its dedicated "_UnPowered" texture while
-        // invalid, per direct user request replacing the previous Alternative Textures-driven swap (see
+        // invalid, replacing the previous Alternative Textures-driven swap (see
         // SignValidityPatches' own remarks).
         SignValidityPatches.Apply(harmony);
 
         // MOD: added — swaps a managed connector's world sprite between its powered/unpowered/dimmer/
-        // dimmest variants, per direct user request replacing the previous Alternative Textures-driven
+        // dimmest variants, replacing the previous Alternative Textures-driven
         // swap (see ConnectorTexturePatches' own remarks).
         ConnectorTexturePatches.Apply(harmony);
 
         PoweredChestPatches.Apply(harmony);
 
-        // MOD: added, per direct request — makes a chest's lid visually swing open for a bit after
+        // MOD: added — makes a chest's lid visually swing open for a bit after
         // ContainerVisualEffects triggers an animation on it (chunked container delivery's entry/exit
         // feedback). Registered after PoweredChestPatches so both are applied, but see
         // ChestLidAnimationPatches.Apply's own remarks for why explicit Harmony priority — not
@@ -488,39 +493,39 @@ internal class ModEntry : Mod
         CaveHoleHumanDoorCrashPatches.Apply(harmony);
 
         // MOD: added — restricts the loot a Barrel/Crate gives inside a Cave Hole interior to 1-3 Cave
-        // Carrots or nothing, per direct user request (see CaveHoleCrateLootPatches's own remarks).
+        // Carrots or nothing (see CaveHoleCrateLootPatches's own remarks).
         CaveHoleCrateLootPatches.Apply(harmony);
 
         // MOD: added — gives the Dwarf a "build a Power Silo" option alongside their normal shop, reusing
         // vanilla's own carpenter menu (see DwarfBuildMenuPatches's own remarks).
         DwarfBuildMenuPatches.Apply(harmony);
 
-        // MOD: added — reskins the under-construction/upgrading visual for Dwarf-built structures only,
-        // per direct user request (see DwarfConstructionSpritePatches's own remarks).
+        // MOD: added — reskins the under-construction/upgrading visual for Dwarf-built structures only
+        // (see DwarfConstructionSpritePatches's own remarks).
         DwarfConstructionSpritePatches.Apply(harmony);
 
         // MOD: added — clicking an active Dwarf construction site spits a random item out of the ladder
-        // hole, once per building per day, per direct user request (see
+        // hole, once per building per day (see
         // DwarfConstructionSiteInteractionPatches's own remarks).
         DwarfConstructionSiteInteractionPatches.Apply(harmony);
 
         // MOD: added — reading Dwarf Research Note #4 unlocks a one-time hidden Power Coil at a specific
-        // Mine level 120 tile, per direct user request (see DwarfNoteTreasureTilePatches's own remarks).
+        // Mine level 120 tile (see DwarfNoteTreasureTilePatches's own remarks).
         DwarfNoteTreasureTilePatches.Apply(harmony);
 
         // MOD: added — reading Dwarf Research Note #7 unlocks a nightly Diamond-for-Dwarf-Gadget trade
-        // at the vanilla Statue Of The Dwarf King, per direct user request (see
+        // at the vanilla Statue Of The Dwarf King (see
         // DwarfKingStatueTradePatches's own remarks).
         DwarfKingStatueTradePatches.Apply(harmony);
 
         // MOD: added — reading Dwarf Research Notes #1-#3 unlocks a one-time gem drop at a specific
-        // Mountain spot, consuming a held Dwarf Scroll, per direct user request (see
+        // Mountain spot, consuming a held Dwarf Scroll (see
         // DwarfNoteGemScrollPatches's own remarks).
         DwarfNoteGemScrollPatches.Apply(harmony);
 
         // MOD: added — gives the Dwarf's shop 3 Cave Carrots that restock weekly, plus 1 Power Coil and
         // 1 Powered Chest that each restock once a season, and 1 already-donated geode mineral that
-        // restocks weekly, per direct user request (see DwarfWeeklyShopPatches's own remarks).
+        // restocks weekly (see DwarfWeeklyShopPatches's own remarks).
         DwarfWeeklyShopPatches.Initialize(this.Monitor);
         DwarfWeeklyShopPatches.Apply(harmony);
 
@@ -900,7 +905,7 @@ internal class ModEntry : Mod
                     // ChestInventoryChanged (nothing was stored/removed, it just came into range), and a
                     // machine joining isn't itself "becoming ready." Without this, a newly-connected
                     // chest/machine just sat there until the player happened to open/edit a chest (or the
-                    // ~7s backstop scan) triggered an unrelated rescan. Reported directly by a user.
+                    // ~7s backstop scan) triggered an unrelated rescan.
                     IReadOnlyList<IMachineGroup> newlyJoinedGroups = this.MachineManager.TakeGroupsWithNewMembers();
                     if (this.Config.UseEventBasedAutomation)
                     {
@@ -947,7 +952,7 @@ internal class ModEntry : Mod
                 // MOD: added — flush any group batches whose ModConfig.ActionDelaySeconds has elapsed.
                 this.RunDuePendingPasses();
 
-                // MOD: added, per direct request — deferred until strictly after every automation pass
+                // MOD: added — deferred until strictly after every automation pass
                 // above has fully finished this tick — see ProcessPendingContainerChangeNotifications's
                 // own remarks for why this can't run any earlier (or from inside one of those passes).
                 this.ProcessPendingContainerChangeNotifications();
@@ -1050,8 +1055,8 @@ internal class ModEntry : Mod
         try
         {
             // MOD: removed — this used to schedule each ready machine's OUTPUT push behind
-            // ModConfig.EventBasedPushPullDelaySeconds, a purely cosmetic reveal delay. Per direct user
-            // request, that's gone now that ActionDelaySeconds/ActionsPerDelayWindow (paced via
+            // ModConfig.EventBasedPushPullDelaySeconds, a purely cosmetic reveal delay. That's gone now
+            // that ActionDelaySeconds/ActionsPerDelayWindow (paced via
             // TryScheduleGroupBatch below) is a real progression-driven pacing system in its own right —
             // stacking the old cosmetic delay on top of that just made the very start of a save feel
             // doubly slow for no benefit. Each flagged machine is enqueued immediately instead; its own
@@ -1089,8 +1094,8 @@ internal class ModEntry : Mod
     /// instead of waiting for the next poll.
     ///
     /// MOD: fixed — this used to schedule ONE shared delayed pass that fed every currently-empty machine
-    /// in the location's active groups all at once (via <see cref="MachineGroup.Automate"/>). Per direct
-    /// user feedback, that meant several machines all being fed by the same chest restock would visually
+    /// in the location's active groups all at once (via <see cref="MachineGroup.Automate"/>). That
+    /// meant several machines all being fed by the same chest restock would visually
     /// resolve in one synchronized burst instead of each pull being independently paced. Now schedules a
     /// separate delayed <see cref="IMachineGroup.TryFeedMachineInput"/> call per currently-empty machine
     /// (see <see cref="ScheduleInputFeedsFor"/>), each with its own independent delay.
@@ -1185,7 +1190,7 @@ internal class ModEntry : Mod
     /// </summary>
     private float GetEffectiveActionDelaySeconds()
     {
-        // MOD: added, per direct request — OverwriteAutomationDelay is meant to pin ActionDelaySeconds
+        // MOD: added — OverwriteAutomationDelay is meant to pin ActionDelaySeconds
         // to exactly the configured value, full stop; the Power Relay's in-game efficiency bonus (like
         // any other "upgrade" a player might have) shouldn't still be adjusting it on top of that once
         // the player has explicitly opted into overwriting it themselves.
@@ -1203,7 +1208,7 @@ internal class ModEntry : Mod
     /// </summary>
     private int GetEffectiveActionsPerDelayWindow()
     {
-        // MOD: added, per direct request — same reasoning as GetEffectiveActionDelaySeconds above: an
+        // MOD: added — same reasoning as GetEffectiveActionDelaySeconds above: an
         // overwrite should mean exactly that, with no Power Relay bonus layered on top.
         if (this.Config.OverwriteAutomationDelay)
             return this.Config.ActionsPerDelayWindow;
@@ -1221,9 +1226,17 @@ internal class ModEntry : Mod
         {
             foreach (IMachineGroup group in activeGroups)
             {
-                Stopwatch stopwatch = Stopwatch.StartNew();
-                group.Automate();
-                AutomationPerfTracker.RecordFullScan(stopwatch.Elapsed.TotalMilliseconds);
+                // MOD: added — only pay for a Stopwatch (a real-time-clock query, plus an allocation) when the
+                // perf overlay is actually recording; this path runs for every active group every pass, so
+                // skipping it the rest of the time avoids pure overhead with nothing reading the result.
+                if (AutomationPerfTracker.IsRecording)
+                {
+                    Stopwatch stopwatch = Stopwatch.StartNew();
+                    group.Automate();
+                    AutomationPerfTracker.RecordFullScan(stopwatch.Elapsed.TotalMilliseconds);
+                }
+                else
+                    group.Automate();
             }
         }
         else
@@ -1263,7 +1276,11 @@ internal class ModEntry : Mod
         if (stateBefore is not (MachineState.Done or MachineState.Empty))
             return false;
 
-        Stopwatch stopwatch = Stopwatch.StartNew();
+        // MOD: added — only pay for a Stopwatch (a real-time-clock query, plus an allocation) when the perf
+        // overlay is actually recording; this runs for every single machine automation attempt, potentially
+        // thousands of times per game session on a large farm, so skipping it otherwise avoids pure
+        // per-call overhead with nothing ever reading the result.
+        Stopwatch? stopwatch = AutomationPerfTracker.IsRecording ? Stopwatch.StartNew() : null;
 
         // MOD: track whether a real commit happened via TryPushMachineOutput/TryFeedMachineInput's OWN
         // return values, NOT by comparing machine.GetState() before and after — that comparison is always a
@@ -1272,13 +1289,15 @@ internal class ModEntry : Mod
         bool didSomething = false;
 
         if (stateBefore is MachineState.Done)
-            didSomething |= group.TryPushMachineOutput(machine);
+        {
+            bool pushed = group.TryPushMachineOutput(machine);
+            didSomething |= pushed;
+        }
 
         if (machine.GetState() is MachineState.Empty)
         {
             bool fed = group.TryFeedMachineInput(machine);
             didSomething |= fed;
-            this.Monitor.Log($"[containersync] AutomateMachine: {machine.MachineTypeID} at ({machine.TileArea.X},{machine.TileArea.Y}) TryFeedMachineInput -> {fed}", LogLevel.Trace); // MOD: added, temporary diagnostic
 
             // MOD: fixed — a machine fed through one Input Conduit network but pushing output through a
             // SEPARATE Output Conduit network belongs to TWO different machine groups at once (different
@@ -1288,8 +1307,8 @@ internal class ModEntry : Mod
             // only be reachable through the OTHER group sharing this same tile. Previously nothing
             // rescheduled that other group until the periodic full backstop scan happened to notice (the
             // ONLY path that already worked correctly here, since it iterates every active group
-            // unconditionally rather than being scoped to just one) — reported as "the item is taken fine,
-            // but a new one doesn't get inserted until the hourly check". Omni Conduit was never affected,
+            // unconditionally rather than being scoped to just one) — the item would be taken fine,
+            // but a new one wouldn't get inserted until the hourly check. Omni Conduit was never affected,
             // since input and output flow through the same single connector network/group there.
             //
             // MOD: fixed — a first attempt at this called ScheduleInputFeedsFor (which includes THIS same
@@ -1327,14 +1346,14 @@ internal class ModEntry : Mod
                     if (otherGroupsMachine == null)
                         continue;
 
-                    this.Monitor.Log($"[containersync]   cross-group nudge: {machine.MachineTypeID} -> group#{(otherGroup).GetHashCode()}", LogLevel.Trace); // MOD: added, temporary diagnostic
                     this.EnqueueForAutomation(otherGroup, otherGroupsMachine);
                     this.TryScheduleGroupBatch(otherGroup);
                 }
             }
         }
 
-        AutomationPerfTracker.RecordFlaggedBatch(stopwatch.Elapsed.TotalMilliseconds);
+        if (stopwatch != null)
+            AutomationPerfTracker.RecordFlaggedBatch(stopwatch.Elapsed.TotalMilliseconds);
 
         return didSomething;
     }
@@ -1351,16 +1370,10 @@ internal class ModEntry : Mod
     private void EnqueueForAutomation(IMachineGroup group, IMachine machine)
     {
         if (this.GetEffectiveActionDelaySeconds() <= 0)
-        {
-            this.Monitor.Log($"[containersync]     EnqueueForAutomation: {machine.MachineTypeID} — skipped (ActionDelaySeconds <= 0, handled instantly instead)", LogLevel.Trace); // MOD: added, temporary diagnostic
             return;
-        }
 
         if (!this.QueuedMachines.Add(machine))
-        {
-            this.Monitor.Log($"[containersync]     EnqueueForAutomation: {machine.MachineTypeID} — already queued (dedup)", LogLevel.Trace); // MOD: added, temporary diagnostic
             return; // already queued — see QueuedMachines's own remarks
-        }
 
         if (!this.GroupActionQueues.TryGetValue(group, out LinkedList<IMachine>? queue))
             this.GroupActionQueues[group] = queue = new LinkedList<IMachine>();
@@ -1372,7 +1385,6 @@ internal class ModEntry : Mod
             queue.AddFirst(machine);
         else
             queue.AddLast(machine);
-        this.Monitor.Log($"[containersync]     EnqueueForAutomation: {machine.MachineTypeID} — enqueued (queue now has {queue.Count})", LogLevel.Trace); // MOD: added, temporary diagnostic
     }
 
     /// <summary>
@@ -1397,29 +1409,19 @@ internal class ModEntry : Mod
     /// <param name="group">The group to schedule a batch for.</param>
     private void TryScheduleGroupBatch(IMachineGroup group)
     {
-        int groupId = (group).GetHashCode(); // MOD: added, temporary diagnostic
-
         float effectiveActionDelaySeconds = this.GetEffectiveActionDelaySeconds();
         if (effectiveActionDelaySeconds <= 0)
         {
-            this.Monitor.Log($"[containersync]     TryScheduleGroupBatch(group#{groupId}) — running group.Automate() instantly (ActionDelaySeconds <= 0)", LogLevel.Trace); // MOD: added, temporary diagnostic
             group.Automate();
             return;
         }
 
         if (!this.GroupActionQueues.TryGetValue(group, out LinkedList<IMachine>? queue) || queue.Count == 0)
-        {
-            this.Monitor.Log($"[containersync]     TryScheduleGroupBatch(group#{groupId}) — nothing queued, nothing to prime", LogLevel.Trace); // MOD: added, temporary diagnostic
             return; // nothing queued for this group — nothing to prime for
-        }
 
         if (!this.ArmedGroupBatches.Add(group))
-        {
-            this.Monitor.Log($"[containersync]     TryScheduleGroupBatch(group#{groupId}) — already armed, will drain when it fires", LogLevel.Trace); // MOD: added, temporary diagnostic
             return; // already priming — it'll drain the queue (including anything just added to it) when it fires
-        }
 
-        this.Monitor.Log($"[containersync]     TryScheduleGroupBatch(group#{groupId}) — arming, fires in {effectiveActionDelaySeconds}s", LogLevel.Trace); // MOD: added, temporary diagnostic
         this.RunOrScheduleDelayedPass(() => this.RunGroupBatch(group), effectiveActionDelaySeconds, group);
     }
 
@@ -1436,13 +1438,8 @@ internal class ModEntry : Mod
     /// <param name="group">The group whose batch just came due.</param>
     private void RunGroupBatch(IMachineGroup group)
     {
-        int groupId = (group).GetHashCode(); // MOD: added, temporary diagnostic
-
         if (!this.ArmedGroupBatches.Remove(group))
-        {
-            this.Monitor.Log($"[containersync] RunGroupBatch(group#{groupId}) — stale fire, ignored", LogLevel.Trace); // MOD: added, temporary diagnostic
             return; // stale fire for a group whose pacing state was since purged/reset — nothing to do
-        }
 
         if (!this.GroupActionQueues.TryGetValue(group, out LinkedList<IMachine>? queue))
             return;
@@ -1451,7 +1448,15 @@ internal class ModEntry : Mod
         int effectiveActionsPerDelayWindow = this.GetEffectiveActionsPerDelayWindow();
         bool unlimited = effectiveActionsPerDelayWindow <= 0;
 
-        this.Monitor.Log($"[containersync] RunGroupBatch(group#{groupId}) — draining {queue.Count} queued machine(s), budget={(unlimited ? "unlimited" : effectiveActionsPerDelayWindow.ToString())}", LogLevel.Trace); // MOD: added, temporary diagnostic
+        // MOD: added. A machine dequeued here and dropped for good is only rediscovered if some OTHER
+        // event happens to touch this group again — its own state didn't change (still Done, holding the
+        // same output), so nothing guarantees that happens soon. Collected here (not requeued mid-loop, to
+        // avoid immediately re-trying the SAME still-exhausted budget in this SAME pass) and pushed back
+        // onto the FRONT of this group's own queue once the drain is done, so it gets first crack at this
+        // group's next scheduled batch instead of competing from scratch with whatever else got queued in
+        // the meantime. See MachineGroup.WasLastPushRejectedForBudget's own remarks for why only a
+        // purely-budget rejection earns this treatment, not a genuine one.
+        List<IMachine>? budgetRejectedMachines = null;
 
         while (queue.Count > 0 && (unlimited || committed < effectiveActionsPerDelayWindow))
         {
@@ -1459,8 +1464,26 @@ internal class ModEntry : Mod
             queue.RemoveFirst();
             this.QueuedMachines.Remove(machine);
 
+            bool wasDoneBefore = machine.GetState() is MachineState.Done;
+
             if (this.AutomateMachine(group, machine))
+            {
                 committed++;
+            }
+            else if (wasDoneBefore && group is MachineGroup { WasLastPushRejectedForBudget: true })
+            {
+                (budgetRejectedMachines ??= []).Add(machine);
+            }
+        }
+
+        if (budgetRejectedMachines != null)
+        {
+            for (int i = budgetRejectedMachines.Count - 1; i >= 0; i--)
+            {
+                IMachine machine = budgetRejectedMachines[i];
+                queue.AddFirst(machine);
+                this.QueuedMachines.Add(machine);
+            }
         }
 
         if (queue.Count > 0)
@@ -1500,11 +1523,7 @@ internal class ModEntry : Mod
             ? this.MachineManager.GetActiveMachineGroupsFor(location, originTile.Value)
             : this.MachineManager.GetActiveMachineGroupsFor(location);
 
-        // MOD: added, temporary diagnostic — materialize eagerly (instead of foreach-ing the lazy
-        // IEnumerable directly) purely so the count is known up front for the log line below.
-        IMachineGroup[] groupsArr = groups.ToArray();
-        this.Monitor.Log($"[containersync] ScheduleInputFeedsFor({location.Name}, tile={originTile}): found {groupsArr.Length} active group(s).", LogLevel.Trace);
-        foreach (IMachineGroup group in groupsArr)
+        foreach (IMachineGroup group in groups)
             this.ScheduleGroupCheck(group);
 
         // MOD: added — see this method's own remarks for why a Junimo Chest change needs this even when
@@ -1533,19 +1552,12 @@ internal class ModEntry : Mod
     /// <param name="group">The group to check.</param>
     private void ScheduleGroupCheck(IMachineGroup group)
     {
-        // MOD: added, temporary diagnostic — see the [containersync] tag on every log line in this
-        // chain, added per direct user report that a cross-group pull-conduit delay survived the first
-        // fix attempt (see PendingContainerChangeNotifications's own remarks).
-        int groupId = (group).GetHashCode();
-        this.Monitor.Log($"[containersync] ScheduleGroupCheck(group#{groupId}, loc={group.LocationKey}, machines={group.Machines.Length}, containers={group.Containers.Length})", LogLevel.Trace);
-
         foreach (IMachine machine in group.Machines)
         {
             MachineState state = machine.GetState();
             if (state is not (MachineState.Done or MachineState.Empty))
                 continue;
 
-            this.Monitor.Log($"[containersync]   candidate: {machine.MachineTypeID} at ({machine.TileArea.X},{machine.TileArea.Y}) state={state}", LogLevel.Trace); // MOD: added, temporary diagnostic
             this.EnqueueForAutomation(group, machine);
             this.TryScheduleGroupBatch(group);
         }
@@ -1574,7 +1586,7 @@ internal class ModEntry : Mod
     }
 
     /// <summary>
-    /// MOD: added, per direct request. Drain <see cref="PendingContainerChangeNotifications"/> and call
+    /// MOD: added. Drain <see cref="PendingContainerChangeNotifications"/> and call
     /// <see cref="ScheduleInputFeedsFor"/> for each — meant to be called once per <see cref="OnUpdateTicked"/>,
     /// strictly AFTER every automation pass that tick (<see cref="TryRunAutomationPass"/>,
     /// <see cref="RunDuePendingPasses"/>) has fully finished, never from in between or nested inside one.
@@ -1595,12 +1607,8 @@ internal class ModEntry : Mod
         List<(GameLocation Location, Vector2 Tile, bool IsJunimoChest)> pending = this.PendingContainerChangeNotifications;
         this.PendingContainerChangeNotifications = new();
 
-        this.Monitor.Log($"[containersync] Draining {pending.Count} pending container-change notification(s).", LogLevel.Trace); // MOD: added, temporary diagnostic
         foreach (var (location, tile, isJunimoChest) in pending)
-        {
-            this.Monitor.Log($"[containersync]   -> ScheduleInputFeedsFor({location.Name}, {tile}, isJunimoChest={isJunimoChest})", LogLevel.Trace); // MOD: added, temporary diagnostic
             this.ScheduleInputFeedsFor(location, tile, isJunimoChest);
-        }
     }
 
     /// <summary>MOD: added. Run any <see cref="PendingDelayedPasses"/> whose delay has elapsed — meant to be called once per <see cref="OnUpdateTicked"/>.</summary>
@@ -1654,8 +1662,37 @@ internal class ModEntry : Mod
     }
 
     /// <summary>
+    /// MOD: added. Toggle the automation performance overlay (see <see cref="AutomationPerfTracker"/>) —
+    /// moved from a rebindable keybind to a console-only command (<c>automate perf</c>, see
+    /// <see cref="Commands.TogglePerfOverlayCommand"/>) — a keybind lives in
+    /// <c>config.json</c>/GMCM's rebind list where a regular player could stumble onto it by accident,
+    /// while a console command only ever fires if someone deliberately opens the SMAPI console and types
+    /// it. Starting/stopping the recording alongside the display means every time you turn it on, you get
+    /// a clean window to compare against a previous run, rather than a lifetime total.
+    /// </summary>
+    private void TogglePerfOverlay()
+    {
+        if (this.ShowPerfOverlay)
+        {
+            this.ShowPerfOverlay = false;
+            AutomationPerfTracker.StopRecording();
+
+            // MOD: added — dump the same summary shown on the overlay to the log, so it's easy to
+            // copy/paste or compare against a previous run without having to screenshot the HUD.
+            this.Monitor.Log(string.Join(Environment.NewLine, this.BuildPerfSummaryLines()), LogLevel.Info);
+        }
+        else
+        {
+            this.ShowPerfOverlay = true;
+            this.LastActualDelayMs = null; // MOD: added — clean slate for the new recording window, same as AutomationPerfTracker's own counts
+            AutomationPerfTracker.StartRecording();
+            this.Monitor.Log("Automation performance overlay enabled.", LogLevel.Info);
+        }
+    }
+
+    /// <summary>
     /// MOD: added. Build the automation performance summary lines, shared by the overlay (see
-    /// <see cref="OnRenderedHud"/>) and the log dump written when recording stops (see <see cref="OnButtonsChanged"/>)
+    /// <see cref="OnRenderedHud"/>) and the log dump written when recording stops (see <see cref="TogglePerfOverlay"/>)
     /// so the two can't drift out of sync.
     /// </summary>
     private string[] BuildPerfSummaryLines()
@@ -1781,27 +1818,6 @@ internal class ModEntry : Mod
                     this.EnableOverlay();
             }
 
-            // MOD: added — toggle the automation performance overlay (see AutomationPerfTracker's own
-            // remarks). Starting/stopping the recording alongside the display means every time you turn
-            // it on, you get a clean window to compare against a previous run, rather than a lifetime total.
-            if (Context.IsPlayerFree && this.Keys.TogglePerformanceOverlay.JustPressed())
-            {
-                if (this.ShowPerfOverlay)
-                {
-                    this.ShowPerfOverlay = false;
-                    AutomationPerfTracker.StopRecording();
-
-                    // MOD: added — dump the same summary shown on the overlay to the log, so it's easy to
-                    // copy/paste or compare against a previous run without having to screenshot the HUD.
-                    this.Monitor.Log(string.Join(Environment.NewLine, this.BuildPerfSummaryLines()), LogLevel.Info);
-                }
-                else
-                {
-                    this.ShowPerfOverlay = true;
-                    this.LastActualDelayMs = null; // MOD: added — clean slate for the new recording window, same as AutomationPerfTracker's own counts
-                    AutomationPerfTracker.StartRecording();
-                }
-            }
         }
         catch (Exception ex)
         {

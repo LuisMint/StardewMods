@@ -11,7 +11,7 @@ using StardewValley.Buildings;
 namespace Pathoschild.Stardew.Automate.Framework;
 
 /// <summary>
-/// MOD: added. Per direct user request, resolves <see cref="ModConfig.PowerSiloTierPools"/> into a
+/// MOD: added. Resolves <see cref="ModConfig.PowerSiloTierPools"/> into a
 /// concrete effective tier list — every tier with a pool gets its <see cref="PowerSiloTierConfig.RequiredItems"/>
 /// replaced by a ONE-TIME roll (one random option per <see cref="PowerSiloSlotPool"/>, with a random
 /// count within that option's own range), so requirements feel varied between saves without changing
@@ -20,7 +20,7 @@ namespace Pathoschild.Stardew.Automate.Framework;
 /// always sees the same requirements it already showed the player for each Silo, rather than
 /// re-rolling out from under them.
 ///
-/// MOD: changed, per direct request — rolled per Power Silo BUILDING now, not once globally for the
+/// MOD: changed — rolled per Power Silo BUILDING now, not once globally for the
 /// whole save. The previous design stored a single save-wide roll on <see cref="Game1.MasterPlayer"/>
 /// so every Silo agreed on tier costs regardless of which player fed it — but that also meant every
 /// Silo in the save was IDENTICAL to every other one, which defeats the point of rolling requirements

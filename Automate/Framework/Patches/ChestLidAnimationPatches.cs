@@ -8,10 +8,10 @@ using StardewValley.Objects;
 namespace Pathoschild.Stardew.Automate.Framework.Patches;
 
 /// <summary>
-/// MOD: added, per direct request. Makes a chest's lid visually swing open for a bit after
+/// MOD: added. Makes a chest's lid visually swing open for a bit after
 /// <see cref="ContainerVisualEffects"/> triggers an animation on it, using the exact technique the
-/// installed "Convenient Inventory" mod already uses (and the user already likes the feel of) for its
-/// own quick-stack chest animation: a prefix on <see cref="Chest.draw(SpriteBatch, int, int, float)"/>
+/// installed "Convenient Inventory" mod already uses for its own quick-stack chest animation, since that
+/// approach already had the right feel: a prefix on <see cref="Chest.draw(SpriteBatch, int, int, float)"/>
 /// that reflectively overwrites the chest's private <c>currentLidFrame</c> field fresh EVERY draw call,
 /// computed purely from a time window stored in the chest's own <see cref="Chest.modData"/> (see
 /// <see cref="ContainerVisualEffects.TriggerLidAnimation"/>) — never a live, incrementally-mutated
@@ -24,9 +24,10 @@ namespace Pathoschild.Stardew.Automate.Framework.Patches;
 /// before; this patch simply overwrites whatever that logic left behind, immediately before each render,
 /// for as long as the animation window lasts. It never locks the chest's mutex, so vanilla never
 /// auto-pops the real inventory menu, and a real player interacting with the chest is completely
-/// unaffected — including, per direct request, deferring entirely (see <see cref="Draw_Prefix"/>'s own
-/// mutex check) the instant a player actually opens it mid-animation, so this never fights a real open
-/// with wherever its own closing phase happens to be.
+/// unaffected — including deferring entirely (see <see cref="Draw_Prefix"/>'s own mutex check) the
+/// instant a player actually opens it mid-animation, so the container never appears to close or attempt
+/// to while genuinely being opened, and this never fights a real open with wherever its own closing
+/// phase happens to be.
 /// </summary>
 internal static class ChestLidAnimationPatches
 {
@@ -63,10 +64,10 @@ internal static class ChestLidAnimationPatches
     /// <param name="__instance">The chest being drawn.</param>
     private static bool Draw_Prefix(Chest __instance)
     {
-        // MOD: added, per direct request ("hold it open... i want the container to [not] close or
-        // attempt to while it is in the middle of being opened") — if a real player (local or remote —
-        // the mutex lock itself is networked, so this reads the same for everyone) is actually
-        // interacting with this chest right now, get out of the way entirely rather than potentially
+        // MOD: added — a container shouldn't appear to close or attempt to while it's in the middle of
+        // being opened, so if a real player (local or remote — the mutex lock itself is networked, so
+        // this reads the same for everyone) is actually interacting with this chest right now, get out
+        // of the way entirely rather than potentially
         // overwriting the frame with wherever THIS animation's own closing phase happens to be. Vanilla's
         // own per-tick fixLidFrame (which already runs every tick regardless, in updateWhenCurrentLocation,
         // before draw) already drives the lid open and holds it there for as long as the lock is held —
@@ -83,8 +84,8 @@ internal static class ChestLidAnimationPatches
         double elapsedMs = (DateTimeOffset.Now - startTime).TotalMilliseconds;
         if (elapsedMs > durationMs)
         {
-            // MOD: added, per direct request ("make sure this is performant") — every chest that's ever
-            // been part of an automated transfer keeps this modData forever otherwise, meaning this
+            // MOD: added, for performance — every chest that's ever been part of an automated transfer
+            // keeps this modData forever otherwise, meaning this
             // method would keep parsing a DateTimeOffset string on every single future draw call of that
             // chest, indefinitely, for a window that's long since passed. Clearing it once means the
             // cheap TryGetValue-fails-immediately path above is what every later draw call actually hits.

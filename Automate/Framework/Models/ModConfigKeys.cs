@@ -15,9 +15,6 @@ internal class ModConfigKeys
     /// <summary>The keys which toggle the automation overlay.</summary>
     public KeybindList ToggleOverlay { get; set; } = new(SButton.U);
 
-    /// <summary>MOD: added. The keys which toggle the automation performance overlay (see <see cref="AutomationPerfTracker"/>). MOD: changed default from a bare P to a Ctrl+Shift+P combo, per direct user request, so a regular player isn't likely to stumble onto it by accident.</summary>
-    public KeybindList TogglePerformanceOverlay { get; set; } = KeybindList.Parse("LeftControl+LeftShift+P");
-
 
     /*********
     ** Public methods
@@ -30,6 +27,5 @@ internal class ModConfigKeys
     public void OnDeserialized(StreamingContext context)
     {
         this.ToggleOverlay ??= new KeybindList();
-        this.TogglePerformanceOverlay ??= new KeybindList();
     }
 }

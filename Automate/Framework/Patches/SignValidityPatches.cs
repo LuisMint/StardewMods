@@ -11,12 +11,12 @@ namespace Pathoschild.Stardew.Automate.Framework.Patches;
 /// MOD: added. Swaps a whitelist/blacklist (item or category) sign's world sprite to its dedicated
 /// "_UnPowered" texture while it isn't currently enforcing its filter — replaces the previous
 /// Alternative Textures-driven swap (<see cref="SignTextureSync"/> used to write AT's own
-/// <c>modData</c> keys; it now writes <see cref="SignValidModDataKey"/> here instead), per direct user
-/// request: same shape as <see cref="PowerCoilPatches"/>'s own powered/unpowered texture swap
+/// <c>modData</c> keys; it now writes <see cref="SignValidModDataKey"/> here instead), following the
+/// same shape as <see cref="PowerCoilPatches"/>'s own powered/unpowered texture swap
 /// (<see cref="PowerCoilPatches.IsPowered"/>/<see cref="PowerCoilPatches.Draw_Prefix"/>), just without
 /// any pulse/shake/light-source complexity, since a sign is a plain static, standard-sized (16x32,
 /// i.e. vanilla's own default BigCraftable source height) sprite either way — no lighting involvement
-/// at all, per direct user request.
+/// at all.
 /// </summary>
 internal static class SignValidityPatches
 {

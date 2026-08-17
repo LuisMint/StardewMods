@@ -3,7 +3,14 @@
     "Author": "Pathoschild",
     "Version": "%ProjectVersion%",
     "MinimumApiVersion": "4.1.10",
-    "Description": "Lets you automate crafting machines, fruit trees, and more by connecting them to chests.",
+    "Description": "A reworked Automate mod with better balancing and in game progression.",
     "UniqueID": "Pathoschild.Automate",
-    "EntryDll": "Automate.dll"
+    "EntryDll": "Automate.dll",
+    "UpdateKeys": ["Nexus:50165"],
+    "Dependencies": [
+        {
+            "UniqueID": "Pathoschild.ContentPatcher",
+            "IsRequired": true
+        }
+    ]
 }

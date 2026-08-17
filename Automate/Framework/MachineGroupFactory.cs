@@ -8,6 +8,7 @@ using Netcode;
 using Pathoschild.Stardew.Automate.Framework.Models;
 using Pathoschild.Stardew.Automate.Framework.Storage;
 using Pathoschild.Stardew.Common;
+using Pathoschild.Stardew.Common.Utilities;
 using StardewModdingAPI;
 using StardewValley;
 using StardewValley.Buildings;
@@ -95,10 +96,13 @@ internal class MachineGroupFactory
     /// <summary>MOD: added. Get the effective <c>ActionsPerDelayWindow</c> (after any Power Relay bonus) — see <see cref="ThrottledContainer"/>.</summary>
     private readonly Func<int> GetEffectiveActionsPerDelayWindow;
 
+    /// <summary>MOD: added. Get the real-time, pause-aware elapsed-milliseconds clock used to size a container's shared pacing window — see <see cref="ThrottledContainer"/>'s own remarks.</summary>
+    private readonly Func<double> GetElapsedMs;
+
     /// <summary>MOD: added. Get whether a container's lid animation/jolt/item sprite/sound should play — see <see cref="ThrottledContainer"/>.</summary>
     private readonly Func<bool> GetVisualEffectsEnabled;
 
-    /// <summary>MOD: added, per direct request. Proactively wake every active group covering a tile whose container just changed — see <see cref="ThrottledContainer"/>'s own remarks.</summary>
+    /// <summary>MOD: added. Proactively wake every active group covering a tile whose container just changed — see <see cref="ThrottledContainer"/>'s own remarks.</summary>
     private readonly Action<GameLocation, Vector2, bool> NotifyContainerChanged;
 
 
@@ -121,9 +125,10 @@ internal class MachineGroupFactory
     /// <param name="monitor">Encapsulates monitoring and logging.</param>
     /// <param name="getEffectiveActionDelaySeconds">MOD: added. Get the effective <c>ActionDelaySeconds</c> (after any Power Relay bonus), in seconds.</param>
     /// <param name="getEffectiveActionsPerDelayWindow">MOD: added. Get the effective <c>ActionsPerDelayWindow</c> (after any Power Relay bonus).</param>
+    /// <param name="getElapsedMs">MOD: added. Get the real-time, pause-aware elapsed-milliseconds clock — see <see cref="GetElapsedMs"/>.</param>
     /// <param name="getVisualEffectsEnabled">MOD: added. Get whether a container's lid animation/jolt/item sprite/sound should play.</param>
-    /// <param name="notifyContainerChanged">MOD: added, per direct request. Proactively wake every active group covering a tile whose container just changed — see <see cref="NotifyContainerChanged"/>.</param>
-    public MachineGroupFactory(Func<string, ModConfigMachine?> getMachineOverride, Func<string, ModConfigStorage?> getChestOverride, Func<bool> getChestsEnabledByDefault, Func<HashSet<string>> getWhitelistSignNames, Func<HashSet<string>> getBlacklistSignNames, Func<HashSet<string>> getWhitelistCategorySignNames, Func<HashSet<string>> getBlacklistCategorySignNames, Func<Dictionary<string, HashSet<string>>> getCustomCategories, PowerSystem powerSystem, PowerRequiredMachineSystem powerRequiredMachineSystem, PowerSiloSystem powerSiloSystem, Func<IContainer[], StorageManager> buildStorage, IMonitor monitor, Func<float> getEffectiveActionDelaySeconds, Func<int> getEffectiveActionsPerDelayWindow, Func<bool> getVisualEffectsEnabled, Action<GameLocation, Vector2, bool> notifyContainerChanged)
+    /// <param name="notifyContainerChanged">MOD: added. Proactively wake every active group covering a tile whose container just changed — see <see cref="NotifyContainerChanged"/>.</param>
+    public MachineGroupFactory(Func<string, ModConfigMachine?> getMachineOverride, Func<string, ModConfigStorage?> getChestOverride, Func<bool> getChestsEnabledByDefault, Func<HashSet<string>> getWhitelistSignNames, Func<HashSet<string>> getBlacklistSignNames, Func<HashSet<string>> getWhitelistCategorySignNames, Func<HashSet<string>> getBlacklistCategorySignNames, Func<Dictionary<string, HashSet<string>>> getCustomCategories, PowerSystem powerSystem, PowerRequiredMachineSystem powerRequiredMachineSystem, PowerSiloSystem powerSiloSystem, Func<IContainer[], StorageManager> buildStorage, IMonitor monitor, Func<float> getEffectiveActionDelaySeconds, Func<int> getEffectiveActionsPerDelayWindow, Func<double> getElapsedMs, Func<bool> getVisualEffectsEnabled, Action<GameLocation, Vector2, bool> notifyContainerChanged)
     {
         this.GetMachineOverride = getMachineOverride;
         this.GetChestOverride = getChestOverride;
@@ -140,6 +145,7 @@ internal class MachineGroupFactory
         this.Monitor = monitor;
         this.GetEffectiveActionDelaySeconds = getEffectiveActionDelaySeconds; // MOD: added
         this.GetEffectiveActionsPerDelayWindow = getEffectiveActionsPerDelayWindow; // MOD: added
+        this.GetElapsedMs = getElapsedMs; // MOD: added
         this.GetVisualEffectsEnabled = getVisualEffectsEnabled; // MOD: added
         this.NotifyContainerChanged = notifyContainerChanged; // MOD: added
     }
@@ -362,9 +368,18 @@ internal class MachineGroupFactory
         MachineGroupBuilder GetOrCreateBuilder(int root)
         {
             if (!buildersByRoot.TryGetValue(root, out MachineGroupBuilder? builder))
-                buildersByRoot[root] = builder = new MachineGroupBuilder(this.GetLocationKey(location), this.SortMachines, this.BuildStorage, this.Monitor, this.GetEffectiveActionDelaySeconds, this.GetEffectiveActionsPerDelayWindow, this.GetVisualEffectsEnabled, this.NotifyContainerChanged);
+                buildersByRoot[root] = builder = new MachineGroupBuilder(this.GetLocationKey(location), this.SortMachines, this.BuildStorage, this.Monitor, this.GetEffectiveActionDelaySeconds, this.GetEffectiveActionsPerDelayWindow, this.GetElapsedMs, this.GetVisualEffectsEnabled, this.NotifyContainerChanged);
             return builder;
         }
+
+        // MOD: added. Shared pacing state per physical container for this rebuild pass — see
+        // ThrottledContainerBudget's own remarks for why a container reachable from multiple groups (via
+        // an Omni-role connector) needs ONE shared budget instead of one independent budget per group's
+        // own wrapper. Keyed by the raw container's own object identity (before any
+        // RoleRestrictedContainer/ItemFilteredContainer wrapping, both of which create a fresh wrapper
+        // per group even for the same physical container) — confirmed stable across every group that
+        // reaches the same physical container within this one rebuild pass (see step 6's own remarks).
+        Dictionary<IContainer, ThrottledContainerBudget> containerBudgets = new(new ObjectReferenceComparer<IContainer>());
 
         for (int i = 0; i < nodes.Count; i++)
         {
@@ -564,14 +579,14 @@ internal class MachineGroupFactory
         // step 5.6 (MOD: added): determine which OMNI-role connector roots touch at least one Powered
         // Chest (a chest-like machine, see MachineGroup.IsChestLikeMachine) — used in step 6 below to
         // keep a plain container from treating an Omni-conduit link to a Powered Chest as a valid
-        // connection. Per direct user request: a Powered Chest may only reach a plain container through
-        // an Input or Output conduit, never an Omni one — Omni is reserved for Powered-Chest-to-machine
+        // connection. A Powered Chest may only reach a plain container through an Input or Output
+        // conduit, never an Omni one — Omni is reserved for Powered-Chest-to-machine
         // (and machine-to-machine/container) links. Its own separate pass so the result doesn't depend
         // on node visitation order.
         //
         // MOD: removed — a SIMILAR pass used to also exclude a disabled-category container from any
         // root touching a REAL machine at all (regardless of role), so it couldn't even join the same
-        // topological group. Per direct user request, that was too coarse: StorageManager already
+        // topological group. That was too coarse: StorageManager already
         // refuses to actually push/pull a disabled-category container at read time (see
         // IsContainerCategoryEnabled's own remarks — its OWN filtered InputContainers/OutputContainers
         // subsets simply never include it), so the group-formation-time exclusion wasn't preventing any
@@ -647,14 +662,14 @@ internal class MachineGroupFactory
 
             if (touchedRoots.Count == 0)
             {
-                MachineGroupBuilder solo = new(this.GetLocationKey(location), this.SortMachines, this.BuildStorage, this.Monitor, this.GetEffectiveActionDelaySeconds, this.GetEffectiveActionsPerDelayWindow, this.GetVisualEffectsEnabled, this.NotifyContainerChanged);
-                this.AddToBuilder(solo, nodes[i], ConnectorRole.Both, poweredTiles);
+                MachineGroupBuilder solo = new(this.GetLocationKey(location), this.SortMachines, this.BuildStorage, this.Monitor, this.GetEffectiveActionDelaySeconds, this.GetEffectiveActionsPerDelayWindow, this.GetElapsedMs, this.GetVisualEffectsEnabled, this.NotifyContainerChanged);
+                this.AddToBuilder(solo, nodes[i], ConnectorRole.Both, poweredTiles, containerBudgets);
                 soloBuilders.Add(solo);
             }
             else
             {
                 foreach (int root in touchedRoots)
-                    this.AddToBuilder(GetOrCreateBuilder(root), nodes[i], roleByRoot.GetValueOrDefault(root, ConnectorRole.Both), poweredTiles); // MOD: added role argument
+                    this.AddToBuilder(GetOrCreateBuilder(root), nodes[i], roleByRoot.GetValueOrDefault(root, ConnectorRole.Both), poweredTiles, containerBudgets); // MOD: added role argument
             }
         }
 
@@ -676,7 +691,8 @@ internal class MachineGroupFactory
     /// <param name="entity">The machine or container to add.</param>
     /// <param name="role">The connector role this entity was reached through (only meaningful for containers).</param>
     /// <param name="poweredTiles">MOD: added. The already-computed powered tiles (see <see cref="PowerSystem"/>), or <c>null</c> if the power system is disabled — used to resolve whether a "power-required" machine (see <see cref="PowerRequiredMachineSystem"/>) is currently power-starved.</param>
-    private void AddToBuilder(MachineGroupBuilder builder, IAutomatable entity, ConnectorRole role, HashSet<Vector2>? poweredTiles)
+    /// <param name="containerBudgets">MOD: added. This rebuild pass's shared pacing state per physical container — see <see cref="ThrottledContainerBudget"/>.</param>
+    private void AddToBuilder(MachineGroupBuilder builder, IAutomatable entity, ConnectorRole role, HashSet<Vector2>? poweredTiles, Dictionary<IContainer, ThrottledContainerBudget> containerBudgets)
     {
         // MOD: changed from a type-switch (which only ever takes its FIRST matching case) to two
         // independent checks, so an entity implementing BOTH interfaces (like PoweredChestMachine —
@@ -700,10 +716,17 @@ internal class MachineGroupFactory
             bool enabled = this.GetChestOverride(container.TypeId)?.Enabled ?? this.GetChestsEnabledByDefault();
             if (enabled)
             {
+                // MOD: added — looked up (or created) BEFORE any per-group wrapping below, since `container`
+                // here is the raw entity, confirmed stable across every group that reaches it this rebuild
+                // pass (see step 6's own remarks) — RoleRestrictedContainer wraps it fresh per call otherwise,
+                // which would otherwise defeat keying the budget cache by reference.
+                if (!containerBudgets.TryGetValue(container, out ThrottledContainerBudget? budget))
+                    containerBudgets[container] = budget = new ThrottledContainerBudget();
+
                 IContainer toAdd = role == ConnectorRole.Both
                     ? container
                     : new RoleRestrictedContainer(container, role);
-                builder.Add(toAdd);
+                builder.Add(toAdd, budget);
             }
         }
     }

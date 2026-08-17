@@ -16,9 +16,12 @@ using StardewValley.Triggers;
 namespace Pathoschild.Stardew.Automate.Framework.Patches;
 
 /// <summary>
-/// MOD: added. Per direct user request, gives the Dwarf's shop three extra, period-limited items sold
+/// MOD: added. Gives the Dwarf's shop three extra, period-limited items sold
 /// alongside its normal recipes: 3 Cave Carrots (50g each) that restock weekly, and 1 Power Coil
-/// ($30,000) plus 1 Powered Chest ($15,000) that each restock once a season.
+/// ($30,000) plus 1 Powered Chest ($15,000) that each restock once a season. Also enforces a genuine
+/// LIFETIME cap of 7 on the Dwarf Research Note (see <see cref="DwarfResearchNoteQualifiedItemId"/>'s
+/// own remarks) — the one entry here that should never restock at all, as opposed to the three above
+/// which restock on a period.
 ///
 /// Vanilla's own <see cref="StardewValley.GameData.Shops.ShopItemData.AvailableStock"/> only ever
 /// resets DAILY (see its own doc comment) — there's no built-in weekly/seasonal equivalent — so the
@@ -68,13 +71,31 @@ internal static class DwarfWeeklyShopPatches
     /// <summary>How many Powered Chests the Dwarf sells per season.</summary>
     private const int PoweredChestSeasonalLimit = 1;
 
-    /// <summary>MOD: added, per direct request. How many geode minerals the Dwarf sells per Monday/Tuesday slot per week.</summary>
+    /// <summary>
+    /// MOD: added. The qualified item ID of the Dwarf Research Note (see
+    /// <c>DwarfNotesData.json</c>'s <c>Data/Objects</c> entry). Originally relied on vanilla's own
+    /// <c>ShopItemData.AvailableStock</c>/<c>AvailableStockLimit: "Player"</c> (7) to cap it — but per
+    /// this class's own remarks, vanilla's stock tracking only ever resets DAILY, so that actually meant
+    /// "7 per day, forever," not "7 total, ever," letting the shop keep restocking it day after day —
+    /// it kept selling Dwarf Research Notes even after 7 had already been bought out, when it should
+    /// only ever sell 7 total and then never restock. Fixed the same way as the three
+    /// period-limited entries above — <c>AvailableStock: -1</c> in JSON (vanilla stops tracking it
+    /// entirely) plus this class enforcing the real limit — except this one uses NO period at all: see
+    /// <see cref="DwarfResearchNoteBoughtModDataKey"/>'s own remarks for why a lifetime cap needs no
+    /// period/rollover logic whatsoever, unlike every other entry here.
+    /// </summary>
+    private const string DwarfResearchNoteQualifiedItemId = "(O)luisMint.PoweredAutomation_DwarfResearchNote";
+
+    /// <summary>MOD: added. The lifetime (never resets) cap on the Dwarf Research Note — see <see cref="DwarfResearchNoteQualifiedItemId"/>'s own remarks.</summary>
+    private const int DwarfResearchNoteLifetimeLimit = 7;
+
+    /// <summary>MOD: added. How many geode minerals the Dwarf sells per Monday/Tuesday slot per week.</summary>
     private const int MineralWeeklyLimit = 1;
 
-    /// <summary>MOD: changed, per direct request — the mineral's price is now its own <see cref="ISalable.salePrice"/> times a randomly-rolled multiplier in this range (inclusive), rolled once alongside the mineral itself — see <see cref="GetOrRollWeeklyMineral"/>. This is the low end of that range.</summary>
+    /// <summary>MOD: changed — the mineral's price is now its own <see cref="ISalable.salePrice"/> times a randomly-rolled multiplier in this range (inclusive), rolled once alongside the mineral itself — see <see cref="GetOrRollWeeklyMineral"/>. This is the low end of that range.</summary>
     private const int MineralMinPriceMultiplier = 1;
 
-    /// <summary>MOD: added, per direct request. The high end of the price multiplier range — see <see cref="MineralMinPriceMultiplier"/>'s own remarks.</summary>
+    /// <summary>MOD: added. The high end of the price multiplier range — see <see cref="MineralMinPriceMultiplier"/>'s own remarks.</summary>
     private const int MineralMaxPriceMultiplier = 5;
 
     /// <summary>The <c>Game1.MasterPlayer.modData</c> key tracking which week's Cave Carrot stock was last rolled.</summary>
@@ -95,28 +116,38 @@ internal static class DwarfWeeklyShopPatches
     /// <summary>The <c>Game1.MasterPlayer.modData</c> key tracking how many Powered Chests have been bought this season.</summary>
     private const string PoweredChestBoughtModDataKey = "luisMint.PoweredAutomation/DwarfPoweredChestBoughtThisSeason";
 
-    /// <summary>MOD: added, per direct request. The <c>Game1.MasterPlayer.modData</c> key tracking which week's Monday geode mineral was last rolled — see <see cref="GetOrRollWeeklyMineral"/>.</summary>
+    /// <summary>
+    /// MOD: added. The <c>Game1.MasterPlayer.modData</c> key tracking how many
+    /// Dwarf Research Notes have EVER been bought, with no period/rollover concept at all — unlike every
+    /// other bought-counter in this class (which is paired with its own "which week/season was this last
+    /// rolled for" key so the counter can be reset when a new period starts), this one is simply
+    /// incremented forever and never reset, which is exactly what makes it a genuine lifetime cap instead
+    /// of a recurring one. See <see cref="GetLifetimeRemaining"/>/<see cref="RecordLifetimePurchase"/>.
+    /// </summary>
+    private const string DwarfResearchNoteBoughtModDataKey = "luisMint.PoweredAutomation/DwarfResearchNoteBoughtTotal";
+
+    /// <summary>MOD: added. The <c>Game1.MasterPlayer.modData</c> key tracking which week's Monday geode mineral was last rolled — see <see cref="GetOrRollWeeklyMineral"/>.</summary>
     private const string MineralMondayPeriodModDataKey = "luisMint.PoweredAutomation/DwarfMineralWeek";
 
-    /// <summary>MOD: added, per direct request. The <c>Game1.MasterPlayer.modData</c> key storing which specific mineral (unqualified item ID, or empty if none were eligible) was rolled for Monday this week — see <see cref="GetOrRollWeeklyMineral"/>.</summary>
+    /// <summary>MOD: added. The <c>Game1.MasterPlayer.modData</c> key storing which specific mineral (unqualified item ID, or empty if none were eligible) was rolled for Monday this week — see <see cref="GetOrRollWeeklyMineral"/>.</summary>
     private const string MineralMondayRolledItemModDataKey = "luisMint.PoweredAutomation/DwarfMineralRolledItem";
 
-    /// <summary>MOD: added, per direct request. The <c>Game1.MasterPlayer.modData</c> key tracking how many Monday geode minerals have been bought this week.</summary>
+    /// <summary>MOD: added. The <c>Game1.MasterPlayer.modData</c> key tracking how many Monday geode minerals have been bought this week.</summary>
     private const string MineralMondayBoughtModDataKey = "luisMint.PoweredAutomation/DwarfMineralBoughtThisWeek";
 
-    /// <summary>MOD: added, per direct request. The <c>Game1.MasterPlayer.modData</c> key storing Monday's rolled price multiplier (see <see cref="MineralMinPriceMultiplier"/>) for this week.</summary>
+    /// <summary>MOD: added. The <c>Game1.MasterPlayer.modData</c> key storing Monday's rolled price multiplier (see <see cref="MineralMinPriceMultiplier"/>) for this week.</summary>
     private const string MineralMondayPriceMultiplierModDataKey = "luisMint.PoweredAutomation/DwarfMineralPriceMultiplier";
 
-    /// <summary>MOD: added, per direct request. The <c>Game1.MasterPlayer.modData</c> key tracking which week's Tuesday geode mineral was last rolled — an entirely separate roll from Monday's, so the two days can (and usually will, but aren't guaranteed to) offer different minerals.</summary>
+    /// <summary>MOD: added. The <c>Game1.MasterPlayer.modData</c> key tracking which week's Tuesday geode mineral was last rolled — an entirely separate roll from Monday's, so the two days can (and usually will, but aren't guaranteed to) offer different minerals.</summary>
     private const string MineralTuesdayPeriodModDataKey = "luisMint.PoweredAutomation/DwarfMineralTuesdayWeek";
 
-    /// <summary>MOD: added, per direct request. The <c>Game1.MasterPlayer.modData</c> key storing which specific mineral (unqualified item ID, or empty if none were eligible) was rolled for Tuesday this week — see <see cref="GetOrRollWeeklyMineral"/>.</summary>
+    /// <summary>MOD: added. The <c>Game1.MasterPlayer.modData</c> key storing which specific mineral (unqualified item ID, or empty if none were eligible) was rolled for Tuesday this week — see <see cref="GetOrRollWeeklyMineral"/>.</summary>
     private const string MineralTuesdayRolledItemModDataKey = "luisMint.PoweredAutomation/DwarfMineralTuesdayRolledItem";
 
-    /// <summary>MOD: added, per direct request. The <c>Game1.MasterPlayer.modData</c> key tracking how many Tuesday geode minerals have been bought this week.</summary>
+    /// <summary>MOD: added. The <c>Game1.MasterPlayer.modData</c> key tracking how many Tuesday geode minerals have been bought this week.</summary>
     private const string MineralTuesdayBoughtModDataKey = "luisMint.PoweredAutomation/DwarfMineralTuesdayBoughtThisWeek";
 
-    /// <summary>MOD: added, per direct request. The <c>Game1.MasterPlayer.modData</c> key storing Tuesday's rolled price multiplier (see <see cref="MineralMinPriceMultiplier"/>) for this week — rolled entirely independently of Monday's.</summary>
+    /// <summary>MOD: added. The <c>Game1.MasterPlayer.modData</c> key storing Tuesday's rolled price multiplier (see <see cref="MineralMinPriceMultiplier"/>) for this week — rolled entirely independently of Monday's.</summary>
     private const string MineralTuesdayPriceMultiplierModDataKey = "luisMint.PoweredAutomation/DwarfMineralTuesdayPriceMultiplier";
 
     /// <summary>The <see cref="TriggerActionManager"/> action name referenced by the Cave Carrot entry's <c>ActionsOnPurchase</c> in <c>ShopsData.json</c>.</summary>
@@ -128,7 +159,10 @@ internal static class DwarfWeeklyShopPatches
     /// <summary>The <see cref="TriggerActionManager"/> action name referenced by the Powered Chest entry's <c>ActionsOnPurchase</c> in <c>ShopsData.json</c>.</summary>
     private const string PoweredChestPurchasedAction = "luisMint.PoweredAutomation_DwarfPoweredChestPurchased";
 
-    /// <summary>MOD: added, per direct request. The <see cref="TriggerActionManager"/> action name for the weekly geode mineral entry's purchase — set directly on the <see cref="ItemStockInformation"/> we construct ourselves (see <see cref="ShopMenuCtor_Postfix"/>), since this entry has no <c>ShopsData.json</c> counterpart to declare it on.</summary>
+    /// <summary>MOD: added. The <see cref="TriggerActionManager"/> action name referenced by the Dwarf Research Note entry's <c>ActionsOnPurchase</c> in <c>DwarfNotesData.json</c>.</summary>
+    private const string DwarfResearchNotePurchasedAction = "luisMint.PoweredAutomation_DwarfResearchNotePurchased";
+
+    /// <summary>MOD: added. The <see cref="TriggerActionManager"/> action name for the weekly geode mineral entry's purchase — set directly on the <see cref="ItemStockInformation"/> we construct ourselves (see <see cref="ShopMenuCtor_Postfix"/>), since this entry has no <c>ShopsData.json</c> counterpart to declare it on.</summary>
     private const string MineralPurchasedAction = "luisMint.PoweredAutomation_DwarfMineralPurchased";
 
 
@@ -172,10 +206,19 @@ internal static class DwarfWeeklyShopPatches
             return true;
         });
 
-        // MOD: added, per direct request — see ShopMenuCtor_Postfix's own remarks for why this needs a
+        // MOD: added — no period key involved at all, since this is a genuine
+        // lifetime cap; see DwarfResearchNoteBoughtModDataKey's own remarks.
+        TriggerActionManager.RegisterAction(DwarfWeeklyShopPatches.DwarfResearchNotePurchasedAction, (string[] _, TriggerActionContext _, out string error) =>
+        {
+            error = null!;
+            DwarfWeeklyShopPatches.RecordLifetimePurchase(DwarfWeeklyShopPatches.DwarfResearchNoteBoughtModDataKey);
+            return true;
+        });
+
+        // MOD: added — see ShopMenuCtor_Postfix's own remarks for why this needs a
         // constructor postfix instead of just extending AddForSale_Prefix like the three entries above:
         // this entry has no fixed item identity to react to in ShopsData.json, since WHICH mineral is
-        // for sale changes week to week. MOD: changed, per direct request — the mineral entry is now
+        // for sale changes week to week. MOD: changed — the mineral entry is now
         // only ever listed on its own specific day (Monday or Tuesday — see ShopMenuCtor_Postfix), so a
         // purchase can only ever happen on one of those two days; checking the day again here (rather
         // than baking "which day" into the action name itself) is enough to route the purchase to the
@@ -246,6 +289,8 @@ internal static class DwarfWeeklyShopPatches
             remaining = DwarfWeeklyShopPatches.GetRemaining(DwarfWeeklyShopPatches.PowerCoilPeriodModDataKey, DwarfWeeklyShopPatches.PowerCoilBoughtModDataKey, DwarfWeeklyShopPatches.GetCurrentSeasonKey(), DwarfWeeklyShopPatches.PowerCoilSeasonalLimit);
         else if (item.QualifiedItemId == PoweredChestMachine.QualifiedItemId)
             remaining = DwarfWeeklyShopPatches.GetRemaining(DwarfWeeklyShopPatches.PoweredChestPeriodModDataKey, DwarfWeeklyShopPatches.PoweredChestBoughtModDataKey, DwarfWeeklyShopPatches.GetCurrentSeasonKey(), DwarfWeeklyShopPatches.PoweredChestSeasonalLimit);
+        else if (item.QualifiedItemId == DwarfWeeklyShopPatches.DwarfResearchNoteQualifiedItemId)
+            remaining = DwarfWeeklyShopPatches.GetLifetimeRemaining(DwarfWeeklyShopPatches.DwarfResearchNoteBoughtModDataKey, DwarfWeeklyShopPatches.DwarfResearchNoteLifetimeLimit);
         else
             return true; // not one of our tracked entries
 
@@ -259,7 +304,7 @@ internal static class DwarfWeeklyShopPatches
     }
 
     /// <summary>
-    /// MOD: added, per direct request. Add this week's Monday (or Tuesday) geode mineral entry — 1 of
+    /// MOD: added. Add this week's Monday (or Tuesday) geode mineral entry — 1 of
     /// ONE random mineral the player has already donated to the museum, each day rolled entirely
     /// independently of the other — to the Dwarf's shop, but ONLY on that specific day of the week; every
     /// other day (including the rest of the week the mineral was rolled for), neither entry is added at
@@ -284,7 +329,7 @@ internal static class DwarfWeeklyShopPatches
         // any other day of the week — no mineral entry at all, and nothing rolled/touched
     }
 
-    /// <summary>MOD: added, per direct request. Add one day-slot's geode mineral entry to the shop — priced at the mineral's own <see cref="ISalable.salePrice"/> times this week's rolled multiplier (see <see cref="GetOrRollWeeklyMineral"/>) — if one is currently available for that slot.</summary>
+    /// <summary>MOD: added. Add one day-slot's geode mineral entry to the shop — priced at the mineral's own <see cref="ISalable.salePrice"/> times this week's rolled multiplier (see <see cref="GetOrRollWeeklyMineral"/>) — if one is currently available for that slot.</summary>
     /// <param name="shopMenu">The shop menu to add the entry to.</param>
     /// <param name="periodModDataKey">This slot's period tracking key — see <see cref="GetOrRollWeeklyMineral"/>.</param>
     /// <param name="rolledModDataKey">This slot's rolled-item tracking key — see <see cref="GetOrRollWeeklyMineral"/>.</param>
@@ -305,7 +350,7 @@ internal static class DwarfWeeklyShopPatches
     }
 
     /// <summary>
-    /// MOD: added, per direct request. Get this week's already-rolled geode mineral (unqualified item
+    /// MOD: added. Get this week's already-rolled geode mineral (unqualified item
     /// ID) and price multiplier for one day-slot (Monday or Tuesday — distinguished entirely by which
     /// <c>modData</c> keys are passed in), rolling a fresh pair — restricted to whichever of
     /// <see cref="ModConfig.MineralItemIds"/> the player has already donated to the museum (see
@@ -385,6 +430,25 @@ internal static class DwarfWeeklyShopPatches
         modData[boughtModDataKey] = (bought + 1).ToString();
     }
 
+    /// <summary>MOD: added. Get how many of a lifetime-capped item are still available EVER, without recording a purchase — no period/rollover concept at all, unlike <see cref="GetRemaining"/>.</summary>
+    /// <param name="boughtModDataKey">The <c>Game1.MasterPlayer.modData</c> key tracking how many have ever been bought.</param>
+    /// <param name="limit">The maximum available, ever.</param>
+    private static int GetLifetimeRemaining(string boughtModDataKey, int limit)
+    {
+        ModDataDictionary modData = Game1.MasterPlayer.modData;
+        int bought = modData.TryGetValue(boughtModDataKey, out string? raw) && int.TryParse(raw, out int parsed) ? parsed : 0;
+        return System.Math.Max(0, limit - bought);
+    }
+
+    /// <summary>MOD: added. Record that one unit of a lifetime-capped item was just bought — never rolls over, unlike <see cref="RecordPurchase"/>.</summary>
+    /// <param name="boughtModDataKey">The <c>Game1.MasterPlayer.modData</c> key tracking how many have ever been bought.</param>
+    private static void RecordLifetimePurchase(string boughtModDataKey)
+    {
+        ModDataDictionary modData = Game1.MasterPlayer.modData;
+        int bought = modData.TryGetValue(boughtModDataKey, out string? raw) && int.TryParse(raw, out int parsed) ? parsed : 0;
+        modData[boughtModDataKey] = (bought + 1).ToString();
+    }
+
     /// <summary>Get an identifier for the current in-game week, changing every 7 days.</summary>
     private static string GetCurrentWeekKey()
     {
@@ -392,13 +456,13 @@ internal static class DwarfWeeklyShopPatches
         return weekIndex.ToString();
     }
 
-    /// <summary>MOD: added, per direct request. Get whether today is in-game Monday — <see cref="Game1.dayOfMonth"/> 1 is always a Monday, and every 7 days after that repeats the cycle.</summary>
+    /// <summary>MOD: added. Get whether today is in-game Monday — <see cref="Game1.dayOfMonth"/> 1 is always a Monday, and every 7 days after that repeats the cycle.</summary>
     private static bool IsMonday()
     {
         return Game1.dayOfMonth % 7 == 1;
     }
 
-    /// <summary>MOD: added, per direct request. Get whether today is in-game Tuesday — see <see cref="IsMonday"/>'s own remarks for the day-of-week math.</summary>
+    /// <summary>MOD: added. Get whether today is in-game Tuesday — see <see cref="IsMonday"/>'s own remarks for the day-of-week math.</summary>
     private static bool IsTuesday()
     {
         return Game1.dayOfMonth % 7 == 2;

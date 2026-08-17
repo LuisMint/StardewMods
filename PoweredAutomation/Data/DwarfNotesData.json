@@ -40,14 +40,14 @@
             },
             "Entries": {
                 "{{ModId}}_DwarfResearchNote": {
-                    "ActionsOnPurchase": null,
+                    "ActionsOnPurchase": ["{{ModId}}_DwarfResearchNotePurchased"],
                     "CustomFields": null,
                     "TradeItemId": null,
                     "TradeItemAmount": 1,
                     "Price": 50,
                     "ApplyProfitMargins": null,
-                    "AvailableStock": 7,
-                    "AvailableStockLimit": "Player",
+                    "AvailableStock": -1,
+                    "AvailableStockLimit": "Global",
                     "AvoidRepeat": false,
                     "UseObjectDataPrice": false,
                     "IgnoreShopPriceModifiers": false,

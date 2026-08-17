@@ -226,7 +226,7 @@ internal class ModConfig
     /// all — a small free allowance so early automation isn't hard-gated behind constructing one. Every
     /// Power Silo adds on top of this (see <see cref="PowerSiloTiers"/>).
     /// </summary>
-    public int PowerSiloBaseCapacity { get; set; } = 3;
+    public int PowerSiloBaseCapacity { get; set; } = 4;
 
     /// <summary>
     /// MOD: added. The in-game objects that count as a Solar Panel for the power silo's solar tier
@@ -263,13 +263,13 @@ internal class ModConfig
     ];
 
     /// <summary>
-    /// MOD: added. Per direct user request, every geode mineral — shared by the "minerals" slot in each
+    /// MOD: added. Every geode mineral — shared by the "minerals" slot in each
     /// of <see cref="PowerSiloTierPools"/>'s 5 tiers, which always asks for exactly 1 of ONE randomly
     /// picked mineral from this list (see <see cref="PowerSiloItemOption.ItemIds"/>'s own remarks for
     /// how a nested item-ID list resolves to one random pick). Defined once here instead of duplicating
     /// all 39 IDs across all 5 tiers, so the list can't drift out of sync between tiers.
     /// MOD: changed from private to internal — also reused by <see cref="Patches.DwarfWeeklyShopPatches"/>
-    /// for its own "1 already-donated geode mineral" weekly Dwarf shop entry, per direct request, so
+    /// for its own "1 already-donated geode mineral" weekly Dwarf shop entry, so
     /// that list stays the single shared source of truth rather than a second copy drifting out of sync.
     /// </summary>
     internal static readonly List<string> MineralItemIds =
@@ -317,7 +317,7 @@ internal class ModConfig
     ];
 
     /// <summary>
-    /// MOD: added. Per direct user request, randomized alternatives to <see cref="PowerSiloTiers"/>'s
+    /// MOD: added. Randomized alternatives to <see cref="PowerSiloTiers"/>'s
     /// fixed <see cref="PowerSiloTierConfig.RequiredItems"/> — index-aligned with <see cref="PowerSiloTiers"/>,
     /// each entry's <see cref="PowerSiloTierPool.Slots"/> is rolled ONCE per save (one random option per
     /// slot, with a random count within that option's own range — see <see cref="PowerSiloTierRoller"/>)
@@ -339,19 +339,19 @@ internal class ModConfig
                 {
                     Options =
                     [
-                        new() { ItemId = "(O)334", MinCount = 10, MaxCount = 20 },   // Copper Bar
-                        new() { ItemId = "(O)378", MinCount = 50, MaxCount = 80 }, // Copper Ore
-                        new() { ItemId = "(O)382", MinCount = 10, MaxCount = 20 },   // Coal
+                        new() { ItemId = "(O)334", MinCount = 3, MaxCount = 5 },   // Copper Bar
+                        new() { ItemId = "(O)378", MinCount = 20, MaxCount = 25 }, // Copper Ore
+                        new() { ItemId = "(O)382", MinCount = 10, MaxCount = 15 },   // Coal
                         new() { ItemId = "(O)330", MinCount = 10, MaxCount = 20 },   // Clay (substituted for "Mud", which isn't a real item)
-                        new() { ItemId = "(O)390", MinCount = 100, MaxCount = 200 }, // Stone
-                        new() { ItemId = "(O)86", MinCount = 10, MaxCount = 20 }     // Earth Crystal
+                        new() { ItemId = "(O)390", MinCount = 100, MaxCount = 150 }, // Stone
+                        new() { ItemId = "(O)86", MinCount = 5, MaxCount = 10 }     // Earth Crystal
                     ]
                 },
                 new() // cave carrot family
                 {
                     Options =
                     [
-                        new() { ItemId = "(O)78", MinCount = 3, MaxCount = 5 }  // Cave Carrot
+                        new() { ItemId = "(O)78", MinCount = 5, MaxCount = 5 }  // Cave Carrot
                     ]
                 },
                 new() // minerals — MOD: added, always exactly 1 of ONE random geode mineral
@@ -370,10 +370,10 @@ internal class ModConfig
                 {
                     Options =
                     [
-                        new() { ItemId = "(O)334", MinCount = 15, MaxCount = 25 },   // Copper Bar
-                        new() { ItemId = "(O)335", MinCount = 10, MaxCount = 20 },    // Iron Bar
-                        new() { ItemId = "(O)390", MinCount = 200, MaxCount = 300 },  // Stone
-                        new() { ItemIds = ["(O)60", "(O)62", "(O)64", "(O)66", "(O)68", "(O)70"], MinCount = 3, MaxCount = 5 } // any gem except Diamond/Prismatic Shard
+                        new() { ItemId = "(O)384", MinCount = 10, MaxCount = 15 },  // Gold Ore
+                        new() { ItemId = "(O)335", MinCount = 5, MaxCount = 10 },    // Iron Bar
+                        new() { ItemId = "(O)390", MinCount = 150, MaxCount = 200 },  // Stone
+                        new() { ItemIds = ["(O)60", "(O)62", "(O)64", "(O)66", "(O)68", "(O)70"], MinCount = 3, MaxCount = 5 } // gems except Diamond/Prismatic Shard
 
                     ]
                 },
@@ -401,17 +401,18 @@ internal class ModConfig
                     Options =
                     [
                         new() { ItemId = "(O)787", MinCount = 5, MaxCount = 10 },   // Battery Pack
-                        new() { ItemId = "(O)338", MinCount = 30, MaxCount = 50 }   // Refined Quartz
+                        new() { ItemId = "(O)338", MinCount = 10, MaxCount = 20}   // Refined Quartz
                     ]
                 },
                 new() // ore/bar
                 {
                     Options =
                     [
-                        new() { ItemId = "(O)334", MinCount = 30, MaxCount = 35 },   // Copper Bar
-                        new() { ItemId = "(O)335", MinCount = 20, MaxCount = 25 },   // Iron Bar
-                        new() { ItemId = "(O)380", MinCount = 100, MaxCount = 200 }, // Iron Ore
-                        new() { ItemId = "(O)384", MinCount = 50, MaxCount = 100 }   // Gold Ore
+                        new() { ItemId = "(O)336", MinCount = 5, MaxCount = 5  },   // Gold Bar
+                        new() { ItemId = "(O)335", MinCount = 5, MaxCount = 10 },   // Iron Bar
+                        new() { ItemId = "(O)380", MinCount = 25, MaxCount = 40 }, // Iron Ore
+                        new() { ItemId = "(O)384", MinCount = 40, MaxCount = 50 },   // Gold Ore
+                        new() { ItemId = "(O)386", MinCount = 10, MaxCount = 15 }   // Iridium Ore 
                     ]
                 },
                 new() // cave carrot family
@@ -421,6 +422,7 @@ internal class ModConfig
                         new() { ItemId = "(O)78", MinCount = 10, MaxCount = 10 },                                              // Cave Carrot
                         new() { ItemId = "(O)186", MinCount = 2, MaxCount = 5 },                                             // Large Milk
                         new() { ItemId = "(O)749", MinCount = 10, MaxCount = 20 }                                              // Omni Geode
+                        
                     ]
                 },
                 new() // minerals — MOD: added, always exactly 1 of ONE random geode mineral
@@ -439,18 +441,20 @@ internal class ModConfig
                 {
                     Options =
                     [
-                        new() { ItemId = "(O)787", MinCount = 10, MaxCount = 15 },   // Battery Pack
-                        new() { ItemId = "(O)338", MinCount = 40, MaxCount = 50 }   // Refined Quartz
+                        new() { ItemId = "(O)787", MinCount = 5, MaxCount = 10 },   // Battery Pack
+                        new() { ItemId = "(O)338", MinCount = 15, MaxCount = 20 }   // Refined Quartz
                     ]
                 },
                 new() // bar/coal/gem
                 {
                     Options =
                     [
-                        new() { ItemId = "(O)336", MinCount = 20, MaxCount = 30 },   // Gold Bar
-                        new() { ItemId = "(O)382", MinCount = 30, MaxCount = 60 }, // Coal
-                        new() { ItemIds = ["(O)60", "(O)62", "(O)64", "(O)66", "(O)68", "(O)70", "(O)72"], MinCount = 10, MaxCount = 20 }, // any gem including Diamond, except Prismatic Shard
-                        new() { ItemId = "(O)386", MinCount = 20, MaxCount = 50 }   // Iridium Ore 
+                        new() { ItemId = "(O)336", MinCount = 10, MaxCount = 10 },   // Gold Bar
+                        new() { ItemId = "(O)382", MinCount = 20, MaxCount = 30 }, // Coal
+                        new() { ItemIds = ["(O)60", "(O)62", "(O)64", "(O)66", "(O)68", "(O)70", "(O)72"], MinCount = 5, MaxCount = 8 }, // any gem including Diamond, except Prismatic Shard
+                        new() { ItemId = "(O)386", MinCount = 25, MaxCount = 50 },   // Iridium Ore
+                        new() { ItemId = "(O)337", MinCount = 1, MaxCount = 3 }  // Iridium Bar 
+
                     ]
                 },
                 new() // cave carrot family
@@ -459,9 +463,9 @@ internal class ModConfig
                     [
                         new() { ItemId = "(O)78", MinCount = 10, MaxCount = 15 },                                              // Cave Carrot
                         new() { ItemId = "(O)186", MinCount = 5, MaxCount = 10 },                                             // Large Milk
-                        new() { ItemId = "(O)749", MinCount = 20, MaxCount = 30 },                                             // Omni Geode
-                        new() { ItemId = "(O)CaveJelly", MinCount = 3, MaxCount = 5 },                                       // Cave Jelly
-                        new() { ItemId = "(O)158", MinCount = 1, MaxCount = 3 }                                              // Stonefish
+                        new() { ItemId = "(O)749", MinCount = 10, MaxCount = 15 },                                             // Omni Geode
+                        new() { ItemId = "(O)CaveJelly", MinCount = 1, MaxCount = 3 },                                       // Cave Jelly
+                        new() { ItemId = "(O)158", MinCount = 1, MaxCount = 2 }                                              // Stonefish
                     ]
                 },
                 new() // minerals — MOD: added, always exactly 1 of ONE random geode mineral
@@ -484,18 +488,20 @@ internal class ModConfig
                 {
                     Options =
                     [
-                        new() { ItemId = "(O)909", MinCount = 1, MaxCount = 5 },   // Radioactive Ore
-                        new() { ItemId = "(O)768", MinCount = 50, MaxCount = 100 }, // Solar Essence
-                        new() { ItemId = "(O)386", MinCount = 50, MaxCount = 100 }  // Iridium Ore — MOD: deliberately NOT scaled, per direct user request
+                        new() { ItemId = "(O)380", MinCount = 50, MaxCount = 75 }, // Iron Ore
+                        new() { ItemId = "(O)384", MinCount = 50, MaxCount = 75 }, // Gold Ore
+                        new() { ItemId = "(O)768", MinCount = 50, MaxCount = 50 }, // Solar Essence
+                        new() { ItemId = "(O)386", MinCount = 20, MaxCount = 40 }, // Iridium Ore
+                        new() { ItemId = "(O)337", MinCount = 5, MaxCount = 8 }  // Iridium Bar
                     ]
                 },
                 new() // cave carrot family
                 {
                     Options =
                     [
-                        new() { ItemId = "(O)78", MinCount = 15, MaxCount = 30 },                                              // Cave Carrot
+                        new() { ItemId = "(O)78", MinCount = 10, MaxCount = 15 },                                              // Cave Carrot
                         new() { ItemId = "(O)CaveJelly", MinCount = 5, MaxCount = 10 },                                       // Cave Jelly
-                        new() { ItemId = "(O)749", MinCount = 20, MaxCount = 40 }                                              // Omni Geode
+                        new() { ItemId = "(O)749", MinCount = 15, MaxCount = 20 }                                              // Omni Geode
                     ]
                 },
                 new() // minerals — MOD: added, always exactly 1 of ONE random geode mineral
@@ -525,13 +531,13 @@ internal class ModConfig
     /// <summary>MOD: added. The qualified/unqualified item ID delivered to a Power Relay for the delay-reduction track — Prismatic Shard, by default. Only accepted from level 1 onward; the very first delivery (level 0→1) instead asks for <see cref="PowerRelayFirstShardItemId"/>.</summary>
     public string PowerRelayShardItemId { get; set; } = "(O)74";
 
-    /// <summary>MOD: changed — reverted to Prismatic Shard (matching <see cref="PowerRelayShardItemId"/>) per direct user request, so the delay-reduction track is a plain "1 shard, 2 shards, 3 shards, 4 shards" progression across all 4 levels rather than a special first item.</summary>
+    /// <summary>MOD: changed — reverted to Prismatic Shard (matching <see cref="PowerRelayShardItemId"/>), so the delay-reduction track is a plain "1 shard, 2 shards, 3 shards, 4 shards" progression across all 4 levels rather than a special first item.</summary>
     public string PowerRelayFirstShardItemId { get; set; } = "(O)74";
 
     /// <summary>MOD: added. The qualified/unqualified item ID delivered to a Power Relay for the actions-per-window bonus track — Radioactive Bar, by default. MOD: fixed — (O)909 is actually Radioactive Ore (the raw/unsmelted item); Radioactive Bar (the smelted one) is (O)910, confirmed via the Stardew Valley Wiki after this defaulted to the wrong item. Only accepted from level 1 onward; the very first delivery (level 0→1) instead asks for <see cref="PowerRelayFirstBarItemId"/>.</summary>
     public string PowerRelayBarItemId { get; set; } = "(O)910";
 
-    /// <summary>MOD: changed — reverted to Radioactive Bar (matching <see cref="PowerRelayBarItemId"/>) per direct user request, so the actions-per-window track is a plain "1 bar, 2 bars, 3 bars, 4 bars" progression across all 4 levels rather than a special first item.</summary>
+    /// <summary>MOD: changed — reverted to Radioactive Bar (matching <see cref="PowerRelayBarItemId"/>), so the actions-per-window track is a plain "1 bar, 2 bars, 3 bars, 4 bars" progression across all 4 levels rather than a special first item.</summary>
     public string PowerRelayFirstBarItemId { get; set; } = "(O)910";
 
     /// <summary>MOD: added. How much a single delivered shard subtracts from <see cref="ActionDelaySeconds"/>, in seconds, summed across every shard delivered to every Relay in the save (each Relay accepts up to <see cref="PowerRelaySystem.MaxShards"/>). The effective delay is floored at <see cref="PowerRelayMinimumActionDelaySeconds"/> regardless of how many are delivered.</summary>
@@ -539,7 +545,7 @@ internal class ModConfig
 
     /// <summary>
     /// MOD: added. The lowest <see cref="ActionDelaySeconds"/> can ever be pushed down to by Power Relay
-    /// shard deliveries, globally across every Relay in the save — per direct user request, a hard floor
+    /// shard deliveries, globally across every Relay in the save — a hard floor
     /// distinct from <see cref="ActionDelaySeconds"/> itself possibly already being lower (in which case
     /// this has no effect either way). Once the effective delay has been pushed down to this floor, EVERY
     /// Relay's shard track stops accepting further deliveries entirely (see <see cref="PowerRelaySystem.IsGlobalSpeedCapped"/>)
@@ -627,7 +633,7 @@ internal class ModConfig
     public int MinMinutesForFairyDust { get; set; } = 20;
 
     /// <summary>
-    /// MOD: added, per direct request. What percentage (0-100) of the skill experience a machine/action
+    /// MOD: added. What percentage (0-100) of the skill experience a machine/action
     /// would normally grant on harvest is actually granted when Automate collects it automatically,
     /// instead of the player collecting it by hand — see the three grant sites this scales:
     /// <see cref="Machines.DataBasedObjectMachine"/> (vanilla <c>Data/Machines</c> ExperienceGainOnHarvest,
@@ -638,8 +644,8 @@ internal class ModConfig
     public int AutomationExperiencePercent { get; set; } = 0;
 
     /// <summary>
-    /// MOD: added. Whether <see cref="ActionDelaySeconds"/> in this file takes effect. Per direct user
-    /// request, in-game progression (delivering Prismatic Shards to a Power Relay — see
+    /// MOD: added. Whether <see cref="ActionDelaySeconds"/> in this file takes effect.
+    /// In-game progression (delivering Prismatic Shards to a Power Relay — see
     /// <see cref="PowerRelaySystemEnabled"/>) is meant to be the main way automation pacing improves, not
     /// a config edit — so while this is <c>false</c> (the default), <see cref="ActionDelaySeconds"/> is
     /// reset to <see cref="DefaultActionDelaySeconds"/> every time the config loads, regardless of what's
@@ -648,8 +654,8 @@ internal class ModConfig
     public bool OverwriteAutomationDelay { get; set; } = false;
 
     /// <summary>
-    /// MOD: added. Whether <see cref="ActionsPerDelayWindow"/> in this file takes effect. Per direct user
-    /// request, in-game progression (delivering Radioactive Bars to a Power Relay — see
+    /// MOD: added. Whether <see cref="ActionsPerDelayWindow"/> in this file takes effect.
+    /// In-game progression (delivering Radioactive Bars to a Power Relay — see
     /// <see cref="PowerRelaySystemEnabled"/>) is meant to be the main way automation pacing improves, not
     /// a config edit — so while this is <c>false</c> (the default), <see cref="ActionsPerDelayWindow"/> is
     /// reset to <see cref="DefaultActionsPerDelayWindow"/> every time the config loads, regardless of
@@ -667,7 +673,7 @@ internal class ModConfig
     ///
     /// Paced per group via <c>ModEntry.GroupActionQueues</c> — a FIFO queue of that group's own machines,
     /// drained a batch at a time. Deliberately does NOT try to carry a group's pacing forward across a
-    /// rebuild that recreates its wrapper instance; per direct user feedback, a rebuild just resets the
+    /// rebuild that recreates its wrapper instance; a rebuild just resets the
     /// affected group's pacing to fresh (its machines get rediscovered and re-queued from scratch by the
     /// normal triggers) rather than trying to bridge old-to-new group instances, which is what caused most
     /// of the fragility in earlier attempts at this feature. A separate group's own queue and pacing always
@@ -686,7 +692,7 @@ internal class ModConfig
     public int ActionsPerDelayWindow { get; set; } = ModConfig.DefaultActionsPerDelayWindow;
 
     /// <summary>
-    /// MOD: added, per direct request. Whether a container shows a lid animation, a jolt, a flying item
+    /// MOD: added. Whether a container shows a lid animation, a jolt, a flying item
     /// sprite, and a sound whenever an item enters or leaves it through automation (see
     /// <see cref="ThrottledContainer"/>/<see cref="ContainerVisualEffects"/>). This ONLY gates those
     /// visuals/audio — the underlying chunked delivery pacing itself (<see cref="ActionDelaySeconds"/>/
@@ -711,7 +717,7 @@ internal class ModConfig
     {
         this.Controls ??= new ModConfigKeys();
 
-        // MOD: added — per direct user request, ActionDelaySeconds/ActionsPerDelayWindow are each locked
+        // MOD: added — ActionDelaySeconds/ActionsPerDelayWindow are each locked
         // to their own fixed default unless the player opts in via the matching Overwrite flag, so
         // in-game progression (the Power Relay) stays the main way automation pacing improves.
         if (!this.OverwriteAutomationDelay)

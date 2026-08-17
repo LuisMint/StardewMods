@@ -15,13 +15,13 @@ namespace Pathoschild.Stardew.Automate.Framework;
 
 /// <summary>
 /// MOD: added/changed. Spawns quarry-style stone/ore nodes across the Cave Hole (and Big Cave Hole)
-/// interior's open floor — per direct user request, this hand-picked, hand-weighted item set is used for
+/// interior's open floor — this hand-picked, hand-weighted item set is used for
 /// both tiers rather than reusing the vanilla Quarry farm's own full item pool verbatim (this class's
-/// earlier version). Every item ID below was looked up directly in the decompiled game code (or the
-/// user's own in-game item lookup, for the Barrel/Crate IDs) rather than guessed — see each field's own
+/// earlier version). Every item ID below was looked up directly in the decompiled game code (or via
+/// an in-game item lookup, for the Barrel/Crate IDs) rather than guessed — see each field's own
 /// remarks for exactly where each one comes from.
 ///
-/// A room's first morning fills densely — per direct user request that it start out "nearly full" — by
+/// A room's first morning fills densely — the room is meant to start out "nearly full" — by
 /// deterministically visiting every open tile once (see <see cref="FillDensely"/>), which also rolls a
 /// small chance of a purely-decorative Barrel/Crate instead of a normal node. Every morning after that
 /// runs a single normal <see cref="SpawnPass"/>, the same geometrically-decaying random sampling the real
@@ -53,10 +53,10 @@ internal static class CaveHoleQuarrySystem
     /// </summary>
     private const string FilledForBuildingTypeModDataKey = "luisMint.PoweredAutomation/CaveHoleQuarryFilledForType";
 
-    /// <summary>The chance each individual open tile gets filled during the initial dense fill — per direct user request that the room start out "nearly full" rather than just denser-than-usual. Deliberately not 100%, so it doesn't look like an unnaturally perfect grid.</summary>
+    /// <summary>The chance each individual open tile gets filled during the initial dense fill — the room is meant to start out "nearly full" rather than just denser-than-usual. Deliberately not 100%, so it doesn't look like an unnaturally perfect grid.</summary>
     private const double InitialFillDensity = 0.9;
 
-    /// <summary>The chance a tile chosen during <see cref="FillDensely"/> gets a decorative crate/barrel instead of a normal quarry node — per direct user request, roughly 10% of the room's first-day contents. Deliberately checked only in <see cref="FillDensely"/>, never <see cref="SpawnPass"/>: these are meant as first-look flavor, not something that keeps respawning.</summary>
+    /// <summary>The chance a tile chosen during <see cref="FillDensely"/> gets a decorative crate/barrel instead of a normal quarry node — roughly 10% of the room's first-day contents. Deliberately checked only in <see cref="FillDensely"/>, never <see cref="SpawnPass"/>: these are meant as first-look flavor, not something that keeps respawning.</summary>
     private const double CrateOrBarrelChance = 0.1;
 
     /// <summary>The tile area to spawn nodes in for a regular Cave Hole — a bounding rectangle around the interior's open floor; <see cref="GameLocation.CanItemBePlacedHere"/> naturally excludes the walls/arrival tile within it.</summary>
@@ -65,10 +65,10 @@ internal static class CaveHoleQuarrySystem
     /// <summary>The tile area to spawn nodes in for a Big Cave Hole — the same idea as <see cref="SpawnArea"/>, sized for <c>CaveHole2.tmx</c>'s larger floor plan instead.</summary>
     private static readonly Rectangle BigSpawnArea = new(6, 6, 14, 10);
 
-    /// <summary>The vanilla Barrel's own <see cref="StardewValley.Objects.BreakableContainer"/> item ID — per the user's own in-game item lookup.</summary>
+    /// <summary>The vanilla Barrel's own <see cref="StardewValley.Objects.BreakableContainer"/> item ID — found via an in-game item lookup.</summary>
     private const string BarrelItemId = "118";
 
-    /// <summary>The vanilla Crate's own <see cref="StardewValley.Objects.BreakableContainer"/> item ID — per the user's own in-game item lookup.</summary>
+    /// <summary>The vanilla Crate's own <see cref="StardewValley.Objects.BreakableContainer"/> item ID — found via an in-game item lookup.</summary>
     private const string CrateItemId = "119";
 
     /// <summary>MOD: added. Reflected access to <see cref="BreakableContainer"/>'s private <c>health</c> field — needed by <see cref="RepairCorruptedCratesAndBarrels"/> to detect a corrupted-by-reload Barrel/Crate (see that method's own remarks).</summary>
@@ -86,7 +86,7 @@ internal static class CaveHoleQuarrySystem
     /// <summary>The Copper Ore node ID — <see cref="StardewValley.Locations.MineShaft.getAppropriateOre"/>'s own default/shallow-area ore.</summary>
     private const string CopperOreNodeId = "751";
 
-    /// <summary>The rare gem/geode node IDs — Geode per direct user request, the 4 gem node IDs (as opposed to the gem ITEM ids) read out of <see cref="StardewValley.Locations.MineShaft.getRandomGemRichStoneForThisLevel"/>'s own switch (Ruby 4, Jade 6, Amethyst 8, Aquamarine 14).</summary>
+    /// <summary>The rare gem/geode node IDs — Geode plus the 4 gem node IDs (as opposed to the gem ITEM ids) read out of <see cref="StardewValley.Locations.MineShaft.getRandomGemRichStoneForThisLevel"/>'s own switch (Ruby 4, Jade 6, Amethyst 8, Aquamarine 14).</summary>
     private static readonly string[] RareOreNodeIds = ["75", "4", "8", "6", "14"];
 
     /// <summary>
@@ -94,13 +94,13 @@ internal static class CaveHoleQuarrySystem
     /// in the decompiled source, alongside the Mussel Stone node IDs 816/817), which breaks like any other
     /// stone/ore node and drops several Clay per hit, rather than the earlier version of this field, which
     /// wrongly placed the raw Clay item itself as a stand-in "node" (no such object existing had been the
-    /// assumption at the time). Spawns within the ore branch of <see cref="SpawnSomething"/> — per direct
-    /// user request, 5% of that branch (taken from <see cref="CopperOreNodeId"/>'s own share, not the
+    /// assumption at the time). Spawns within the ore branch of <see cref="SpawnSomething"/>, taking up
+    /// 5% of that branch (taken from <see cref="CopperOreNodeId"/>'s own share, not the
     /// rare gem chance).
     /// </summary>
     private const string ClayStoneNodeId = "818";
 
-    /// <summary>MOD: added. The chance, within the ore branch of <see cref="SpawnSomething"/>, that a Clay node spawns instead of Copper Ore — taken from Copper Ore's own share per direct user request.</summary>
+    /// <summary>MOD: added. The chance, within the ore branch of <see cref="SpawnSomething"/>, that a Clay node spawns instead of Copper Ore — taken from Copper Ore's own share.</summary>
     private const double ClayChance = 0.05;
 
     /// <summary>The Earth Crystal forageable ID — read out of <see cref="StardewValley.Locations.MineShaft.getRandomItemForThisLevel"/>'s own shallow-area defaults.</summary>
@@ -111,8 +111,8 @@ internal static class CaveHoleQuarrySystem
 
     /// <summary>
     /// MOD: changed. The chance a "common" forageable roll (see <see cref="SpawnSomething"/>) picks
-    /// <see cref="EarthCrystalItemId"/> rather than <see cref="QuartzItemId"/> — per direct user request,
-    /// Earth Crystal is half as common as before (was an even 50/50 via <c>Game1.random.Choose</c>), with
+    /// <see cref="EarthCrystalItemId"/> rather than <see cref="QuartzItemId"/> —
+    /// Earth Crystal is now half as common as before (was an even 50/50 via <c>Game1.random.Choose</c>), with
     /// Quartz taking up the freed-up share instead of the two staying evenly split.
     /// </summary>
     private const double EarthCrystalChance = 0.25;
@@ -124,11 +124,11 @@ internal static class CaveHoleQuarrySystem
     /// MOD: added. Every Green Rain Weeds variant ID — <c>"(O)GreenRainWeeds0"</c> through
     /// <c>"(O)GreenRainWeeds7"</c>, matching vanilla's own convention exactly (found in
     /// <see cref="StardewValley.GameLocation"/>'s own decompiled weed-spawning logic: <c>"(O)GreenRainWeeds" + Game1.random.Next(8)</c>).
-    /// Used by <see cref="FillWithGreenRainWeeds"/> per direct user request.
+    /// Used by <see cref="FillWithGreenRainWeeds"/>.
     /// </summary>
     private static readonly string[] GreenRainWeedsIds = ["(O)GreenRainWeeds0", "(O)GreenRainWeeds1", "(O)GreenRainWeeds2", "(O)GreenRainWeeds3", "(O)GreenRainWeeds4", "(O)GreenRainWeeds5", "(O)GreenRainWeeds6", "(O)GreenRainWeeds7"];
 
-    /// <summary>MOD: added. The regular weed IDs <see cref="SwapRemainingGreenRainWeeds"/> replaces any leftover Green Rain Weeds with — per direct user's own specific IDs (confirmed valid via diagnostic logging: DisplayName "Weeds" for all three).</summary>
+    /// <summary>MOD: added. The regular weed IDs <see cref="SwapRemainingGreenRainWeeds"/> replaces any leftover Green Rain Weeds with — these specific IDs were confirmed valid via diagnostic logging: DisplayName "Weeds" for all three.</summary>
     private static readonly string[] RegularWeedIds = ["(O)313", "(O)314", "(O)315"];
 
 
@@ -162,10 +162,10 @@ internal static class CaveHoleQuarrySystem
 
             Rectangle spawnArea = CaveHoleQuarrySystem.GetSpawnArea(building.buildingType.Value);
 
-            // MOD: added — per direct user request, a Green Rain day densely fills the room with Green
+            // MOD: added — a Green Rain day densely fills the room with Green
             // Rain Weeds INSTEAD of the normal fill/top-up below (there's little open floor left for
-            // normal nodes to spawn into afterward anyway). The "swap any uncleared ones to regular weeds
-            // the day after" half of the request is NOT handled here — see
+            // normal nodes to spawn into afterward anyway). Swapping any uncleared ones to regular weeds
+            // the day after is NOT handled here — see
             // Patches.CaveHoleGreenRainPatches's own remarks for why that needs to happen at a completely
             // different, much more precise moment instead of a plain day-after Tick() check.
             if (Game1.isGreenRain)
@@ -184,7 +184,15 @@ internal static class CaveHoleQuarrySystem
                 building.modData[CaveHoleQuarrySystem.FilledForBuildingTypeModDataKey] = building.buildingType.Value;
             }
             else
+            {
+                // MOD: changed — run three independent spawn passes instead of
+                // one, so more respawns each morning. Each pass still only ever places into tiles that are
+                // free at the time it runs, so each later pass naturally spawns less once the room's
+                // fuller, rather than double/triple-placing on top of an earlier pass's own results.
                 CaveHoleQuarrySystem.SpawnPass(caveHole, spawnArea);
+                CaveHoleQuarrySystem.SpawnPass(caveHole, spawnArea);
+                CaveHoleQuarrySystem.SpawnPass(caveHole, spawnArea);
+            }
         }
     }
 
@@ -222,7 +230,7 @@ internal static class CaveHoleQuarrySystem
     /// denser. Also the ONLY place decorative crates/barrels ever spawn (see <see cref="CrateOrBarrelChance"/>).
     ///
     /// MOD: changed. Re-run a second time (with a bigger <paramref name="spawnArea"/>) right after a Cave
-    /// Hole upgrades into a Big Cave Hole — per direct user request, this must NOT clear or disturb
+    /// Hole upgrades into a Big Cave Hole — this must NOT clear or disturb
     /// anything already there (player-placed items included), only fill newly-opened floor space. Since
     /// every tile check below already requires the tile to be unoccupied, simply re-running this over the
     /// bigger area does exactly that for free: already-occupied tiles (old nodes, crates, anything the
@@ -279,8 +287,8 @@ internal static class CaveHoleQuarrySystem
     }
 
     /// <summary>
-    /// MOD: added. Densely fill the room with Green Rain Weeds on a Green Rain day — per direct user
-    /// request, roughly 90% of open tiles (reusing <see cref="InitialFillDensity"/>'s own "nearly full,
+    /// MOD: added. Densely fill the room with Green Rain Weeds on a Green Rain day —
+    /// roughly 90% of open tiles (reusing <see cref="InitialFillDensity"/>'s own "nearly full,
     /// but not an unnaturally perfect grid" density), the same deterministic every-open-tile sweep
     /// <see cref="FillDensely"/> uses, just with Green Rain Weeds instead of a normal node roll.
     /// </summary>
@@ -301,7 +309,7 @@ internal static class CaveHoleQuarrySystem
 
     /// <summary>
     /// MOD: changed. Replace HALF of any still-uncleared Green Rain Weeds with regular weeds — the other
-    /// half is just removed outright — per direct user request. Made internal (not private) so
+    /// half is just removed outright. Made internal (not private) so
     /// <see cref="Patches.CaveHoleGreenRainPatches"/> can call it
     /// at the one precise moment this actually needs to happen — see that class's own remarks for why a
     /// plain "check this the next time Tick() runs" approach doesn't work: vanilla's own
@@ -325,7 +333,7 @@ internal static class CaveHoleQuarrySystem
         {
             foreach (Vector2 tile in toSwap)
             {
-                // MOD: changed — per direct user request, only half of what's left becomes a regular
+                // MOD: changed — only half of what's left becomes a regular
                 // weed; the other half is just gone, rather than every leftover Green Rain Weed surviving
                 // as a regular one.
                 if (Game1.random.NextBool())
@@ -373,38 +381,48 @@ internal static class CaveHoleQuarrySystem
         // top-level category roll (out of 100)
         int roll = Game1.random.Next(100);
 
-        if (roll < 50) // plain stone
+        // MOD: changed — plain stone trimmed from 50 to 45 and the sparse
+        // forageable category (below) trimmed from 15 to 10 wide, with all 10 freed points folded into
+        // ore node (20 -> 30), to push more copper specifically (see the ore branch's own remarks) while
+        // also making gems/quartz/earth crystal noticeably rarer.
+        if (roll < 45) // plain stone
         {
             string stoneId = Game1.random.NextDouble() < 0.1
                 ? Game1.random.Choose(CaveHoleQuarrySystem.RareStoneIds)
                 : Game1.random.Choose(CaveHoleQuarrySystem.CommonStoneIds);
             caveHole.objects.Add(tile, new SObject(stoneId, 1) { MinutesUntilReady = 2 });
         }
-        else if (roll < 65) // large stone / resource clump (50-64, i.e. 15 wide) — needs its own 2x2 footprint clear
+        else if (roll < 60) // large stone / resource clump (45-59, i.e. 15 wide) — needs its own 2x2 footprint clear
         {
             CaveHoleQuarrySystem.TrySpawnLargeStoneClump(caveHole, tile);
         }
-        // MOD: changed — top-level share trimmed from 25 to 20 (freed width folded into plain stone
-        // above) per direct user request to make ore nodes slightly rarer overall.
-        else if (roll < 85) // ore node (65-84, i.e. 20 wide)
+        // MOD: changed — top-level share grown from 20 to 30 (freed width taken from plain stone and the
+        // sparse forageable category, see this method's own remarks) for more
+        // copper overall.
+        else if (roll < 90) // ore node (60-89, i.e. 30 wide)
         {
+            // MOD: changed — rare gem-node sub-chance trimmed from 0.1 to 0.05,
+            // giving Copper Ore a bigger share of this now-wider ore band on top of the band itself
+            // growing (see this method's own remarks).
             double oreRoll = Game1.random.NextDouble();
             string oreId;
-            if (oreRoll < 0.1)
+            if (oreRoll < 0.05)
                 oreId = Game1.random.Choose(CaveHoleQuarrySystem.RareOreNodeIds);
-            // MOD: added — 5% Clay, taken from Copper Ore's own share per direct user request (was a
-            // flat 90% Copper Ore/10% rare gem split; now 85%/10%/5%).
-            else if (oreRoll < 0.1 + CaveHoleQuarrySystem.ClayChance)
+            // MOD: added — 5% Clay, taken from Copper Ore's own share (was a
+            // flat 90% Copper Ore/10% rare gem split; now roughly 90% Copper Ore/5% rare gem/5% Clay).
+            else if (oreRoll < 0.05 + CaveHoleQuarrySystem.ClayChance)
                 oreId = CaveHoleQuarrySystem.ClayStoneNodeId;
             else
                 oreId = CaveHoleQuarrySystem.CopperOreNodeId;
             caveHole.objects.Add(tile, new SObject(oreId, 1) { MinutesUntilReady = 3 });
         }
-        // MOD: changed — per direct user request, sparse forageables (this whole category, not just Red
+        // MOD: changed — sparse forageables (this whole category, not just Red
         // Mushroom within it) only actually spawn some of the time this branch is reached, rather than
-        // shrinking its 15-wide top-level share (which would've meant re-deriving the other categories'
-        // shares to still sum to 100). Trimmed again (was 0.5) to make the category slightly rarer still.
-        else if (Game1.random.NextDouble() < 0.4) // sparse forageable (85-99, i.e. 15 wide)
+        // shrinking its top-level share (which would've meant re-deriving the other categories' shares to
+        // still sum to 100) — except this round, the top-level share ITSELF also shrank (15 -> 10, see
+        // this method's own remarks), on top of trimming this activation chance again (was 0.4), to make
+        // gems/quartz/earth crystal noticeably rarer.
+        else if (Game1.random.NextDouble() < 0.3) // sparse forageable (90-99, i.e. 10 wide)
         {
             string forageId;
             if (Game1.random.NextDouble() < 0.2)

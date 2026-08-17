@@ -10,7 +10,7 @@ namespace Pathoschild.Stardew.Automate.Framework;
 /// <summary>
 /// MOD: added. A static lantern-strength light over each Cave Hole interior's own lantern sprite (a 2x2
 /// wall decoration spanning tiles (11,3)-(12,4) on the interior map, whose geometric center sits at tile
-/// (12,4)) — per direct user request, matching the warm glow vanilla mines use for their own lanterns
+/// (12,4)) — matches the warm glow vanilla mines use for their own lanterns
 /// (see <see cref="StardewValley.Object.initializeLightSource"/>'s own Torch case: <c>textureIndex 4</c>,
 /// radius 2.5, color (0, 80, 160) — reused verbatim here rather than any of this mod's OWN light tints,
 /// since the goal is to match the mines' own look, not this mod's).

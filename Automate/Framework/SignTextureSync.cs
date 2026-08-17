@@ -7,7 +7,7 @@ namespace Pathoschild.Stardew.Automate.Framework;
 
 /// <summary>
 /// MOD: changed. Swaps a whitelist/blacklist sign's displayed appearance between a "valid" and
-/// "invalid" look — per direct user request, no longer via the Alternative Textures mod (see
+/// "invalid" look — no longer via the Alternative Textures mod (see
 /// <see cref="Patches.SignValidityPatches"/>'s own remarks for why); this class now just stamps each
 /// managed sign's own <see cref="Patches.SignValidityPatches.SignValidModDataKey"/> with its current
 /// validity, which that class's draw patch reads directly at render time.

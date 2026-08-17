@@ -51,7 +51,7 @@ internal static class PowerCoilPatches
     /// MOD: added. How far the horizontal (width-only) shake pulse grows/shrinks the sprite at its
     /// peak, in the same pre-4x-zoom units as <see cref="GetScale_Postfix"/>'s main pulse (the main
     /// pulse's own width term maxes out at 16 * <see cref="PulseAmplitude"/> = 0.8, so this is kept
-    /// noticeably smaller to stay subtle, per request, while still being clearly a separate, faster
+    /// noticeably smaller to stay subtle, while still being clearly a separate, faster
     /// wobble).
     /// </summary>
     private const float ShakeAmplitude = 0.35f;
@@ -163,7 +163,7 @@ internal static class PowerCoilPatches
         );
 
         // MOD: added — shake + a "can't do that" cue when the player interacts with an unpowered
-        // (over-capacity) coil, per direct user request. Not a blocking patch — whatever vanilla's own
+        // (over-capacity) coil. Not a blocking patch — whatever vanilla's own
         // checkForAction would otherwise do for a plain Type:Crafting BigCraftable still runs normally.
         harmony.Patch(
             original: AccessTools.Method(typeof(SObject), nameof(SObject.checkForAction)),
@@ -364,7 +364,7 @@ internal static class PowerCoilPatches
         );
 
         // MOD: added — a yellow/red tint on the coil itself while the compass is toggled on (see
-        // PowerCoilCompass), matching its own arrow tint, per direct user request — makes a coil easy to
+        // PowerCoilCompass), matching its own arrow tint — makes a coil easy to
         // spot at a glance even without following its arrow.
         Color coilTint = PowerCoilCompass.ShowCompass
             ? (isPowered ? PowerCoilPatches.PoweredCoilTint : PowerCoilPatches.UnpoweredCoilTint)
@@ -541,7 +541,7 @@ internal static class PowerCoilPatches
 
     /// <summary>
     /// MOD: added. Block placing a Power Coil in a non-permanent location (a Mine/Skull Cavern level, or
-    /// the Volcano Dungeon) — per direct user request, since either regenerates/resets its layout,
+    /// the Volcano Dungeon), since either regenerates/resets its layout,
     /// permanently altering the power grid's connections with no way for the player to ever remove the
     /// coil again. Mirrors <see cref="PoweredChestPatches.PlacementAction_Prefix"/>'s own identical
     /// check/message for the same reason.
@@ -591,7 +591,7 @@ internal static class PowerCoilPatches
 
     /// <summary>
     /// MOD: added. Shake and play a "can't do that" cue when the player interacts with an unpowered
-    /// (over-capacity) coil, per direct user request — the same reaction vanilla objects use to
+    /// (over-capacity) coil — the same reaction vanilla objects use to
     /// signal a rejected interaction. Reuses the shake magnitude <see cref="PoweredChestPatches"/>
     /// already sets for its own one-time placement shake, and <see cref="MachineManager"/>'s own
     /// "cancel" cue for a broken/invalid automation state. Not a blocking patch — whatever vanilla's

@@ -11,6 +11,6 @@
   <Folder Name="/root/.github/">
     <File Path=".github/workflows/build.yml" />
   </Folder>
-  <Project Path="Automate/Automate.csproj" />
-  <Project Path="Common/.Common.shproj" Id="b9e9edfc-e98a-4370-994f-40a9f39a0284" />
+  <Project Path="E:/CodeProjects/AutomateStardewMod/Automate/Automate.csproj" />
+  <Project Path="E:/CodeProjects/AutomateStardewMod/Common/.Common.shproj" Id="b9e9edfc-e98a-4370-994f-40a9f39a0284" />
 </Solution>

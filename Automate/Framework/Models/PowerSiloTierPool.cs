@@ -3,7 +3,7 @@ using System.Collections.Generic;
 namespace Pathoschild.Stardew.Automate.Framework.Models;
 
 /// <summary>
-/// MOD: added. Per direct user request, a randomized alternative to a <see cref="PowerSiloTierConfig"/>'s
+/// MOD: added. A randomized alternative to a <see cref="PowerSiloTierConfig"/>'s
 /// fixed <see cref="PowerSiloTierConfig.RequiredItems"/> — one entry in <see cref="ModConfig.PowerSiloTierPools"/>,
 /// index-aligned with <see cref="ModConfig.PowerSiloTiers"/> (index <c>i</c>'s pool, if present, replaces
 /// that same index's <see cref="PowerSiloTierConfig.RequiredItems"/> with a rolled result — see

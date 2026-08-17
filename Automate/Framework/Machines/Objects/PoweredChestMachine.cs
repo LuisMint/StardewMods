@@ -5,7 +5,6 @@ using System.Linq;
 using Microsoft.Xna.Framework;
 using Pathoschild.Stardew.Automate.Framework.Storage;
 using Pathoschild.Stardew.Common;
-using StardewModdingAPI;
 using StardewValley;
 using StardewValley.Inventories;
 using StardewValley.Mods;
@@ -49,11 +48,8 @@ internal class PoweredChestMachine : BaseMachine, IContainer, IChestLikeMachine,
     /// </summary>
     private readonly Func<bool> IsEnabled;
 
-    /// <summary>MOD: added, per direct request. Get the effective <c>ActionsPerDelayWindow</c> (after any Power Relay bonus) — see <see cref="SetInput"/>'s own remarks for why this chest's own single paced turn needs it.</summary>
+    /// <summary>MOD: added. Get the effective <c>ActionsPerDelayWindow</c> (after any Power Relay bonus) — see <see cref="SetInput"/>'s own remarks for why this chest's own single paced turn needs it.</summary>
     private readonly Func<int> GetEffectiveActionsPerDelayWindow;
-
-    /// <summary>MOD: added, temporary diagnostic. Encapsulates monitoring and logging (may be <c>null</c>, in which case the diagnostic logging below is skipped) — see the <c>[containersync]</c>-tagged Trace logging in <see cref="SetInput"/>/<see cref="TryMoveOne"/>, added per direct user report of a cross-group pull-conduit delay that survived the first fix attempt.</summary>
-    private readonly IMonitor? Monitor;
 
 
     /*********
@@ -96,15 +92,13 @@ internal class PoweredChestMachine : BaseMachine, IContainer, IChestLikeMachine,
     /// <param name="location">The location which contains the machine.</param>
     /// <param name="tile">The tile covered by the machine.</param>
     /// <param name="isEnabled">MOD: added. Get whether this chest is currently allowed to push/pull items through its own piped connectors at all, or <c>null</c> to always allow it — see <see cref="IsEnabled"/>.</param>
-    /// <param name="getEffectiveActionsPerDelayWindow">MOD: added, per direct request. Get the effective <c>ActionsPerDelayWindow</c> (after any Power Relay bonus), or <c>null</c> to always do exactly one transfer per turn — see <see cref="GetEffectiveActionsPerDelayWindow"/>.</param>
-    /// <param name="monitor">MOD: added, temporary diagnostic. Encapsulates monitoring and logging, or <c>null</c> to disable it — see <see cref="Monitor"/>.</param>
-    public PoweredChestMachine(Chest chest, GameLocation location, Vector2 tile, Func<bool>? isEnabled = null, Func<int>? getEffectiveActionsPerDelayWindow = null, IMonitor? monitor = null)
+    /// <param name="getEffectiveActionsPerDelayWindow">MOD: added. Get the effective <c>ActionsPerDelayWindow</c> (after any Power Relay bonus), or <c>null</c> to always do exactly one transfer per turn — see <see cref="GetEffectiveActionsPerDelayWindow"/>.</param>
+    public PoweredChestMachine(Chest chest, GameLocation location, Vector2 tile, Func<bool>? isEnabled = null, Func<int>? getEffectiveActionsPerDelayWindow = null)
         : base(location, BaseMachine.GetTileAreaFor(tile), BaseMachine.GetDefaultMachineId<PoweredChestMachine>())
     {
         this.OwnContainer = new ChestContainer(chest, location, tile, migrateLegacyOptions: false);
         this.IsEnabled = isEnabled ?? (() => true);
         this.GetEffectiveActionsPerDelayWindow = getEffectiveActionsPerDelayWindow ?? (() => 1);
-        this.Monitor = monitor;
     }
 
     /// <summary>
@@ -147,21 +141,7 @@ internal class PoweredChestMachine : BaseMachine, IContainer, IChestLikeMachine,
         if (!this.IsEnabled())
             return false;
 
-        // MOD: fixed — read from and store into whichever instance of THIS chest appears in
-        // input.AllContainers (its sign-filtered ItemFilteredContainer wrapper, if this group has a
-        // whitelist/blacklist sign), not directly through the raw OwnContainer. Going straight to
-        // OwnContainer bypassed the sign's numeric condition entirely, since it's enforced by
-        // ItemFilteredContainer.Store/GetEnumerator, not by anything on the underlying ChestContainer
-        // itself: a whitelist of 10 would otherwise keep pulling 10 more every tick forever instead of
-        // stopping once the chest already has 10, and a blacklist reserve of 10 would push this chest's
-        // ENTIRE stock out instead of only the excess above 10. Unlike the InputContainers/OutputContainers
-        // split this used to search, AllContainers isn't narrowed by connector role, so this chest's own
-        // wrapped self always shows up in it exactly once regardless of which role it's reached through.
-        IContainer selfContainer =
-            Array.Find(input.AllContainers, c => c.InventoryReferenceId.Equals(this.OwnContainer.InventoryReferenceId))
-            ?? this.OwnContainer;
-
-        // MOD: changed, per direct request — do at most ActionsPerDelayWindow individual transfers per
+        // MOD: changed — do at most ActionsPerDelayWindow individual transfers per
         // call (pulling takes priority over pushing on each one) instead of draining every reachable
         // connection in one shot. This one call is already this chest's own single paced "turn" in its
         // group's ActionDelaySeconds/ActionsPerDelayWindow batch (see ModEntry.RunGroupBatch), so doing
@@ -176,29 +156,57 @@ internal class PoweredChestMachine : BaseMachine, IContainer, IChestLikeMachine,
         // all. No round-robin bookkeeping is needed for fairness across MULTIPLE destinations sharing
         // one budget: a destination that's already at its whitelist/blacklist cap simply moves nothing
         // on that attempt, so the loop falls through to the next candidate in the same call.
-        int budget = this.GetEffectiveActionsPerDelayWindow();
-        bool unlimitedBudget = budget <= 0;
+        //
+        int configuredBudget = this.GetEffectiveActionsPerDelayWindow();
+        bool unlimitedBudget = configuredBudget <= 0;
+        int budget = configuredBudget;
 
-        if (this.Monitor != null)
-        {
-            // MOD: added, temporary diagnostic — list every reachable container's tile, not just the count,
-            // so a run can be checked against whether the intended pull source is even a MEMBER of this
-            // group's own storage at all (a topology/role gap) as opposed to being a member but never
-            // getting a scheduling turn (a pacing gap) — the two look identical from the count alone.
-            string tileList = string.Join(", ", input.AllContainers.Select(c => $"({c.TileArea.X},{c.TileArea.Y})"));
-            this.Monitor.Log($"[containersync] PoweredChestMachine.SetInput at {this.Location.Name} ({this.TileArea.X},{this.TileArea.Y}): {input.AllContainers.Length} reachable container(s) [{tileList}], budget={(unlimitedBudget ? "unlimited" : budget.ToString())}", LogLevel.Trace);
-        }
+        // MOD: fixed — read from and store into whichever instance of THIS chest appears in
+        // input.AllContainers (its sign-filtered ItemFilteredContainer wrapper, if this group has a
+        // whitelist/blacklist sign), not directly through the raw OwnContainer. Going straight to
+        // OwnContainer bypassed the sign's numeric condition entirely, since it's enforced by
+        // ItemFilteredContainer.Store/GetEnumerator, not by anything on the underlying ChestContainer
+        // itself: a whitelist of 10 would otherwise keep pulling 10 more every tick forever instead of
+        // stopping once the chest already has 10, and a blacklist reserve of 10 would push this chest's
+        // ENTIRE stock out instead of only the excess above 10. Unlike the InputContainers/OutputContainers
+        // split this used to search, AllContainers isn't narrowed by connector role, so this chest's own
+        // wrapped self always shows up in it exactly once regardless of which role it's reached through.
+        IContainer selfContainer =
+            Array.Find(input.AllContainers, c => c.InventoryReferenceId.Equals(this.OwnContainer.InventoryReferenceId))
+            ?? this.OwnContainer;
+
+        // MOD: added (redesigned, reinstated). This chest's own action — whether it PULLS into itself or
+        // PUSHES out to a different container — is gated by the SAME shared per-window budget
+        // (ThrottledContainerBudget) that already governs any OTHER machine's Store() call INTO this
+        // chest, rather than a separate independent counter. A PULL's destination is this chest itself,
+        // so it already spends this budget for free via selfContainer.Store() below; a PUSH's destination
+        // is some OTHER, independently-budgeted container, so ConsumeBudget() charges this chest's own
+        // counter manually for that direction — see ThrottledContainer.HasBudgetRemainingThisWindow's own
+        // remarks for why these two directions (and any OTHER machine's push INTO this chest) all have to
+        // share one counter: two independent budgets that each separately allow "one" still let this one
+        // physical chest visibly do two things in the same window, which is exactly what a diagnostic log
+        // caught (a Mushroom Box's own push landing in this chest, and this chest's own push out to
+        // a completely different container, in the same nominal window).
+        ThrottledContainer? selfThrottled = selfContainer as ThrottledContainer;
+        if (selfThrottled != null && !selfThrottled.HasBudgetRemainingThisWindow())
+            return false;
 
         bool movedAnything = false;
         for (int movedThisCall = 0; unlimitedBudget || movedThisCall < budget; movedThisCall++)
         {
-            if (!this.TryMoveOne(input, selfContainer, isPull: true) && !this.TryMoveOne(input, selfContainer, isPull: false))
+            if (selfThrottled != null && !selfThrottled.HasBudgetRemainingThisWindow())
+                break; // this chest's own shared budget got spent by a push earlier in this same call
+
+            bool pulled = this.TryMoveOne(input, selfContainer, isPull: true);
+            bool pushed = !pulled && this.TryMoveOne(input, selfContainer, isPull: false);
+            if (!pulled && !pushed)
                 break; // nothing left to move this call — no point spinning through the rest of the budget
 
             movedAnything = true;
+            if (pushed)
+                selfThrottled?.ConsumeBudget(); // a pull already spent this budget via selfContainer.Store()
         }
 
-        this.Monitor?.Log($"[containersync] PoweredChestMachine.SetInput at {this.Location.Name} ({this.TileArea.X},{this.TileArea.Y}): movedAnything={movedAnything}", LogLevel.Trace); // MOD: added, temporary diagnostic
         return movedAnything;
     }
 
@@ -214,41 +222,22 @@ internal class PoweredChestMachine : BaseMachine, IContainer, IChestLikeMachine,
                 ? container.TakingItemsAllowed() && container.IsActiveMoverPullSource()
                 : container.StorageAllowed() && container.IsActiveMoverPushDestination();
 
-            bool shouldSkip = this.ShouldSkip(container);
-            bool isOwnLocalTouchpoint = this.IsOwnLocalTouchpoint(container);
-            if (shouldSkip || !eligible || !isOwnLocalTouchpoint)
-            {
-                // MOD: added, temporary diagnostic — only log a rejected candidate for the pull direction,
-                // since that's the direction the reported bug is about (a whitelist-filtered pull conduit
-                // not picking up a valid item promptly); logging every push candidate too would double the
-                // volume without adding anything relevant to that report.
-                if (isPull)
-                    this.Monitor?.Log($"[containersync]   TryMoveOne(pull) skip candidate at ({container.TileArea.X},{container.TileArea.Y}): shouldSkip={shouldSkip} eligible={eligible} isOwnLocalTouchpoint={isOwnLocalTouchpoint}", LogLevel.Trace);
+            if (this.ShouldSkip(container) || !eligible || !this.IsOwnLocalTouchpoint(container))
                 continue;
-            }
 
             IContainer source = isPull ? container : selfContainer;
             IContainer destination = isPull ? selfContainer : container;
 
-            bool sawAnyStack = false;
             foreach (ITrackedStack stack in source.ToArray())
             {
-                sawAnyStack = true;
                 if (stack.Count <= 0)
                     continue;
 
                 int before = stack.Count;
                 destination.Store(stack);
                 if (stack.Count < before)
-                {
-                    if (isPull)
-                        this.Monitor?.Log($"[containersync]   TryMoveOne(pull) moved {before - stack.Count}x {stack.Sample.QualifiedItemId} from ({container.TileArea.X},{container.TileArea.Y})", LogLevel.Trace); // MOD: added, temporary diagnostic
                     return true; // one action done this turn — the rest waits for a later turn
-                }
             }
-
-            if (isPull)
-                this.Monitor?.Log($"[containersync]   TryMoveOne(pull) candidate at ({container.TileArea.X},{container.TileArea.Y}) eligible but moved nothing (sawAnyStack={sawAnyStack})", LogLevel.Trace); // MOD: added, temporary diagnostic
         }
 
         return false;

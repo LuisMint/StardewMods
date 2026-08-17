@@ -20,9 +20,9 @@ namespace Pathoschild.Stardew.Automate.Framework.Patches;
 /// <see cref="NPC.checkAction"/> makes for the Dwarf ONLY once every one of its own preconditions (holding
 /// no giftable item, <see cref="Farmer.canUnderstandDwarves"/>, standing in a Mine level, no queued
 /// dialogue, etc.) already passed. Intercepting there means every one of those checks is inherited for
-/// free, with nothing to duplicate or risk getting subtly wrong. Per direct user preference, the build
-/// option is gated behind the SAME "can understand the Dwarf" requirement the shop itself already uses,
-/// rather than being available any earlier.
+/// free, with nothing to duplicate or risk getting subtly wrong. The build option is gated behind the
+/// SAME "can understand the Dwarf" requirement the shop itself already uses, rather than being
+/// available any earlier.
 ///
 /// Separately patches <see cref="CarpenterMenu.robinConstructionMessage"/> — vanilla hardcodes THAT
 /// confirmation message to Robin's own portrait/dialogue regardless of which "Builder" string the menu
@@ -101,8 +101,8 @@ internal static class DwarfBuildMenuPatches
                     break;
 
                 case "Build":
-                    // MOD: added — per direct user request, only one Dwarf-built structure may be under
-                    // construction at a time; refuse (with an in-character message) rather than opening
+                    // MOD: added — only one Dwarf-built structure may be under construction at a time;
+                    // refuse (with an in-character message) rather than opening
                     // the menu at all if one's already in progress somewhere.
                     if (DwarfBuildMenuPatches.IsDwarfStructureUnderConstruction())
                         DwarfBuildMenuPatches.ShowDwarfMessage("Sorry, my hands are tied. One task at a time.");

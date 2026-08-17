@@ -6,7 +6,7 @@ using SObject = StardewValley.Object;
 namespace Pathoschild.Stardew.Automate.Framework.Patches;
 
 /// <summary>
-/// MOD: added. Per direct user request, reading Dwarf Research Note #7 ("White/Black List
+/// MOD: added. Reading Dwarf Research Note #7 ("White/Black List
 /// Category Sign") unlocks a nightly trade at the vanilla Statue Of The Dwarf King
 /// (<c>(BC)StatueOfTheDwarfKing</c>, not part of this mod): at exactly midnight, clicking the
 /// statue while holding a Diamond consumes it and drops a Dwarf Gadget out of the statue, once per

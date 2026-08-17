@@ -14,15 +14,15 @@ namespace Pathoschild.Stardew.Automate.Framework;
 /// <see cref="MaxBars"/> levels from Radioactive Bar for the actions-per-window bonus) — mirroring
 /// <see cref="PowerSiloInteraction"/>'s own "click the building while holding the item" delivery, not a
 /// held/reversible item slot (an earlier version of this class supported pulling delivered items back
-/// out; per direct user request, delivery is now one-way, same as a Power Silo tier).
+/// out; delivery is now one-way, same as a Power Silo tier).
 ///
 /// MOD: changed. Each level costs progressively more raw items than the last — level 1 costs 1 item,
-/// level 2 costs 2, level 3 costs 3, level 4 costs 4 (a plain triangular progression, per direct user
-/// request — see <see cref="GetCumulativeRequiredForLevel"/>'s own remarks for why this is a REVERT, not
+/// level 2 costs 2, level 3 costs 3, level 4 costs 4 (a plain triangular progression — see
+/// <see cref="GetCumulativeRequiredForLevel"/>'s own remarks for why this is a REVERT, not
 /// the original design). <see cref="ShardsDeliveredModDataKey"/>/
 /// <see cref="BarsDeliveredModDataKey"/> actually store the RAW cumulative item count (0-<see cref="MaxCumulativeShards"/>/<see cref="MaxCumulativeBars"/>),
 /// not the level directly — <see cref="GetShardLevel"/>/<see cref="GetBarLevel"/> derive the level (0-<see cref="MaxShards"/>/<see cref="MaxBars"/>,
-/// one per icon) from that cumulative count, per direct user request.
+/// one per icon) from that cumulative count.
 ///
 /// Cheap enough (a buildings-only scan, mirroring <see cref="PowerSiloSystem.GetTotalCapacity"/>) to
 /// just recompute on demand every time <see cref="ModEntry"/>'s pacing code asks — no caching, no
@@ -209,8 +209,8 @@ internal class PowerRelaySystem
     /// MOD: added. Get whether the delay has already been pushed down to (or past) <see cref="ModConfig.PowerRelayMinimumActionDelaySeconds"/>
     /// — once true, no Power Relay's shard track accepts further deliveries at all (see
     /// <see cref="PowerRelayInteraction"/>), and every Relay's shard row shows a "reached the global cap"
-    /// message instead of its own bring-prompt/per-Relay-maxed message (see <see cref="PowerRelayMenu"/>),
-    /// per direct user request. Deliberately no equivalent for the actions-per-window side.
+    /// message instead of its own bring-prompt/per-Relay-maxed message (see <see cref="PowerRelayMenu"/>).
+    /// Deliberately no equivalent for the actions-per-window side.
     /// </summary>
     public bool IsGlobalSpeedCapped()
     {
@@ -236,7 +236,7 @@ internal class PowerRelaySystem
     /// MOD: changed. Get how many raw items are needed in total to reach a given level (1-indexed) from
     /// scratch — a plain triangular number (1, 3, 6, 10, ...), so each individual level's own cost (see
     /// <see cref="GetLevelCost"/>) is exactly the level number itself: 1 for level 1, 2 for level 2, 3 for
-    /// level 3, 4 for level 4. Reverted per direct user request back to this original plain progression —
+    /// level 3, 4 for level 4. Reverted back to this original plain progression —
     /// an earlier version shifted this to start counting from level 2 instead (1, 2, 4, 7, ...), back when
     /// level 1 was delivered as a different, special item; now that <see cref="ModConfig.PowerRelayFirstShardItemId"/>/
     /// <see cref="ModConfig.PowerRelayFirstBarItemId"/> match the track's normal item again, the shifted

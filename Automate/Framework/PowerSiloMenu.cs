@@ -23,8 +23,8 @@ namespace Pathoschild.Stardew.Automate.Framework;
 /// positions/icons; <see cref="MarkAllCoilsButton"/> toggles the "Power Coil markers" compass/arrow
 /// overlay (see <see cref="PowerCoilCompass"/>) and <see cref="ChangeAppearanceButton"/> — despite its
 /// field name, a holdover from when it was a placeholder — now toggles showing every Power Coil on the
-/// world map instead (see <see cref="Patches.PowerCoilMapMarkerPatches"/>); per direct user request,
-/// these two used to share a single toggle/button and are now fully independent.
+/// world map instead (see <see cref="Patches.PowerCoilMapMarkerPatches"/>); these two used to share a
+/// single toggle/button and are now fully independent, for clearer per-feature control.
 ///
 /// The icon grid represents THIS Silo's own progress (one slot per point of the max any single Silo
 /// can contribute, filled up to its current tier) rather than the save-wide total, so it stays a
@@ -156,7 +156,7 @@ internal class PowerSiloMenu : IClickableMenu
     /// <summary>The text currently hovered, shown as a tooltip.</summary>
     private string HoverText = "";
 
-    /// <summary>MOD: added. The "Bring" row requirement currently under the mouse, if any — shown as a full vanilla item tooltip (name, description, etc.) in <see cref="draw"/>, per direct user request, since the icon alone doesn't say which item it is (especially for a randomly-rolled mineral) and this menu's custom-drawn icons aren't real inventory slots Lookup Anything or similar mods can inspect.</summary>
+    /// <summary>MOD: added. The "Bring" row requirement currently under the mouse, if any — shown as a full vanilla item tooltip (name, description, etc.) in <see cref="draw"/>, since the icon alone doesn't say which item it is (especially for a randomly-rolled mineral) and this menu's custom-drawn icons aren't real inventory slots Lookup Anything or similar mods can inspect.</summary>
     private PowerSiloRequiredItem? HoveredBringRowRequirement;
 
     /// <summary>MOD: added. Elapsed seconds since this menu opened — drives the capacity grid's subtle bob and pulse animations, the same way <see cref="PondQueryMenu"/>'s own <c>_age</c> field drives its fish icons' bob.</summary>
@@ -201,8 +201,8 @@ internal class PowerSiloMenu : IClickableMenu
             Game1.mouseCursors, Game1.getSourceRectForStandardTileSheet(Game1.mouseCursors, 46), 1f
         );
 
-        // MOD: kept its original vanilla icon (a map-ish icon from the standard mouseCursors sheet),
-        // per direct user request — only MarkAllCoilsButton uses the dedicated coil icon.
+        // MOD: kept its original vanilla icon (a map-ish icon from the standard mouseCursors sheet) —
+        // only MarkAllCoilsButton uses the dedicated coil icon.
         this.ChangeAppearanceButton = new ClickableTextureComponent(
             new Rectangle(this.xPositionOnScreen + this.width + 4, okButtonY - 128, 64, 64),
             Game1.mouseCursors, new Rectangle(48, 384, 16, 16), 4f
@@ -456,7 +456,7 @@ internal class PowerSiloMenu : IClickableMenu
 
                 Utility.drawTextWithShadow(b, bringText, Game1.smallFont, new Vector2(leftX, rowCenterY - bringTextSize.Y / 2f), Game1.textColor);
 
-                // MOD: icon + count only — no item name text after it, per request. MOD: added — hovering
+                // MOD: icon + count only — no item name text after it, to keep the row compact. MOD: added — hovering
                 // the icon shows the full vanilla item tooltip instead (see HoveredBringRowRequirement's
                 // own remarks), so the name is still discoverable without permanently taking up row space.
                 ParsedItemData itemData = ItemRegistry.GetDataOrErrorItem(requirement.ItemId);

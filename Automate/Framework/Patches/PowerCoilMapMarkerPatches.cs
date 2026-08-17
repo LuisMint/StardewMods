@@ -15,8 +15,8 @@ namespace Pathoschild.Stardew.Automate.Framework.Patches;
 /// MOD: added. Marks every Power Coil's location on the world map (the big map opened via the pause
 /// menu's map tab, or the M key) when the player toggles it on from <see cref="PowerSiloMenu"/>'s
 /// "Show/Hide Power Coils on map" button — independent of <see cref="PowerCoilCompass.ShowCompass"/>
-/// (the two used to share a single toggle, but per direct user request each now has its own
-/// button/state) — the same idea as the NPCMapLocations mod's own NPC markers, but
+/// (the two used to share a single toggle, but each now has its own
+/// button/state, for finer-grained control) — the same idea as the NPCMapLocations mod's own NPC markers, but
 /// fully independent of it (no reference, dependency, or compatibility risk either way): rather than
 /// subclassing/replacing <see cref="MapPage"/> the way that mod does (which would fight over
 /// ownership of <c>GameMenu</c>'s page instance if both mods tried it at once), this is a Harmony

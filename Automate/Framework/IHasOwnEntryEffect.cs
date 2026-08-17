@@ -1,7 +1,7 @@
 namespace Pathoschild.Stardew.Automate.Framework;
 
 /// <summary>
-/// MOD: added, per direct request. Implemented by an <see cref="IContainer"/> that already plays its
+/// MOD: added. Implemented by an <see cref="IContainer"/> that already plays its
 /// own "item arrived" feedback independently of <see cref="ContainerVisualEffects"/> — e.g. the shipping
 /// bin, which always plays vanilla's own parcel-icon animation and sound via <c>ShippingBin.showShipment</c>
 /// regardless of automation. Without this, <see cref="ThrottledContainer"/> would layer its own generic

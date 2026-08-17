@@ -15,8 +15,8 @@ namespace Pathoschild.Stardew.Automate.Framework;
 /// they warped in FROM, so <see cref="Patches.CaveHoleExitPatches"/> can send them back to the right spot
 /// when they leave again.
 ///
-/// MOD: changed — per direct user request (building a second Cave Hole revealed both shared one
-/// interior), this now uses vanilla's own per-building interior system instead of a single
+/// MOD: changed — building a second Cave Hole revealed both shared one interior, so this now uses
+/// vanilla's own per-building interior system instead of a single
 /// always-present location: <c>BuildingsData.json</c>'s <c>IndoorMap</c> field is set to our map, so
 /// every placed Cave Hole gets its OWN uniquely-named interior automatically (the same mechanism a Shed
 /// or Barn uses — see <see cref="Building.GetIndoors"/>/<see cref="Building.createIndoors"/>, which
