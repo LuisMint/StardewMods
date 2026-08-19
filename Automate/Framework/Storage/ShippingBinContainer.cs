@@ -44,6 +44,16 @@ internal class ShippingBinContainer : IContainer, IHasContainerPriority, IHasOwn
     /// <summary>MOD: added. The constructed shipping bin, if this container was built for a farm building rather than the island farm's built-in bin — see <see cref="Store"/>'s own remarks for why this matters for the shipment animation/sound.</summary>
     private readonly ShippingBin? Bin;
 
+    /// <summary>
+    /// MOD: added. Notify that an AUTOMATED shipment (via conduit, not a manual player toss) just
+    /// changed <c>Farm.lastItemShipped</c> — see <see cref="Store"/>'s own remarks. <c>lastItemShipped</c>
+    /// is a plain, non-networked vanilla field, and automation only ever runs on the host (see
+    /// <c>ModEntry.EnableAutomation</c>), so without telling every other connected player directly, a
+    /// farmhand's own client would never see the shipping bin's display update for anything a conduit
+    /// delivered — set once via <see cref="Initialize"/>.
+    /// </summary>
+    private static Action<Item>? OnAutomatedShipment;
+
 
     /*********
     ** Accessors
@@ -98,6 +108,13 @@ internal class ShippingBinContainer : IContainer, IHasContainerPriority, IHasOwn
         this.Bin = bin;
     }
 
+    /// <summary>MOD: added. Wire up the callback used to notify every connected player about an automated shipment — see <see cref="OnAutomatedShipment"/>.</summary>
+    /// <param name="onAutomatedShipment">The callback to invoke.</param>
+    public static void Initialize(Action<Item> onAutomatedShipment)
+    {
+        ShippingBinContainer.OnAutomatedShipment = onAutomatedShipment;
+    }
+
     /// <summary>
     /// Plays vanilla's own shipment animation/sound after actually storing anything — using the exact
     /// same fallback chain (the constructed <see cref="Bin"/> if there is one, then <see cref="IslandWest"/>,
@@ -120,6 +137,11 @@ internal class ShippingBinContainer : IContainer, IHasContainerPriority, IHasOwn
         int before = stack.Count;
         IInventory inventory = this.Inventory;
 
+        // MOD: added — tracks the REAL item reference this delivery last landed in (an existing slot it
+        // stacked into, or the new slot it created), for lastItemShipped below to point at directly — see
+        // that assignment's own remarks for why this can't be a separate detached copy.
+        Item? lastTouchedSlot = null;
+
         // try to stack into an existing slot
         foreach (Item? slot in inventory)
         {
@@ -129,6 +151,8 @@ internal class ShippingBinContainer : IContainer, IHasContainerPriority, IHasOwn
                 sample.Stack = stack.Count;
                 int added = stack.Count - slot.addToStack(sample);
                 stack.Reduce(added);
+                if (added > 0)
+                    lastTouchedSlot = slot;
                 if (stack.Count <= 0)
                     break;
             }
@@ -136,7 +160,11 @@ internal class ShippingBinContainer : IContainer, IHasContainerPriority, IHasOwn
 
         // otherwise add a new slot — unlimited capacity, matching the farm's own live shipping-bin inventory
         if (stack.Count > 0)
-            inventory.Add(stack.Take(stack.Count));
+        {
+            Item newSlot = stack.Take(stack.Count)!;
+            inventory.Add(newSlot);
+            lastTouchedSlot = newSlot;
+        }
 
         // play the shipment animation/sound for whatever was actually stored just now
         //
@@ -152,17 +180,40 @@ internal class ShippingBinContainer : IContainer, IHasContainerPriority, IHasOwn
         // unless a farmer is actually standing in this container's own location; this matches that same
         // rule instead of relying on vanilla's own (location-blind) method.
         int moved = before - stack.Count;
-        if (moved > 0 && this.Location.farmers.Any())
+        if (moved > 0)
         {
-            Item shipped = stack.Sample.getOne();
-            shipped.Stack = moved;
+            // MOD: added — vanilla's own manual-toss paths (ShippingBin.leftClicked/Farm.shipItem) both
+            // set lastItemShipped to the EXACT SAME object reference they just added to the bin's real
+            // inventory — not a separate copy. That matters beyond just cosmetics: vanilla's own "last
+            // shipped" icon is clickable (ItemGrabMenu.receiveLeftClick), and clicking it calls
+            // getShippingBin(...).Remove(lastItemShipped) before handing that same object to the player.
+            // A detached copy wouldn't actually be IN the inventory list, so Remove() would silently find
+            // nothing to remove while the player still received a free copy — a real duplication bug, not
+            // just a wrong icon. Pointing this at the real touched slot avoids that entirely, and as a
+            // side effect its displayed stack count (Item.drawInMenu) naturally reflects however much of
+            // that slot is actually still there, already capped at the item's own normal max stack size
+            // (999 for most stackable items) by the same addToStack/Add mechanics vanilla itself uses —
+            // nothing extra needed here to enforce that cap.
+            (this.Location as Farm ?? Game1.getFarm()).lastItemShipped = lastTouchedSlot;
 
-            if (this.Bin != null)
-                this.Bin.showShipment(shipped, false);
-            else if (this.Location is IslandWest islandFarm)
-                islandFarm.showShipment(shipped, false);
-            else if (this.Location is Farm farm)
-                farm.showShipment(shipped, false);
+            // MOD: added — lastItemShipped is a plain, non-networked vanilla field, and this Store() call
+            // only ever runs on the host (automation is host-only — see ModEntry.EnableAutomation), so
+            // without this, no OTHER connected player would ever see the shipping bin's display update
+            // for something a conduit delivered — see OnAutomatedShipment's own remarks.
+            ShippingBinContainer.OnAutomatedShipment?.Invoke(lastTouchedSlot!);
+
+            if (this.Location.farmers.Any())
+            {
+                Item shipped = stack.Sample.getOne();
+                shipped.Stack = moved;
+
+                if (this.Bin != null)
+                    this.Bin.showShipment(shipped, false);
+                else if (this.Location is IslandWest islandFarm)
+                    islandFarm.showShipment(shipped, false);
+                else if (this.Location is Farm farm)
+                    farm.showShipment(shipped, false);
+            }
         }
     }
 
@@ -226,6 +277,27 @@ internal class ShippingBinContainer : IContainer, IHasContainerPriority, IHasOwn
         if (item is not { Stack: > 0 })
             return null;
 
-        return new TrackedItem(item).OnEmpty((_, taken) => this.Inventory.Remove(taken));
+        return new TrackedItem(item).OnEmpty((_, taken) => this.OnItemFullyRemoved(taken));
+    }
+
+    /// <summary>
+    /// MOD: added. Handle an item being fully pulled out of the bin (its last unit taken, e.g. by a
+    /// conduit) — removes it from the real inventory, and clears the shipping bin menu's own "last
+    /// shipped item" display if it was pointing at this EXACT object (see <see cref="Store"/>'s own
+    /// remarks for why <c>lastItemShipped</c> is always a real reference into this inventory, never a
+    /// detached copy — so reference equality, not just a matching item type, is what actually determines
+    /// whether the removed item is the one currently on display). Vanilla doesn't track a shipment
+    /// HISTORY (just this one pointer), so there's no earlier shipment to fall back to showing instead —
+    /// clearing it is the closest available match to "as if the player took it back out," rather than
+    /// leaving a stale icon pointing at an object that's no longer actually in the bin.
+    /// </summary>
+    /// <param name="taken">The item that was fully removed.</param>
+    private void OnItemFullyRemoved(Item taken)
+    {
+        this.Inventory.Remove(taken);
+
+        Farm farm = this.Location as Farm ?? Game1.getFarm();
+        if (ReferenceEquals(farm.lastItemShipped, taken))
+            farm.lastItemShipped = null;
     }
 }

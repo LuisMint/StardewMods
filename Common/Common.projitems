@@ -71,6 +71,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)MachineDataHelper.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)MapExtensions.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Messages\AutomateUpdateChestMessage.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Messages\LastItemShippedMessage.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)ModDataDictionaryExtensions.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)ObjectExtensions.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)SpriteInfo.cs" />

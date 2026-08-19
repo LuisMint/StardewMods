@@ -32,6 +32,9 @@ internal class PowerSiloInteraction
     /// <summary>MOD: changed — now resolved per Power Silo building, since each Silo rolls its own independent tier requirements (see <see cref="PowerSiloTierRoller"/>'s own remarks).</summary>
     private readonly Func<Building, List<PowerSiloTierConfig>> GetTiers;
 
+    /// <summary>MOD: added. Show a HUD toast locally and broadcast it to every other connected player — see <see cref="ModEntry.BroadcastHudMessage"/>. Power Silo capacity is a save-wide stat, not per-player, so every player should see a tier-up.</summary>
+    private readonly Action<string> BroadcastHudMessage;
+
 
     /*********
     ** Public methods
@@ -39,10 +42,12 @@ internal class PowerSiloInteraction
     /// <summary>Construct an instance.</summary>
     /// <param name="powerSiloSystem">The power silo capacity system, used to read/write a Silo's current tier and total capacity.</param>
     /// <param name="getTiers">Get the ordered capacity tiers for a specific Power Silo building.</param>
-    public PowerSiloInteraction(PowerSiloSystem powerSiloSystem, Func<Building, List<PowerSiloTierConfig>> getTiers)
+    /// <param name="broadcastHudMessage">MOD: added. Show a HUD toast locally and broadcast it to every other connected player — see <see cref="BroadcastHudMessage"/>.</param>
+    public PowerSiloInteraction(PowerSiloSystem powerSiloSystem, Func<Building, List<PowerSiloTierConfig>> getTiers, Action<string> broadcastHudMessage)
     {
         this.PowerSiloSystem = powerSiloSystem;
         this.GetTiers = getTiers;
+        this.BroadcastHudMessage = broadcastHudMessage;
     }
 
     /// <summary>Register this interaction with the game, so clicking a Power Silo's action tile invokes <see cref="Handle"/>.</summary>
@@ -139,7 +144,7 @@ internal class PowerSiloInteraction
                     if (unlockingSolarTier && before != after)
                         PowerSiloPatches.ShowCapacityPopup(this.PowerSiloSystem, before, after);
                     else
-                        Game1.addHUDMessage(new HUDMessage("Power Silo capacity increased!", HUDMessage.newQuest_type));
+                        this.BroadcastHudMessage("Power Silo capacity increased!");
                 }
                 else
                 {

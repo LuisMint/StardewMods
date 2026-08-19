@@ -65,6 +65,9 @@ internal static class PowerSiloPatches
     /// </summary>
     private static Action<IEnumerable<GameLocation>>? RequeueLocations;
 
+    /// <summary>MOD: added. Show a HUD toast locally and broadcast it to every other connected player — see <see cref="ModEntry.BroadcastHudMessage"/>. Power Grid capacity is a save-wide stat, not per-player, so every player should see it change.</summary>
+    private static Action<string>? BroadcastHudMessage;
+
 
     /*********
     ** Public methods
@@ -75,13 +78,15 @@ internal static class PowerSiloPatches
     /// <param name="getLocalSourceNames">MOD: added. Get the item names/IDs that count as a "local" power source (e.g. the Powered Chest).</param>
     /// <param name="powerSiloSystem">The power silo capacity system, used to refresh every coil's allowance after a placement/destruction.</param>
     /// <param name="requeueLocations">MOD: added. Queue the given locations for a machine reload — see <see cref="RequeueLocations"/>'s own remarks for why this is needed after a coil allowance refresh.</param>
-    public static void Initialize(Func<HashSet<string>> getSourceNames, Func<HashSet<string>> getSolarPanelNames, Func<HashSet<string>> getLocalSourceNames, PowerSiloSystem powerSiloSystem, Action<IEnumerable<GameLocation>> requeueLocations)
+    /// <param name="broadcastHudMessage">MOD: added. Show a HUD toast locally and broadcast it to every other connected player — see <see cref="BroadcastHudMessage"/>.</param>
+    public static void Initialize(Func<HashSet<string>> getSourceNames, Func<HashSet<string>> getSolarPanelNames, Func<HashSet<string>> getLocalSourceNames, PowerSiloSystem powerSiloSystem, Action<IEnumerable<GameLocation>> requeueLocations, Action<string> broadcastHudMessage)
     {
         PowerSiloPatches.GetSourceNames = getSourceNames;
         PowerSiloPatches.GetSolarPanelNames = getSolarPanelNames;
         PowerSiloPatches.GetLocalSourceNames = getLocalSourceNames;
         PowerSiloPatches.PowerSiloSystem = powerSiloSystem;
         PowerSiloPatches.RequeueLocations = requeueLocations;
+        PowerSiloPatches.BroadcastHudMessage = broadcastHudMessage;
     }
 
     /// <summary>Apply these patches to the game.</summary>
@@ -167,21 +172,44 @@ internal static class PowerSiloPatches
             return;
 
         placedCoil.modData[PowerSiloSystem.PlacementOrderModDataKey] = DateTime.UtcNow.Ticks.ToString();
-        IReadOnlySet<GameLocation> changedLocations = powerSiloSystem.RefreshCoilAllowance();
-        if (changedLocations.Count > 0)
-            PowerSiloPatches.RequeueLocations?.Invoke(changedLocations); // MOD: added — see RequeueLocations's own remarks for why locations OTHER than this one may also need to pick up the refresh
 
-        // MOD: added — the refresh above just stamped this exact coil, so its own modData now
-        // reflects whether it actually made it within capacity; play "grunt" only if it did, and stay
-        // silent otherwise (no "cancel" or any other sound) rather than announce the miss audibly —
-        // the capacity popup below already covers that. Both skipped if the mechanic itself is disabled
-        // (nothing meaningful to report), even though the stamp/refresh above still runs so state stays
-        // consistent for whenever it's re-enabled.
+        // MOD: changed — no longer waits for (or guesses ahead of) a host-only RefreshCoilAllowance
+        // pass to find out whether THIS coil ended up powered. A newly-placed coil is, by construction,
+        // always the youngest one that exists (its own placement-order timestamp is later than every
+        // other coil's) — and RefreshCoilAllowance ranks coils oldest-first, capacity of them powered.
+        // Appending one more coil at the very end of that ranking can never change any EXISTING coil's
+        // own rank or powered state (their relative order among each other is untouched, and total
+        // capacity doesn't depend on how many coils exist) — the ONLY thing placing a coil can ever
+        // decide is whether THIS coil itself fits, which is fully determined by comparing the fresh
+        // total coil count (GetUsage() already counts this one — it's already sitting in
+        // location.Objects) against total capacity. Both of those are already-live, already-synced
+        // reads (capacity from Building modData + the networked connected-solar-panel count; the coil
+        // count from a live scan) that any client can compute correctly right now — no round trip to
+        // the host needed, and so no "missing = powered" fallback window where a farmhand could hear an
+        // optimistic "grunt" for a coil that was actually about to end up unpowered, or the world sprite
+        // briefly show the wrong state before self-correcting. Safe for whichever client actually placed
+        // it (host or farmhand) to stamp directly: it's a narrowly-scoped write to the ONE object that
+        // client just placed, using a formula that provably always agrees with what a full
+        // RefreshCoilAllowance pass would also compute for this same coil — unlike an actual REMOVAL,
+        // which really can shift other coils' ranks and genuinely does need that host-only full rescan
+        // (see OnObjectListChanged, which still runs one for every coil add/remove as a harmless,
+        // redundant confirmation of what's already been stamped correctly here).
+        (int totalCoils, int capacity) = powerSiloSystem.GetUsage();
+        bool isPowered = totalCoils <= capacity;
+        placedCoil.modData[PowerSiloSystem.CoilPoweredModDataKey] = isPowered ? "true" : "false";
+        placedCoil.modData[PowerSiloSystem.CoilRankModDataKey] = totalCoils.ToString();
+
+        // MOD: changed — the sound still broadcasts (a coil actually being placed nearby is something
+        // every player in the location should hear, same as any other placement sound), but the popup
+        // is local-only now — a plain "Power Grid: X/Y" readout isn't news for anyone but whoever just
+        // placed it, unlike a genuine capacity delta (a Silo tier-up), which still broadcasts. Both
+        // skipped if the mechanic itself is disabled (nothing meaningful to report), even though the
+        // stamp above still runs so state stays consistent for whenever it's re-enabled.
         if (powerSiloSystem.IsEnabled)
         {
-            if (PowerCoilPatches.IsPowered(placedCoil))
+            if (isPowered)
                 location.playSound("grunt");
-            PowerSiloPatches.ShowCapacityPopup(powerSiloSystem);
+            PowerSiloPatches.ShowCapacityPopup(powerSiloSystem, localOnly: true);
         }
 
         // NOTE: this coil could ALSO have brought Solar Panels into (or, on removal via
@@ -201,8 +229,15 @@ internal static class PowerSiloPatches
         // MOD: added — unlike PlacementAction_Postfix (deliberately silent on a miss, per request),
         // direct interaction keeps the grunt/cancel distinction, since the player is explicitly asking
         // about this exact coil's state rather than just placing it.
-        __instance.Location?.playSound(PowerCoilPatches.IsPowered(__instance) ? "grunt" : "cancel");
-        PowerSiloPatches.ShowCapacityPopup(powerSiloSystem);
+        //
+        // MOD: changed — both the sound and the popup are local-only now: this is the player just
+        // checking an already-placed coil's status, not an event that changed anything about the
+        // shared power grid, so nobody else needs to hear or see it. localSound (vs. Location.playSound)
+        // plays for the current player only; ShowCapacityPopup's localOnly flag does the same for the
+        // toast, skipping ModEntry.BroadcastHudMessage entirely instead of sending it to every other
+        // connected player for a no-op status check.
+        __instance.Location?.localSound(PowerCoilPatches.IsPowered(__instance) ? "grunt" : "cancel");
+        PowerSiloPatches.ShowCapacityPopup(powerSiloSystem, localOnly: true);
     }
 
     /// <summary>
@@ -275,7 +310,21 @@ internal static class PowerSiloPatches
         foreach (SObject obj in added)
         {
             if (PowerSiloPatches.IsPowerCoil(obj))
+            {
                 coilChanged = true;
+
+                // MOD: added — PlacementAction_Postfix normally stamps a newly-placed coil's placement
+                // order the instant it's placed, but that Harmony postfix only fires on whichever client
+                // actually placed it, and (per PlacementAction_Postfix's own remarks) it now skips the
+                // stamp entirely when that client isn't the host. This is the host-side fallback for
+                // exactly that case: this method only ever runs on the host (see the IsMainPlayer check
+                // at its own call site), fires once the farmhand's placement syncs here, and this is the
+                // FIRST point the host can stamp it — so any coil missing a stamp at this point (i.e. one
+                // this event just added) gets one now, using the host's own clock, before the allowance
+                // refresh below reads it.
+                if (!obj.modData.ContainsKey(PowerSiloSystem.PlacementOrderModDataKey))
+                    obj.modData[PowerSiloSystem.PlacementOrderModDataKey] = DateTime.UtcNow.Ticks.ToString();
+            }
             else if (PowerSiloPatches.IsSolarPanel(obj) || PowerSiloPatches.IsLocalPowerSource(obj))
                 otherRelevantChange = true;
         }
@@ -314,7 +363,14 @@ internal static class PowerSiloPatches
     /// <param name="powerSiloSystem">The power silo capacity system.</param>
     /// <param name="capacityBefore">The total capacity just before this event, if this event could have changed it.</param>
     /// <param name="capacityAfter">The total capacity just after this event, if this event could have changed it.</param>
-    internal static void ShowCapacityPopup(PowerSiloSystem powerSiloSystem, int? capacityBefore = null, int? capacityAfter = null)
+    /// <param name="localOnly">
+    /// MOD: added. Whether to show this popup only for the local player instead of broadcasting it to
+    /// every connected player — for an event that didn't actually change anything about the shared power
+    /// grid (e.g. a player just checking an already-placed coil's status), as opposed to a genuine
+    /// save-wide change everyone should be told about (a capacity delta, or a coil actually being placed/
+    /// removed). Always <c>false</c> for the delta branch below — a real capacity change is never local-only.
+    /// </param>
+    internal static void ShowCapacityPopup(PowerSiloSystem powerSiloSystem, int? capacityBefore = null, int? capacityAfter = null, bool localOnly = false)
     {
         (int totalCoils, int capacity) = powerSiloSystem.GetUsage();
 
@@ -322,10 +378,14 @@ internal static class PowerSiloPatches
         {
             int delta = after - before;
             string sign = delta > 0 ? "+" : "";
-            Game1.addHUDMessage(new HUDMessage($"Expanded Power Grid {sign}{delta} : {totalCoils}/{capacity}", HUDMessage.newQuest_type));
+            PowerSiloPatches.BroadcastHudMessage?.Invoke($"Expanded Power Grid {sign}{delta} : {totalCoils}/{capacity}");
             return;
         }
 
-        Game1.addHUDMessage(new HUDMessage($"Power Grid: {totalCoils}/{capacity}", HUDMessage.newQuest_type));
+        string text = $"Power Grid: {totalCoils}/{capacity}";
+        if (localOnly)
+            Game1.addHUDMessage(new HUDMessage(text, HUDMessage.newQuest_type));
+        else
+            PowerSiloPatches.BroadcastHudMessage?.Invoke(text);
     }
 }

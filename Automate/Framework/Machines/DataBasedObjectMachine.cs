@@ -234,6 +234,17 @@ internal class DataBasedObjectMachine : GenericObjectMachine<SObject>
                     if (room <= 0)
                         break; // target is full — move on to the next target slot
 
+                    // MOD: fixed — matching QualifiedItemId alone doesn't mean two stacks are actually
+                    // the same item: a flavored ColoredObject (wine, juice, pickles, jelly, etc.) shares
+                    // its QualifiedItemId across every flavor, so without this check two DIFFERENT
+                    // flavors (e.g. Ancient Fruit Wine and Melon Wine) would get merged together here —
+                    // discarding whichever slot got merged away and keeping only the OTHER flavor's
+                    // identity, silently turning cheap wine into expensive wine. canStackWith is
+                    // vanilla's own authoritative check for whether two item instances are really
+                    // interchangeable (also covers quality and orderData, not just color/name).
+                    if (!target.canStackWith(source))
+                        continue;
+
                     int move = Math.Min(room, source.Stack);
                     target.Stack += move;
                     source.Stack -= move;

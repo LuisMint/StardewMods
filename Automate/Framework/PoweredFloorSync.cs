@@ -1,42 +1,37 @@
-using System.Collections.Generic;
 using Microsoft.Xna.Framework;
+using StardewModdingAPI;
 using StardewValley;
 using StardewValley.TerrainFeatures;
 
 namespace Pathoschild.Stardew.Automate.Framework;
 
 /// <summary>
-/// MOD: changed. Swaps a connector's displayed appearance between an "unpowered" and "powered" look
-/// while it's within power system range — no longer via the Alternative
+/// MOD: changed. Swaps a connector's displayed appearance between an "unpowered," "powered," and
+/// "powered but orphaned" look while it's within power system range — no longer via the Alternative
 /// Textures mod (see <see cref="Patches.ConnectorTexturePatches"/>'s own remarks for why); this class
 /// now just stamps each managed connector's own <see cref="Patches.ConnectorTexturePatches.ConnectorVariantModDataKey"/>
-/// with its current variant, which that class's <see cref="Flooring.GetTexture"/> patch reads directly
-/// at render time.
+/// with its current category, which that class's <see cref="Flooring.GetTexture"/> patch reads directly
+/// at render time (animating the "orphaned" category's own pulse locally, purely client-side — see that
+/// class's own remarks for why the actual pulse FRAME is never part of this shared category value).
 ///
-/// This only handles the two STATIC states — fully unpowered, and powered while part of a valid
-/// (active) automation group. A connector that's powered but NOT part of a valid group is left
-/// alone here and its tile returned in the result set instead — <see cref="PoweredFloorAnimator"/>
-/// takes over that tile's appearance, since that state needs a per-tick animation rather than a
-/// one-off assignment on rescan.
-///
-/// MOD: added — this scan (of every terrain feature in the location) now runs ONLY here, once per
-/// rebuild, rather than also being repeated by <see cref="PoweredFloorAnimator"/> up to 6 times a
-/// second — the returned "orphaned" tile set is cached by <see cref="MachineManager"/> and handed to
-/// the animator directly each frame, so it never needs to rescan a location's (potentially large,
-/// e.g. hundreds of crops) terrain feature collection itself.
+/// MOD: added — only the host actually writes this shared/networked category now. This method still
+/// runs on every client, including a farmhand, since <see cref="MachineManager"/> still needs a fresh
+/// rescan locally for other purposes (the no-power icon, etc.) — but before this, a farmhand's own
+/// independent rebuild wrote to the exact same synced <c>Flooring.modData</c> key as the host's,
+/// racing it with whatever THIS client's own (unsynchronized) rebuild timing happened to compute.
 /// </summary>
 internal class PoweredFloorSync
 {
     /*********
     ** Public methods
     *********/
-    /// <summary>Sync every managed connector's displayed appearance in a location to match its current power and group state.</summary>
+    /// <summary>Sync every managed connector's displayed category in a location to match its current power and group state.</summary>
     /// <param name="location">The location to sync.</param>
     /// <param name="data">The location's freshly-rebuilt machine data. Its <see cref="MachineDataForLocation.ActiveTiles"/> already folds in any Junimo-touching connector with its own local automation — see that record's own remarks.</param>
-    /// <returns>The tiles left "powered but not part of an active group" — i.e. the ones <see cref="PoweredFloorAnimator"/> should animate.</returns>
-    public HashSet<Vector2> Sync(GameLocation location, MachineDataForLocation data)
+    public void Sync(GameLocation location, MachineDataForLocation data)
     {
-        HashSet<Vector2> orphanedTiles = [];
+        if (!Context.IsMainPlayer)
+            return; // MOD: added — see this class's own remarks for why only the host writes this shared category
 
         foreach ((Vector2 tile, TerrainFeature feature) in location.terrainFeatures.Pairs)
         {
@@ -44,14 +39,13 @@ internal class PoweredFloorSync
                 continue;
 
             bool isPowered = data.PoweredTiles == null || data.PoweredTiles.Contains(tile);
-            if (!isPowered)
-                floor.modData[Patches.ConnectorTexturePatches.ConnectorVariantModDataKey] = Patches.ConnectorTexturePatches.UnpoweredVariant.ToString();
-            else if (data.ActiveTiles.ContainsKey(tile))
-                floor.modData[Patches.ConnectorTexturePatches.ConnectorVariantModDataKey] = Patches.ConnectorTexturePatches.PoweredVariant.ToString();
-            else
-                orphanedTiles.Add(tile); // powered but not part of an active (valid) automation group — PoweredFloorAnimator drives this tile's appearance instead
-        }
+            int category = !isPowered
+                ? Patches.ConnectorTexturePatches.UnpoweredVariant
+                : data.ActiveTiles.ContainsKey(tile)
+                    ? Patches.ConnectorTexturePatches.PoweredVariant
+                    : Patches.ConnectorTexturePatches.OrphanedCategory; // powered but not part of an active (valid) automation group
 
-        return orphanedTiles;
+            floor.modData[Patches.ConnectorTexturePatches.ConnectorVariantModDataKey] = category.ToString();
+        }
     }
 }

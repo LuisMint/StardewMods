@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Microsoft.Xna.Framework;
 using Pathoschild.Stardew.Automate.Framework.Models;
 using Pathoschild.Stardew.Common;
+using StardewModdingAPI;
 using StardewValley;
 using StardewValley.Buildings;
 using SObject = StardewValley.Object;
@@ -54,12 +55,22 @@ internal class PowerSiloSystem
     private readonly Func<GameLocation, IReadOnlySet<Vector2>?> GetPoweredTilesForLocation;
 
     /// <summary>
-    /// MOD: added. How many Solar Panels are currently connected (see <see cref="GetConnectedSolarPanelCount"/>),
-    /// as of the last <see cref="RefreshConnectedSolarPanelCount"/> call — cached rather than
-    /// recomputed on every read, since counting requires a full-save object scan just like
-    /// <see cref="RefreshCoilAllowance"/> does for coils.
+    /// MOD: added. The <see cref="Game1.MasterPlayer"/>'s own <c>modData</c> key storing how many Solar
+    /// Panels are currently connected (see <see cref="GetConnectedSolarPanelCount"/>), as of the last
+    /// <see cref="RefreshConnectedSolarPanelCount"/> call.
+    ///
+    /// MOD: changed — this used to be a plain private field, cached independently per game client. Since
+    /// <see cref="RefreshConnectedSolarPanelCount"/> is now only ever actually run by the host (see that
+    /// method's own remarks), a farmhand's own copy of that field would just sit at its default (0)
+    /// forever, silently under-reporting the solar tier's bonus capacity on their own client. Reading and
+    /// writing through <see cref="Game1.MasterPlayer"/>'s own <c>modData</c> instead — genuinely shared,
+    /// networked save-wide state (this is the host's own Farmer instance, replicated to every client; only
+    /// the host itself ever actually writes to it here, matching who's allowed to mutate a Farmer's own
+    /// NetRoot and have it sync out), matching how the rest of this class's own numbers are meant to be
+    /// "universal" — means every client (host or farmhand) reads the exact same value the host last
+    /// computed, with no separate per-client cache to drift out of sync.
     /// </summary>
-    private int CachedConnectedSolarPanelCount;
+    private const string ConnectedSolarPanelCountModDataKey = "luisMint.PoweredAutomation/ConnectedSolarPanelCount";
 
     /// <summary>MOD: added. How many connected Solar Panels grant +1 capacity at the solar tier — shared with <see cref="PowerSiloMenu"/> so its own display math can't drift from the actual capacity calculation below.</summary>
     internal const int SolarPanelsPerCapacityPoint = 5;
@@ -238,7 +249,7 @@ internal class PowerSiloSystem
                 // RefreshConnectedSolarPanelCount's remarks) rather than rescanning here, since this
                 // method is deliberately cheap and called every tick.
                 if (tierConfig.GrantsSolarBonus)
-                    granted += this.CachedConnectedSolarPanelCount / PowerSiloSystem.SolarPanelsPerCapacityPoint;
+                    granted += this.GetConnectedSolarPanelCount() / PowerSiloSystem.SolarPanelsPerCapacityPoint;
 
                 total += granted;
             }
@@ -265,6 +276,19 @@ internal class PowerSiloSystem
     /// </returns>
     public IReadOnlySet<GameLocation> RefreshCoilAllowance()
     {
+        // MOD: added — host-only. This scans/stamps shared, save-wide state (every coil's own
+        // CoilPoweredModDataKey/CoilRankModDataKey) — modData IS networked, so every client already sees
+        // whatever the host last stamped here without needing to compute it themselves. Letting every
+        // client run this independently (the old behavior) meant a farmhand's own local scan — which can
+        // legitimately see a different set of locations/objects than the host's, e.g. depending on what's
+        // fully synced to them yet — could stamp DIFFERENT powered/rank values onto the exact same shared
+        // coils the host was also stamping, racing each other and leaving the coil/silo UI genuinely
+        // disagreeing between players until something happened to trigger another refresh. See
+        // ConnectedSolarPanelCountModDataKey's own remarks for the matching fix to this method's other
+        // per-client-cached input.
+        if (!Context.IsMainPlayer)
+            return new HashSet<GameLocation>();
+
         HashSet<string> sourceNames = this.GetSourceNames();
         bool enabled = this.IsEnabled;
         int capacity = enabled ? this.GetTotalCapacity() : int.MaxValue;
@@ -333,10 +357,16 @@ internal class PowerSiloSystem
     /// </summary>
     public void RefreshConnectedSolarPanelCount()
     {
+        // MOD: added — host-only, for the same reason as RefreshCoilAllowance's own matching gate: this
+        // writes shared, save-wide state (now via team.modData — see ConnectedSolarPanelCountModDataKey's
+        // own remarks), so only one client should ever actually be computing and writing it.
+        if (!Context.IsMainPlayer)
+            return;
+
         HashSet<string> solarPanelNames = this.GetSolarPanelNames();
         if (solarPanelNames.Count == 0)
         {
-            this.CachedConnectedSolarPanelCount = 0;
+            Game1.MasterPlayer.modData[PowerSiloSystem.ConnectedSolarPanelCountModDataKey] = "0";
             return;
         }
 
@@ -361,13 +391,15 @@ internal class PowerSiloSystem
             }
         }
 
-        this.CachedConnectedSolarPanelCount = count;
+        Game1.MasterPlayer.modData[PowerSiloSystem.ConnectedSolarPanelCountModDataKey] = count.ToString();
     }
 
     /// <summary>Get how many Solar Panels are currently connected — see <see cref="RefreshConnectedSolarPanelCount"/>'s remarks for how "connected" is determined and when this number actually updates.</summary>
     public int GetConnectedSolarPanelCount()
     {
-        return this.CachedConnectedSolarPanelCount;
+        return Game1.MasterPlayer.modData.TryGetValue(PowerSiloSystem.ConnectedSolarPanelCountModDataKey, out string? raw) && int.TryParse(raw, out int count)
+            ? count
+            : 0;
     }
 
     /// <summary>

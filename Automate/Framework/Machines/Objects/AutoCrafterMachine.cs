@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
@@ -33,10 +34,20 @@ internal class AutoCrafterMachine : GenericObjectMachine<SObject>
     /// <summary>The qualified item ID of the item to show floating above the machine (like a sign's displayed item) while a recipe is assigned.</summary>
     internal const string DisplayItemModDataKey = "luisMint.PoweredAutomation/AutoCrafterDisplayItem";
 
-    /// <summary>The real-time <see cref="Game1.currentGameTime"/> milliseconds at which the last prime/unprime animation transition started, for <see cref="Patches.AutoCrafterPatches"/>'s draw patch to interpolate from.</summary>
+    /// <summary>
+    /// The real-world Unix epoch milliseconds (<see cref="DateTimeOffset.UtcNow"/>, NOT <see cref="Game1.currentGameTime"/>)
+    /// at which the last prime/unprime animation transition started, for <see cref="Patches.AutoCrafterPatches"/>'s
+    /// draw patch to interpolate from. Stored in modData, which syncs to every player — <c>Game1.currentGameTime</c>
+    /// is each client's own elapsed-time-since-launch clock, with no relationship to any other client's value, so a
+    /// timestamp written by whichever player started the transition read back against another player's own
+    /// clock would compute a meaningless (usually deeply negative, clamped-to-zero) elapsed time — this is
+    /// exactly why the animation only ever plays correctly for whoever wrote the timestamp. Unix epoch
+    /// milliseconds are real wall-clock time, consistent across networked machines (the same approach
+    /// <see cref="ContainerVisualEffects.TriggerLidAnimation"/> already uses for the same reason).
+    /// </summary>
     internal const string AnimStartModDataKey = "luisMint.PoweredAutomation/AutoCrafterAnimStartMs";
 
-    /// <summary>The real-time <see cref="Game1.currentGameTime"/> milliseconds at which the current craft's processing began, for <see cref="Patches.AutoCrafterPatches"/> to anchor its press-cycle animation against — see <see cref="GetProcessingStartMs"/>.</summary>
+    /// <summary>The real-world Unix epoch milliseconds (<see cref="DateTimeOffset.UtcNow"/>) at which the current craft's processing began, for <see cref="Patches.AutoCrafterPatches"/> to anchor its press-cycle animation against — see <see cref="GetProcessingStartMs"/> and <see cref="AnimStartModDataKey"/>'s own remarks for why this can't be <see cref="Game1.currentGameTime"/>.</summary>
     internal const string ProcessingStartMsModDataKey = "luisMint.PoweredAutomation/AutoCrafterProcessingStartMs";
 
     /// <summary>The index of the last press cycle (see <see cref="ProcessingStartMsModDataKey"/>) <see cref="Patches.AutoCrafterPatches"/> has already played the strike particle/sound for — see <see cref="GetLastHandledStrikeCycle"/>.</summary>
@@ -75,7 +86,7 @@ internal class AutoCrafterMachine : GenericObjectMachine<SObject>
 
         this.Machine.heldObject.Value = (SObject)recipe.createItem();
         this.Machine.MinutesUntilReady = AutoCrafterMachine.ProcessingMinutes;
-        this.Machine.modData[AutoCrafterMachine.ProcessingStartMsModDataKey] = (Game1.currentGameTime?.TotalGameTime.TotalMilliseconds ?? 0).ToString(CultureInfo.InvariantCulture);
+        this.Machine.modData[AutoCrafterMachine.ProcessingStartMsModDataKey] = ((double)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()).ToString(CultureInfo.InvariantCulture);
         this.Machine.modData.Remove(AutoCrafterMachine.LastHandledStrikeCycleModDataKey); // reset so the first strike of the new craft is detected fresh
 
         return true;
@@ -151,7 +162,7 @@ internal class AutoCrafterMachine : GenericObjectMachine<SObject>
         return true;
     }
 
-    /// <summary>Get the real-time <see cref="Game1.currentGameTime"/> milliseconds at which the last prime/unprime animation transition started.</summary>
+    /// <summary>Get the real-world Unix epoch milliseconds (see <see cref="AnimStartModDataKey"/>'s own remarks) at which the last prime/unprime animation transition started.</summary>
     /// <param name="machine">The machine to check.</param>
     internal static double GetAnimStartMs(SObject machine)
     {
@@ -160,7 +171,7 @@ internal class AutoCrafterMachine : GenericObjectMachine<SObject>
             : 0;
     }
 
-    /// <summary>Get the real-time <see cref="Game1.currentGameTime"/> milliseconds at which the current craft's processing began.</summary>
+    /// <summary>Get the real-world Unix epoch milliseconds (see <see cref="AnimStartModDataKey"/>'s own remarks) at which the current craft's processing began.</summary>
     /// <param name="machine">The machine to check.</param>
     internal static double GetProcessingStartMs(SObject machine)
     {
@@ -253,7 +264,7 @@ internal class AutoCrafterMachine : GenericObjectMachine<SObject>
     /// <param name="machine">The machine to update.</param>
     private static void StartAnimTransition(SObject machine)
     {
-        double ms = Game1.currentGameTime?.TotalGameTime.TotalMilliseconds ?? 0;
+        double ms = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         machine.modData[AutoCrafterMachine.AnimStartModDataKey] = ms.ToString(CultureInfo.InvariantCulture);
     }
 

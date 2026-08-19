@@ -38,19 +38,23 @@ namespace Pathoschild.Stardew.Automate.Framework.Patches;
 /// own decompiled source) — so no chest's light source, however it's set, would ever actually render
 /// without a postfix replicating that missing registration step here.
 ///
-/// Breaking or moving a chest doesn't clean up/reposition its light for free either — NOT because
-/// <see cref="Chest"/> overrides those particular steps away (it doesn't), but because the actual work
-/// for both happens somewhere non-obvious: <see cref="Chest.performToolAction"/> only builds a
-/// <c>ChestHitArgs</c> and hands off to <see cref="Chest.HandleChestHit"/>, which does the real removal
-/// (<c>performRemoveAction</c> + <c>Location.Objects.Remove</c>) or move
-/// (<see cref="Chest.TryMoveToSafePosition"/>) inside an async <c>GetMutex().RequestLock(...)</c>
-/// callback — well after <c>performToolAction</c> itself has already returned. An earlier version of
-/// this fix patched <c>performToolAction</c> directly and looked broken (light lagged a step behind on
-/// move, never disappeared on break) for exactly that reason: it was checking state before the mutex
-/// callback had actually run. <see cref="PerformRemoveAction_Postfix"/> and
-/// <see cref="TryMoveToSafePosition_Postfix"/> patch the two methods that do the ACTUAL work directly
-/// instead, so each only ever fires exactly once, at the moment its own event genuinely happens — no
-/// polling.
+/// Breaking a chest doesn't clean up its light for free either — NOT because <see cref="Chest"/>
+/// overrides that step away (it doesn't), but because the actual work happens somewhere non-obvious:
+/// <see cref="Chest.performToolAction"/> only builds a <c>ChestHitArgs</c> and hands off to
+/// <see cref="Chest.HandleChestHit"/>, which does the real removal (<c>performRemoveAction</c> +
+/// <c>Location.Objects.Remove</c>) inside an async <c>GetMutex().RequestLock(...)</c> callback — well
+/// after <c>performToolAction</c> itself has already returned. An earlier version of this fix patched
+/// <c>performToolAction</c> directly and looked broken (light lagged a step behind, never disappeared on
+/// break) for exactly that reason: it was checking state before the mutex callback had actually run.
+/// <see cref="PerformRemoveAction_Postfix"/> patches the method that does the ACTUAL work directly
+/// instead, so it only ever fires exactly once, at the moment removal genuinely happens — no polling.
+///
+/// A MOVE is handled differently, and NOT via a patch on <see cref="Chest.HandleChestHit"/>/
+/// <see cref="Chest.TryMoveToSafePosition"/> at all — those are explicitly host-only in vanilla's own
+/// decompiled source (<c>if (!Game1.IsMasterGame) { ...; return; }</c>), so a Harmony patch there would
+/// only ever fire on the host, never on a farmhand (including the very farmhand who hit the chest). See
+/// <see cref="LastKnownTile"/>'s own remarks for why <see cref="UpdateWhenCurrentLocation_Postfix"/>
+/// (which already runs correctly on every client) detects a move by comparing tile positions instead.
 ///
 /// A removed chest can still receive one more stray <see cref="Chest.updateWhenCurrentLocation"/> call
 /// afterward (confirmed via testing — the game's own object-update loop appears to finish an
@@ -93,6 +97,47 @@ internal static class PoweredChestPatches
     /// normally instead of leaking forever.
     /// </summary>
     private static readonly ConditionalWeakTable<SObject, object> RemovedChests = new();
+
+    /// <summary>
+    /// MOD: added. How long the slide animation takes when <see cref="Chest.TryMoveToSafePosition"/>
+    /// relocates a Powered Chest, in real seconds — see <see cref="ChestSlides"/>'s own remarks for why
+    /// this exists at all.
+    /// </summary>
+    private const float SlideDurationSeconds = 0.25f;
+
+    /// <summary>
+    /// MOD: added. Per-chest active slide animation, if one is currently in progress — vanilla's own
+    /// <see cref="Chest.TryMoveToSafePosition"/> (triggered by hitting a chest that ends up needing to
+    /// relocate to a nearby free tile) is an instant tile-position snap with no animation of its own at
+    /// all, which reads as a teleport rather than a hop, especially for a chest with visible contents.
+    /// <see cref="Draw_Prefix"/> interpolates the drawn position across this window instead of using the
+    /// chest's already-updated real <see cref="Chest.TileLocation"/> directly. A
+    /// <see cref="ConditionalWeakTable{TKey,TValue}"/> (matching <see cref="RemovedChests"/>'s own
+    /// reasoning) so entries clean up naturally as chests are garbage-collected.
+    /// </summary>
+    private static readonly ConditionalWeakTable<Chest, SlideState> ChestSlides = new();
+
+    /// <summary>
+    /// MOD: added. Each Powered Chest's own last-observed tile position, used by
+    /// <see cref="UpdateWhenCurrentLocation_Postfix"/> to detect a move by comparing against the current
+    /// <see cref="Chest.TileLocation"/> every tick, instead of hooking <see cref="Chest.TryMoveToSafePosition"/>
+    /// directly (an earlier version of this class did exactly that). That method (via
+    /// <see cref="Chest.HandleChestHit"/>) is explicitly HOST-ONLY in vanilla's own decompiled source
+    /// (<c>if (!Game1.IsMasterGame) { ...; return; }</c>) — it only ever actually EXECUTES on the host's
+    /// own game instance, regardless of which player physically hit the chest, with the resulting
+    /// <see cref="Chest.TileLocation"/> change (a synced <c>NetVector2</c>) propagating to every other
+    /// client afterward. A Harmony patch on that method therefore only ever fires on the host, so a
+    /// farmhand (including the very farmhand who hit the chest) would never see the slide/hop animation
+    /// at all, and this class's own light-position sync used to have this exact same bug for the same
+    /// reason. Comparing <see cref="Chest.TileLocation"/> every tick instead works correctly on every
+    /// client, since <see cref="Chest.updateWhenCurrentLocation"/> already runs locally, every tick, on
+    /// whoever has this chest loaded (confirmed by this same method already being relied on for the
+    /// light-source registration below, which every client obviously needs its own copy of) — the same
+    /// underlying principle vanilla's own <c>kickStartTile</c> relies on (a synced field every client
+    /// observes changing, rather than a method every client re-runs) to make its own kick animation play
+    /// consistently for every player.
+    /// </summary>
+    private static readonly ConditionalWeakTable<Chest, StrongBox<Vector2>> LastKnownTile = new();
 
     /// <summary>
     /// MOD: added. Flag that <see cref="SObject.performToolAction"/> is currently breaking a Powered
@@ -151,12 +196,10 @@ internal static class PoweredChestPatches
             postfix: new HarmonyMethod(typeof(PoweredChestPatches), nameof(PerformRemoveAction_Postfix))
         );
 
-        // MOD: added — the ACTUAL move step for a dragged chest (see this class's own remarks); fires
-        // once per successful slide, exactly when it happens.
-        harmony.Patch(
-            original: AccessTools.Method(typeof(Chest), nameof(Chest.TryMoveToSafePosition)),
-            postfix: new HarmonyMethod(typeof(PoweredChestPatches), nameof(TryMoveToSafePosition_Postfix))
-        );
+        // MOD: removed the Chest.TryMoveToSafePosition prefix/postfix this class used to have here — see
+        // LastKnownTile's own remarks for why that method is host-only and both the light-position sync
+        // and the slide/hop animation now live in UpdateWhenCurrentLocation_Postfix instead, which
+        // correctly runs on every client.
     }
 
 
@@ -250,7 +293,9 @@ internal static class PoweredChestPatches
         Texture2D texture = data.GetTexture();
         Rectangle sourceRect = data.GetSourceRect();
 
-        double phase = (Game1.currentGameTime?.TotalGameTime.TotalSeconds ?? 0) * PoweredChestPatches.PulseSpeed;
+        double now = Game1.currentGameTime?.TotalGameTime.TotalSeconds ?? 0;
+
+        double phase = now * PoweredChestPatches.PulseSpeed;
         float pulseY = (float)Math.Sin(phase) * PoweredChestPatches.PulseAmplitude;
         float pulseX = (float)Math.Cos(phase) * PoweredChestPatches.PulseAmplitude; // 90 degrees ahead of the vertical pulse
         Vector2 scale = new(4f * (1f + pulseX), 4f * (1f + pulseY));
@@ -258,14 +303,61 @@ internal static class PoweredChestPatches
         int currentLidFrame = PoweredChestPatches.CurrentLidFrameField.GetValue(__instance) is int frame ? frame : 0;
         int shakeOffset = __instance.shakeTimer > 0 ? Game1.random.Next(-1, 2) : 0;
 
+        // MOD: added — while a slide animation is active (see ChestSlides's own remarks), draw at an
+        // interpolated fractional tile position instead of the real (already-updated) x/y, so a
+        // TryMoveToSafePosition relocation reads as a hop instead of an instant teleport. Matches
+        // vanilla's own Chest.draw kick-animation math exactly (kickStartTile/kickProgress, same
+        // 0.25s duration) — a plain LINEAR lerp for the tile position, plus a sin(t*π) arc subtracted
+        // from just the Y draw position afterward (not the lerp itself), and the same drop-shadow drawn
+        // underneath while airborne — rather than this class's own easing, so a Powered Chest's hop looks
+        // identical to every other chest's (including Junimo Chests, which share this same Chest.draw
+        // code path).
+        float lerpTileX = x;
+        float lerpTileY = y;
+        float arcOffsetY = 0f;
+        bool isHopping = false;
+        if (PoweredChestPatches.ChestSlides.TryGetValue(__instance, out SlideState? slide))
+        {
+            double elapsed = now - slide.StartTimeSeconds;
+            if (elapsed < PoweredChestPatches.SlideDurationSeconds)
+            {
+                float t = Math.Clamp((float)(elapsed / PoweredChestPatches.SlideDurationSeconds), 0f, 1f);
+                Vector2 interpolated = Vector2.Lerp(slide.FromTile, slide.ToTile, t);
+                lerpTileX = interpolated.X;
+                lerpTileY = interpolated.Y;
+                arcOffsetY = (float)Math.Sin(t * Math.PI) * 0.5f;
+                isHopping = true;
+            }
+            else
+                PoweredChestPatches.ChestSlides.Remove(__instance);
+        }
+
+        // MOD: added — the same drop shadow vanilla draws under a kicked chest, at the lerped (pre-arc)
+        // position — gives the hop a sense of height instead of the sprite just floating up with nothing
+        // grounding it.
+        if (isHopping)
+        {
+            spriteBatch.Draw(
+                Game1.shadowTexture,
+                Game1.GlobalToLocal(Game1.viewport, new Vector2((lerpTileX + 0.5f) * 64f, (lerpTileY + 0.5f) * 64f)),
+                Game1.shadowTexture.Bounds,
+                Color.Black * 0.5f, 0f,
+                new Vector2(Game1.shadowTexture.Bounds.Center.X, Game1.shadowTexture.Bounds.Center.Y),
+                4f, SpriteEffects.None, 0.0001f
+            );
+        }
+
+        float drawTileX = lerpTileX;
+        float drawTileY = lerpTileY - arcOffsetY; // MOD: added — the arc itself only offsets where it's DRAWN, not the lerped position depth/shadow are based on, matching vanilla's own ordering.
+
         // MOD: anchored at the sprite's bottom-center (horizontally centered, vertically at the
         // bottom) rather than its top-left or true center — so it grows/shrinks upward from a fixed
         // base, like it's breathing in place on the ground, instead of the base itself drifting up
         // and down or the whole thing growing from one corner.
         Vector2 origin = new(sourceRect.Width / 2f, sourceRect.Height);
-        Vector2 topLeft = Game1.GlobalToLocal(Game1.viewport, new Vector2(x * 64f + shakeOffset, (y - 1f) * 64f));
+        Vector2 topLeft = Game1.GlobalToLocal(Game1.viewport, new Vector2(drawTileX * 64f + shakeOffset, (drawTileY - 1f) * 64f));
         Vector2 anchorPoint = topLeft + origin * 4f;
-        float depth = Math.Max(0f, ((y + 1) * 64f - 24f) / 10000f) + x * 1E-05f;
+        float depth = Math.Max(0f, ((lerpTileY + 1) * 64f - 24f) / 10000f) + lerpTileX * 1E-05f;
 
         spriteBatch.Draw(texture, anchorPoint, sourceRect, __instance.Tint * alpha, 0f, origin, scale, SpriteEffects.None, depth);
         spriteBatch.Draw(texture, anchorPoint, data.GetSourceRect(0, currentLidFrame), __instance.Tint * alpha * alpha, 0f, origin, scale, SpriteEffects.None, depth + 1E-05f);
@@ -279,6 +371,10 @@ internal static class PoweredChestPatches
     /// base implementation — the ONLY place that normally adds a placed object's light source to
     /// <c>GameLocation.sharedLights</c> (see this class's own remarks for the decompiled evidence).
     /// Without this, no chest's light source could ever actually render, however it's assigned.
+    ///
+    /// MOD: also detects a move (by comparing against <see cref="LastKnownTile"/>) to start the slide/hop
+    /// animation and re-sync the light source's position — see <see cref="LastKnownTile"/>'s own remarks
+    /// for why this runs here instead of hooking <see cref="Chest.TryMoveToSafePosition"/> directly.
     /// </summary>
     /// <param name="__instance">The chest being updated.</param>
     private static void UpdateWhenCurrentLocation_Postfix(Chest __instance)
@@ -291,6 +387,43 @@ internal static class PoweredChestPatches
         // own remarks for why this (not a GameLocation.objects check) is the reliable guard.
         if (PoweredChestPatches.RemovedChests.TryGetValue(__instance, out _))
             return;
+
+        Vector2 currentTile = __instance.TileLocation;
+        if (PoweredChestPatches.LastKnownTile.TryGetValue(__instance, out StrongBox<Vector2>? lastTileBox))
+        {
+            if (lastTileBox.Value != currentTile)
+            {
+                // MOD: added — start the slide/hop animation (see ChestSlides's own remarks) and
+                // re-sync the light source's position, both moved here from a Chest.TryMoveToSafePosition
+                // postfix — see LastKnownTile's own remarks for why that hook only ever fired on the host.
+                PoweredChestPatches.ChestSlides.AddOrUpdate(__instance, new SlideState
+                {
+                    FromTile = lastTileBox.Value,
+                    ToTile = currentTile,
+                    StartTimeSeconds = Game1.currentGameTime?.TotalGameTime.TotalSeconds ?? 0
+                });
+                lastTileBox.Value = currentTile;
+
+                if (__instance.lightSource is { } light)
+                {
+                    // MOD: the copy actually registered in sharedLights is a separate Clone() (see
+                    // InitializeLightSource_Postfix's own remarks), so the one on the instance itself
+                    // needs updating too — otherwise the NEXT move's "did this actually change"
+                    // comparison would compare against a stale position.
+                    Vector2 expectedPosition = new(currentTile.X * 64f + 32f, currentTile.Y * 64f + 32f);
+                    light.position.Value = expectedPosition;
+
+                    if (__instance.Location?.getLightSource(light.Id) is { } activeLight)
+                        activeLight.position.Value = expectedPosition;
+                }
+            }
+        }
+        else
+        {
+            // MOD: added — first time seeing this chest instance; just seed the baseline position,
+            // nothing to animate yet (there's no "before" to speak of on the very first tick).
+            PoweredChestPatches.LastKnownTile.AddOrUpdate(__instance, new StrongBox<Vector2>(currentTile));
+        }
 
         GameLocation? location = __instance.Location;
         LightSource? lightSource = __instance.lightSource;
@@ -337,28 +470,6 @@ internal static class PoweredChestPatches
         __instance.Location?.removeLightSource(light.Id);
     }
 
-    /// <summary>
-    /// MOD: added. Keep a Powered Chest's light centered on it the moment vanilla itself actually slides
-    /// the chest to a new tile — see this class's own remarks for why this (not
-    /// <see cref="SObject.performToolAction"/>) is the precise moment that happens.
-    /// </summary>
-    /// <param name="__instance">The chest that was moved.</param>
-    /// <param name="__result">Whether the move actually succeeded — a failed attempt (no safe adjacent tile) leaves the chest exactly where it was, so there's nothing to sync.</param>
-    private static void TryMoveToSafePosition_Postfix(Chest __instance, bool __result)
-    {
-        if (!__result || __instance.QualifiedItemId != PoweredChestMachine.QualifiedItemId || __instance.lightSource is not { } light)
-            return;
-
-        // MOD: the copy actually registered in sharedLights is a separate Clone() (see
-        // InitializeLightSource_Postfix's own remarks), so the one on the instance itself needs
-        // updating too — otherwise the NEXT move's "did this actually change" comparison would compare
-        // against a stale position.
-        Vector2 expectedPosition = new(__instance.TileLocation.X * 64f + 32f, __instance.TileLocation.Y * 64f + 32f);
-        light.position.Value = expectedPosition;
-
-        if (__instance.Location?.getLightSource(light.Id) is { } activeLight)
-            activeLight.position.Value = expectedPosition;
-    }
 
     /// <summary>
     /// MOD: added. Redirect vanilla's own generic BigCraftable "broken by a tool" sound ("hammer") to
@@ -375,5 +486,22 @@ internal static class PoweredChestPatches
     {
         if (PoweredChestPatches.IsBreakingPoweredChest && cueName == "hammer")
             cueName = "axe";
+    }
+
+
+    /*********
+    ** Private types
+    *********/
+    /// <summary>One Powered Chest's in-progress slide animation — see <see cref="ChestSlides"/>'s own remarks.</summary>
+    private sealed class SlideState
+    {
+        /// <summary>The tile the chest is sliding FROM.</summary>
+        public Vector2 FromTile;
+
+        /// <summary>The tile the chest is sliding TO (its real, already-updated <see cref="Chest.TileLocation"/>).</summary>
+        public Vector2 ToTile;
+
+        /// <summary>The real-time <see cref="Game1.currentGameTime"/> seconds the slide started at.</summary>
+        public double StartTimeSeconds;
     }
 }

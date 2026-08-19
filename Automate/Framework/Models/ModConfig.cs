@@ -561,14 +561,14 @@ internal class ModConfig
     /// MOD: added. The animation speed, in frames per second, for a connector that's powered but not
     /// part of a valid (active) automation group — a "flickering" cue that it's connected to power
     /// but isn't actually automating anything (e.g. missing a machine or chest). See
-    /// <see cref="PoweredFloorAnimator"/>.
+    /// <see cref="Patches.ConnectorTexturePatches"/>.
     /// </summary>
     public double PoweredFloorAnimationFps { get; set; } = 6;
 
     /// <summary>
     /// MOD: added. How many times longer to hold the fully-unpowered frame, relative to the other
     /// frames, in the "powered but not part of a valid group" flicker animation. See
-    /// <see cref="PoweredFloorAnimator"/>.
+    /// <see cref="Patches.ConnectorTexturePatches"/>.
     /// </summary>
     public double PoweredFloorUnpoweredHoldMultiplier { get; set; } = 2;
 

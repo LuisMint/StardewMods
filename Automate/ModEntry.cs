@@ -12,6 +12,7 @@ using Pathoschild.Stardew.Automate.Framework.Commands;
 using Pathoschild.Stardew.Automate.Framework.Machines.Objects;
 using Pathoschild.Stardew.Automate.Framework.Models;
 using Pathoschild.Stardew.Automate.Framework.Patches;
+using Pathoschild.Stardew.Automate.Framework.Storage;
 using Pathoschild.Stardew.Common;
 using Pathoschild.Stardew.Common.Integrations.GenericModConfigMenu;
 using Pathoschild.Stardew.Common.Messages;
@@ -62,11 +63,26 @@ internal class ModEntry : Mod
     /// <summary>Whether to automate machines for the current save.</summary>
     private bool EnableAutomation => this.Config.Enabled && Context.IsMainPlayer;
 
-    /// <summary>Whether to track machine changes for the current save.</summary>
+    /// <summary>
+    /// Whether to track machine changes for the current save.
+    ///
+    /// MOD: fixed — this used to also require <c>Context.IsMainPlayer || this.CurrentOverlay.Value is not null</c>,
+    /// so a farmhand only tracked world changes (placements/removals — see every <c>On*ListChanged</c>
+    /// handler below) while their OWN debug overlay happened to be open. Automation itself stays
+    /// host-only (see <see cref="EnableAutomation"/>) for good reason — only one client should ever
+    /// actually move items — but this went further and froze a farmhand's own LOCAL view of groups and
+    /// connections (used for the connector-tile power animation, the overlay, and anything else that
+    /// reads cached machine-group data) any time their overlay was closed, so it silently went stale and
+    /// only ever caught up on the next full rebuild the overlay itself triggers on open. The underlying
+    /// reload machinery is already diff-based and scoped to just the location that actually changed (see
+    /// <see cref="ReloadIfNeeded"/>), not a full rescan, so there's no real perf reason to gate it behind
+    /// the overlay specifically — every client (host or farmhand) now tracks changes continuously, so a
+    /// farmhand's own local picture of the world stays as fresh as the host's without needing to manually
+    /// toggle anything.
+    /// </summary>
     private bool EnableAutomationChangeTracking =>
         this.Config.Enabled
-        && !this.IsSecondaryScreen // in split-screen mode, the change will be tracked by the main player
-        && (Context.IsMainPlayer || this.CurrentOverlay.Value is not null);
+        && !this.IsSecondaryScreen; // in split-screen mode, the change will be tracked by the main player
 
     /// <summary>Whether this is a secondary screen in split-screen mode.</summary>
     private bool IsSecondaryScreen => Context.IsSplitScreen && !Context.IsMainPlayer;
@@ -203,6 +219,15 @@ internal class ModEntry : Mod
     /// design of still automating while the game is paused when no cosmetic delay is configured.
     /// </summary>
     private double UnpausedElapsedMs;
+
+    /// <summary>MOD: added. The SMAPI multiplayer message type used to broadcast a save-wide HUD toast to every connected player — see <see cref="BroadcastHudMessage"/>/<see cref="OnModMessageReceived"/>.</summary>
+    private const string BroadcastHudMessageType = "luisMint.PoweredAutomation_BroadcastHudMessage";
+
+    /// <summary>MOD: added. The SMAPI multiplayer message type used to tell every other connected player to reload their own machine data for specific locations — see <see cref="BroadcastReloadLocations"/>/<see cref="OnModMessageReceived"/>.</summary>
+    private const string BroadcastReloadLocationsMessageType = "luisMint.PoweredAutomation_BroadcastReloadLocations";
+
+    /// <summary>MOD: added. The SMAPI multiplayer message type used to tell every other connected player about an automated shipment changing the shipping bin's "last shipped" display — see <see cref="BroadcastLastItemShipped"/>/<see cref="OnModMessageReceived"/>.</summary>
+    private const string BroadcastLastItemShippedMessageType = "luisMint.PoweredAutomation_BroadcastLastItemShipped";
 
     /// <summary>MOD: added. How long the most recent delayed group batch actually waited (in milliseconds) before firing, for the perf overlay to show — lets <see cref="ModConfig.ActionDelaySeconds"/> be verified against real measured timing instead of going on feel alone.</summary>
     private double? LastActualDelayMs;
@@ -354,7 +379,13 @@ internal class ModEntry : Mod
 
         // MOD: added — swaps a managed connector's world sprite between its powered/unpowered/dimmer/
         // dimmest variants, replacing the previous Alternative Textures-driven
-        // swap (see ConnectorTexturePatches' own remarks).
+        // swap (see ConnectorTexturePatches' own remarks). Initialize wires up the same two config
+        // values that used to drive the now-removed PoweredFloorAnimator's per-tick clock — the
+        // "orphaned" category's pulse is computed locally by this class now, at render time.
+        ConnectorTexturePatches.Initialize(
+            getFps: () => this.Config.PoweredFloorAnimationFps,
+            getUnpoweredHoldMultiplier: () => this.Config.PoweredFloorUnpoweredHoldMultiplier
+        );
         ConnectorTexturePatches.Apply(harmony);
 
         PoweredChestPatches.Apply(harmony);
@@ -418,9 +449,16 @@ internal class ModEntry : Mod
             getSolarPanelNames: () => this.Config.PowerSiloSolarPanelNames, // MOD: added
             getLocalSourceNames: () => this.Config.LocalPowerSourceNames, // MOD: added — so a Powered Chest's own placement/removal is recognized as solar-connectivity-relevant too
             powerSiloSystem: this.MachineManager.Factory.PowerSiloSystem,
-            requeueLocations: locations => this.MachineManager.QueueReload(locations) // MOD: added — see PowerSiloPatches.RequeueLocations's own remarks for why a coil-allowance refresh may need to reach locations other than the one that triggered it
+            requeueLocations: this.BroadcastReloadLocations, // MOD: changed — also tells every other connected player to reload these locations, not just the host's own MachineManager; see BroadcastReloadLocations's own remarks for why
+            broadcastHudMessage: this.BroadcastHudMessage // MOD: added — Power Grid capacity is save-wide, so every player should see it change
         );
         PowerSiloPatches.Apply(harmony);
+
+        // MOD: added — lets every connected player see the shipping bin's "last shipped" display update
+        // for an automated (conduit) delivery, not just whoever's client happened to run the automation
+        // that stored it — see ShippingBinContainer's own remarks for why that display doesn't sync on
+        // its own otherwise.
+        ShippingBinContainer.Initialize(this.BroadcastLastItemShipped);
 
         // MOD: added — the "Mark/Hide Power Coils" world-map overlay, toggled from PowerSiloMenu.
         PowerCoilMapMarkerPatches.Initialize(
@@ -448,7 +486,8 @@ internal class ModEntry : Mod
         // not a Harmony patch (see PowerSiloInteraction's own remarks for why).
         new PowerSiloInteraction(
             powerSiloSystem: this.MachineManager.Factory.PowerSiloSystem,
-            getTiers: silo => this.PowerSiloTierRoller.GetEffectiveTiers(silo)
+            getTiers: silo => this.PowerSiloTierRoller.GetEffectiveTiers(silo),
+            broadcastHudMessage: this.BroadcastHudMessage // MOD: added — Power Silo capacity is save-wide, so every player should see a tier-up
         ).Register();
 
         // MOD: added — registers the Power Relay's click interaction the same way (see
@@ -459,7 +498,8 @@ internal class ModEntry : Mod
             getFirstShardItemId: () => this.Config.PowerRelayFirstShardItemId,
             getBarItemId: () => this.Config.PowerRelayBarItemId,
             getFirstBarItemId: () => this.Config.PowerRelayFirstBarItemId,
-            getBaseActionsPerDelayWindow: () => this.Config.ActionsPerDelayWindow
+            getBaseActionsPerDelayWindow: () => this.Config.ActionsPerDelayWindow,
+            broadcastHudMessage: this.BroadcastHudMessage // MOD: added — the Relay's pacing bonus is save-wide, so every player should see it improve
         ).Register();
 
         // MOD: added — a static lamppost light on every Power Relay, plus a one-shot whole-building
@@ -730,11 +770,17 @@ internal class ModEntry : Mod
             this.MachineManager.Factory.PowerRequiredMachineSystem.Reset();
         }
 
-        // MOD: added — spawns every placed Cave Hole's own quarry-style stone/ore nodes: a full dense
-        // fill the first morning after construction, then a smaller daily top-up after that (see
-        // CaveHoleQuarrySystem's own remarks). Runs unconditionally (not gated behind !IsSecondaryScreen
-        // above) since it's just placing objects in a shared location, not machine/automation state.
-        CaveHoleQuarrySystem.Tick();
+        // MOD: fixed — gated behind Context.IsMainPlayer. This spawns every placed Cave Hole's own
+        // quarry-style stone/ore nodes: a full dense fill the first morning after construction, then a
+        // smaller daily top-up after that (see CaveHoleQuarrySystem's own remarks). IGameLoopEvents.DayStarted
+        // fires independently on EVERY connected client, not just the host, so running this unconditionally
+        // meant each farmhand's own client redundantly placed a full extra round of nodes into the SAME
+        // network-synced location on top of whatever the host (and every other farmhand) just placed —
+        // stones overlapping each other, barrels breaking off their own footprint, one full extra fill
+        // per connected player. !IsSecondaryScreen alone doesn't cover this: that only distinguishes
+        // multiple screens sharing ONE local game process (split-screen), not separate networked clients.
+        if (Context.IsMainPlayer)
+            CaveHoleQuarrySystem.Tick();
 
         // MOD: added — adds the lantern light to any Cave Hole interior that doesn't have one yet
         // (a newly-finished Cave Hole's interior only exists once construction completes, so this can't
@@ -930,6 +976,23 @@ internal class ModEntry : Mod
                     }
                 }
 
+                // MOD: added — drain any machine MachineReadyPatches has flagged ready SINCE THE LAST
+                // TICK, immediately, rather than only within OnTimeChanged (which fires on the natural
+                // in-game 10-minute clock tick — up to ~7 real seconds away at default game speed). This
+                // closes a gap for anything that completes a machine's processing OUTSIDE that normal
+                // tick cadence — e.g. Fairy Dust, which sets MinutesUntilReady = 10 and then calls
+                // minutesElapsed(10) itself via its own DelayedAction roughly 50ms later, completing the
+                // machine almost instantly regardless of how much time was actually left on it.
+                // MachineReadyPatches already caught that false→true readyForHarvest transition correctly
+                // and promptly (its own hook is a Harmony patch on minutesElapsed itself, so it fires
+                // exactly when THAT specific call happens) — the flagged machine just used to sit unread
+                // until whatever in-game tick happened to fire next, instead of being picked up right
+                // away. TakePendingReadyMachines() is a cheap no-op (a single list-count check) on the
+                // overwhelming majority of ticks where nothing's actually pending, so checking every tick
+                // instead of only on the periodic one costs essentially nothing.
+                if (this.Config.UseEventBasedAutomation)
+                    this.ProcessPendingReadyMachines();
+
                 // MOD: added — a one-shot instant pass for event-based mode, queued by something that
                 // rebuilt machine groups outside the normal TimeChanged/ChestInventoryChanged flow (see
                 // RunAutomationPassOnNextTick's own remarks). Runs after the reload above so freshly
@@ -963,20 +1026,49 @@ internal class ModEntry : Mod
             }
         }
 
-        // MOD: added — animate any "powered but not part of a valid group" connectors in the
-        // player's current location. Purely visual, so it's kept in its own try/catch and doesn't
-        // depend on EnableAutomation — it's a no-op anyway once there's no cached machine data.
-        if (Context.IsWorldReady && this.Config.PowerSystemEnabled)
+        // MOD: added — keeps a FARMHAND's own local MachineManager cache fresh purely for visual
+        // purposes (the no-power icon, connector/cable animation state, the debug overlay), even
+        // though actual automation only ever runs on the host (see EnableAutomation). The host's own
+        // block above already calls ReloadQueuedLocations() as part of running automation — this is
+        // ONLY for a farmhand, whose queue (already correctly populated for them by
+        // EnableAutomationChangeTracking via the On*ListChanged handlers) previously had nothing that
+        // ever actually PROCESSED it, since that call used to live exclusively inside the
+        // EnableAutomation-gated block above. That's exactly why a farmhand's own no-power icons/cable
+        // animation stayed stuck at whatever they were on join (or whenever the debug overlay was last
+        // opened, which is the only other place that ever populated this) instead of updating live —
+        // TickPoweredFloorAnimation just below already runs unconditionally every tick, but its own
+        // comment already notes it's a no-op without cached machine data to animate.
+        if (Context.IsWorldReady && this.EnableAutomationChangeTracking && !Context.IsMainPlayer)
         {
             try
             {
-                this.MachineManager.TickPoweredFloorAnimation(Game1.currentLocation);
+                if (this.MachineManager.ReloadQueuedLocations())
+                    this.ResetOverlayIfShown();
+
+                // MOD: added — ReloadQueuedLocations() above records every group it touched into these
+                // same tracking lists the host's own block drains every tick to decide what to schedule
+                // for automation — a farmhand never acts on them (it has nothing to schedule, since
+                // automation itself stays host-only), but still has to drain them here, or they'd just
+                // grow unbounded on a farmhand's client forever, same as the host's own copies would
+                // without their own drain.
+                this.MachineManager.TakeGroupsWithNewMembers();
+                this.MachineManager.TakeRescannedGroups();
+                this.MachineManager.TakeRemovedGroups();
             }
             catch (Exception ex)
             {
-                this.HandleError(ex, "animating powered connectors");
+                this.HandleError(ex, "refreshing machine visuals");
             }
         }
+
+        // MOD: removed — connectors used to need a per-tick "advance the animation and write the
+        // frame" pass here (host-only, covering every online player's own current location). That's
+        // gone now: the host only ever needs to sync each connector's coarse CATEGORY (unpowered /
+        // powered / orphaned) as part of the normal machine-data reload above, and the actual pulse for
+        // an orphaned connector is computed fresh, locally, by ConnectorTexturePatches right at draw
+        // time — no per-tick work and no shared animation clock needed at all. See that class's own
+        // remarks for why a decorative pulse never needed to be networked or host/farmhand-synced in
+        // the first place.
 
         // MOD: added — passive dust-puff ambient effect on placed Power Coils, purely cosmetic.
         if (Context.IsWorldReady)
@@ -1061,11 +1153,7 @@ internal class ModEntry : Mod
             // stacking the old cosmetic delay on top of that just made the very start of a save feel
             // doubly slow for no benefit. Each flagged machine is enqueued immediately instead; its own
             // group batch is still paced independently by ActionDelaySeconds as before.
-            foreach ((IMachineGroup group, IMachine machine) in MachineReadyPatches.TakePendingReadyMachines())
-            {
-                this.EnqueueForAutomation(group, machine);
-                this.TryScheduleGroupBatch(group);
-            }
+            this.ProcessPendingReadyMachines();
 
             if (++this.TicksSinceFullBackstopScan >= ModEntry.FullBackstopScanIntervalTicks)
             {
@@ -1083,6 +1171,21 @@ internal class ModEntry : Mod
         catch (Exception ex)
         {
             this.HandleError(ex, "processing machines");
+        }
+    }
+
+    /// <summary>
+    /// MOD: added. Enqueue every machine <see cref="MachineReadyPatches"/> has flagged as newly ready
+    /// since the last call — shared by <see cref="OnTimeChanged"/> (its own natural periodic drain) and
+    /// <see cref="OnUpdateTicked"/> (an immediate, every-tick drain, so nothing has to wait for the next
+    /// natural in-game 10-minute tick — see that call site's own remarks for why, e.g. Fairy Dust).
+    /// </summary>
+    private void ProcessPendingReadyMachines()
+    {
+        foreach ((IMachineGroup group, IMachine machine) in MachineReadyPatches.TakePendingReadyMachines())
+        {
+            this.EnqueueForAutomation(group, machine);
+            this.TryScheduleGroupBatch(group);
         }
     }
 
@@ -1853,6 +1956,43 @@ internal class ModEntry : Mod
             else
                 this.Monitor.Log($"Received chest update from {label} for chest at {message.LocationName} ({message.Tile}), but no such location was found.");
         }
+
+        // MOD: added — the receiving half of BroadcastHudMessage: another player already showed this
+        // toast locally on their own screen before sending it, so this just shows the SAME text here too.
+        // FromModID can't be matched via an `is` pattern like the branch above (that used a literal string) —
+        // this.ModManifest.UniqueID is a runtime value, not a compile-time constant.
+        else if (e.FromModID == this.ModManifest.UniqueID && e.Type == ModEntry.BroadcastHudMessageType)
+        {
+            string text = e.ReadAs<string>();
+            Game1.addHUDMessage(new HUDMessage(text, HUDMessage.newQuest_type));
+        }
+
+        // MOD: added — the receiving half of BroadcastReloadLocations: the host already reloaded these
+        // locations' machine data on its own client before sending this, so this just does the same here.
+        else if (e.FromModID == this.ModManifest.UniqueID && e.Type == ModEntry.BroadcastReloadLocationsMessageType)
+        {
+            string[] locationNames = e.ReadAs<string[]>();
+            foreach (string locationName in locationNames)
+            {
+                if (Game1.getLocationFromName(locationName) is { } location)
+                    this.MachineManager.QueueReload(location);
+            }
+        }
+
+        // MOD: added — the receiving half of BroadcastLastItemShipped: find the matching REAL slot in
+        // this client's own synced view of the shipping bin's inventory (not a detached copy — see
+        // BroadcastLastItemShipped's own remarks for why that matters for vanilla's click-to-collect),
+        // and point this client's own Farm.lastItemShipped at it, same as the host already did locally.
+        else if (e.FromModID == this.ModManifest.UniqueID && e.Type == ModEntry.BroadcastLastItemShippedMessageType)
+        {
+            LastItemShippedMessage message = e.ReadAs<LastItemShippedMessage>();
+            Farm farm = Game1.getFarm();
+            Item? match = farm.getShippingBin(Game1.MasterPlayer)
+                .LastOrDefault(item => item != null && item.QualifiedItemId == message.QualifiedItemId && item.Quality == message.Quality);
+
+            if (match != null)
+                farm.lastItemShipped = match;
+        }
     }
 
     /****
@@ -2037,7 +2177,84 @@ internal class ModEntry : Mod
     private void HandleError(Exception ex, string verb)
     {
         this.Monitor.Log($"Something went wrong {verb}:\n{ex}", LogLevel.Error);
-        CommonHelper.ShowErrorMessage($"Huh. Something went wrong {verb}. The error log has the technical details.");
+        CommonHelper.ShowErrorMessage($"Something went wrong {verb}.");
+    }
+
+    /// <summary>
+    /// MOD: added. Show a HUD toast locally AND broadcast it to every other connected player — for
+    /// events that represent a genuinely save-wide change (Power Silo capacity, Power Grid solar
+    /// connectivity, the Automation Relay's save-wide pacing bonus) rather than something purely local
+    /// to whichever player happened to trigger it. These affect every player's own automation equally
+    /// (the pacing bonus and coil capacity aren't per-player), so every player should see the
+    /// notification, not just whoever was standing at the building — matches
+    /// <see cref="OnModMessageReceived"/>'s own handling of this same message type on the receiving end.
+    /// </summary>
+    /// <param name="text">The message text.</param>
+    private void BroadcastHudMessage(string text)
+    {
+        Game1.addHUDMessage(new HUDMessage(text, HUDMessage.newQuest_type));
+
+        if (Context.IsMultiplayer)
+        {
+            this.Helper.Multiplayer.SendMessage(
+                message: text,
+                messageType: ModEntry.BroadcastHudMessageType,
+                modIDs: [this.ModManifest.UniqueID]
+            );
+        }
+    }
+
+    /// <summary>
+    /// MOD: added. Reload the given locations' machine data locally, then tell every other connected
+    /// player to do the same for their own <see cref="MachineManager"/> — passed to
+    /// <see cref="PowerSiloPatches.Initialize"/> as its <c>requeueLocations</c> callback, which is only
+    /// ever invoked by the host now (see <see cref="PowerSiloSystem.RefreshCoilAllowance"/>'s own
+    /// remarks). A coil's powered/rank state flipping there is a plain <see cref="ModData"/> mutation on
+    /// an object that was already there — no add/remove — so it never raises SMAPI's own
+    /// <see cref="IWorldEvents.ObjectListChanged"/> on anyone else's client, meaning a farmhand's own
+    /// overlay/no-power icons had no trigger at all to notice a change like that without this broadcast
+    /// (short of the player manually toggling the overlay off and back on to force a full rebuild).
+    /// </summary>
+    /// <param name="locations">The locations to reload.</param>
+    private void BroadcastReloadLocations(IEnumerable<GameLocation> locations)
+    {
+        GameLocation[] locationsArray = locations as GameLocation[] ?? locations.ToArray();
+        this.MachineManager.QueueReload(locationsArray);
+
+        if (!Context.IsMultiplayer || locationsArray.Length == 0)
+            return;
+
+        this.Helper.Multiplayer.SendMessage(
+            message: locationsArray.Select(location => location.NameOrUniqueName).ToArray(),
+            messageType: ModEntry.BroadcastReloadLocationsMessageType,
+            modIDs: [this.ModManifest.UniqueID]
+        );
+    }
+
+    /// <summary>
+    /// MOD: added. Tell every other connected player that an automated shipment (via conduit, not a
+    /// manual player toss) just changed the shipping bin's own "last shipped" display — see
+    /// <see cref="Framework.Storage.ShippingBinContainer"/>'s own remarks for why <c>Farm.lastItemShipped</c>
+    /// (a plain, non-networked vanilla field) doesn't sync on its own, and automation only ever runs on
+    /// the host (see <see cref="EnableAutomation"/>) — so without this, a farmhand's own client would
+    /// never see the display update for anything a conduit delivered.
+    ///
+    /// Sends just the shipped item's identity (qualified ID + quality), not the object itself — each
+    /// receiving client resolves that back to the real, matching slot in its own synced view of the
+    /// bin's inventory (see <see cref="OnModMessageReceived"/>), so vanilla's own click-to-collect
+    /// (which removes <c>lastItemShipped</c> by reference) still works correctly on every client.
+    /// </summary>
+    /// <param name="shipped">The real item instance that was just shipped (a live reference into the bin's own inventory).</param>
+    private void BroadcastLastItemShipped(Item shipped)
+    {
+        if (!Context.IsMultiplayer)
+            return;
+
+        this.Helper.Multiplayer.SendMessage(
+            message: new LastItemShippedMessage { QualifiedItemId = shipped.QualifiedItemId, Quality = shipped.Quality },
+            messageType: ModEntry.BroadcastLastItemShippedMessageType,
+            modIDs: [this.ModManifest.UniqueID]
+        );
     }
 
     /// <summary>Disable the overlay, if shown.</summary>

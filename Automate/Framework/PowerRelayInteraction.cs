@@ -43,6 +43,9 @@ internal class PowerRelayInteraction
     /// <summary>Get the current base <see cref="ModConfig.ActionsPerDelayWindow"/>, before the Power Relay bonus is applied.</summary>
     private readonly Func<int> GetBaseActionsPerDelayWindow;
 
+    /// <summary>MOD: added. Show a HUD toast locally and broadcast it to every other connected player — see <see cref="ModEntry.BroadcastHudMessage"/>. The Relay's pacing bonus is a save-wide stat, not per-player, so every player should see it improve.</summary>
+    private readonly Action<string> BroadcastHudMessage;
+
 
     /*********
     ** Public methods
@@ -54,7 +57,8 @@ internal class PowerRelayInteraction
     /// <param name="getBarItemId">Get the qualified/unqualified item ID delivered for the actions-per-window bonus track, from level 1 onward.</param>
     /// <param name="getFirstBarItemId">MOD: added. Get the qualified/unqualified item ID delivered for the actions-per-window bonus track's very first delivery only (level 0→1).</param>
     /// <param name="getBaseActionsPerDelayWindow">Get the current base <see cref="ModConfig.ActionsPerDelayWindow"/>, before the Power Relay bonus is applied.</param>
-    public PowerRelayInteraction(PowerRelaySystem powerRelaySystem, Func<string> getShardItemId, Func<string> getFirstShardItemId, Func<string> getBarItemId, Func<string> getFirstBarItemId, Func<int> getBaseActionsPerDelayWindow)
+    /// <param name="broadcastHudMessage">MOD: added. Show a HUD toast locally and broadcast it to every other connected player — see <see cref="BroadcastHudMessage"/>.</param>
+    public PowerRelayInteraction(PowerRelaySystem powerRelaySystem, Func<string> getShardItemId, Func<string> getFirstShardItemId, Func<string> getBarItemId, Func<string> getFirstBarItemId, Func<int> getBaseActionsPerDelayWindow, Action<string> broadcastHudMessage)
     {
         this.PowerRelaySystem = powerRelaySystem;
         this.GetShardItemId = getShardItemId;
@@ -62,6 +66,7 @@ internal class PowerRelayInteraction
         this.GetBarItemId = getBarItemId;
         this.GetFirstBarItemId = getFirstBarItemId;
         this.GetBaseActionsPerDelayWindow = getBaseActionsPerDelayWindow;
+        this.BroadcastHudMessage = broadcastHudMessage;
     }
 
     /// <summary>MOD: added. Get the qualified/unqualified item ID currently accepted for a track, given its current level — the track's normal item from level 1 onward, or its special first-delivery item while still at level 0.</summary>
@@ -180,7 +185,7 @@ internal class PowerRelayInteraction
             // "give_gift" every delivery already plays above, unlike PowerSiloInteraction's own
             // tier-complete cue.
             PowerRelayEffectPatches.TriggerLevelUpShake(relay); // MOD: added — the same whole-building shake a Power Silo gets.
-            Game1.addHUDMessage(new HUDMessage($"Automation Relay increased Power Grid's automation {effectName}!", HUDMessage.newQuest_type));
+            this.BroadcastHudMessage($"Automation Relay increased Power Grid's automation {effectName}!");
         }
         else
         {

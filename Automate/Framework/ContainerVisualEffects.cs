@@ -225,12 +225,60 @@ internal static class ContainerVisualEffects
         // the container's own depth instead of defaulting to 0 and drawing behind it.
         float baseLayerDepth = (tilePixels.Y + 64f) / 10000f + tilePixels.X / 3200000f;
 
-        TemporaryAnimatedSprite sprite = TemporaryAnimatedSprite.GetTemporaryAnimatedSprite(data.GetTextureName(), sourceRect, trackedStartPosition, flipped: false, alphaFade: alphaFade, Color.White);
+        // MOD: added — flavored items (wine, juice, pickles, jelly, etc.) are StardewValley.Objects.ColoredObject,
+        // which vanilla never draws as a single plain-tinted sprite (see ColoredObject.draw()/drawInMenu()):
+        // unless ColorSameIndexAsParentSheetIndex is set, it draws a white base frame (GetSourceRect(0, ...))
+        // plus a SEPARATE colored-mask frame (GetSourceRect(1, ...)) tinted with the item's own color, layered
+        // on top. Reusing that same two-layer draw here (rather than just tinting the base icon directly) is
+        // what makes the flying sprite actually show the item's specific flavor instead of the generic icon.
+        Color baseTint = Color.White;
+        bool hasColorOverlay = false;
+        Color overlayTint = default;
+        Rectangle overlaySourceRect = default;
+        if (sample is ColoredObject coloredObject)
+        {
+            if (coloredObject.ColorSameIndexAsParentSheetIndex)
+                baseTint = coloredObject.color.Value;
+            else
+            {
+                hasColorOverlay = true;
+                overlayTint = coloredObject.color.Value;
+                overlaySourceRect = data.GetSourceRect(1);
+            }
+        }
+
+        TemporaryAnimatedSprite sprite = ContainerVisualEffects.BuildFlyingItemSprite(data.GetTextureName(), sourceRect, trackedStartPosition, baseTint, alphaFade, startScale, baseLayerDepth - 0.0000015f, trackedMotion, accelerationYUsed, scaleChangeUsed);
+
+        if (hasColorOverlay)
+        {
+            // MOD: added — drawn at a slightly larger layerDepth than the base sprite, same as vanilla's own
+            // "+2E-05f" offset for the colored mask, so it layers on top of (not behind) the white base frame.
+            TemporaryAnimatedSprite overlaySprite = ContainerVisualEffects.BuildFlyingItemSprite(data.GetTextureName(), overlaySourceRect, trackedStartPosition, overlayTint, alphaFade, startScale, sprite.layerDepth + 0.0000005f, trackedMotion, accelerationYUsed, scaleChangeUsed);
+            Game1.Multiplayer.broadcastSprites(location, sprite, overlaySprite);
+        }
+        else
+            Game1.Multiplayer.broadcastSprites(location, sprite);
+    }
+
+    /// <summary>Build one layer of the flying item-icon sprite used by <see cref="SpawnItemSprite"/>, sharing the same trajectory/physics fields — see that method's own remarks for why a flavored item needs two of these layered together.</summary>
+    /// <param name="textureName">The sprite sheet texture to draw from.</param>
+    /// <param name="sourceRect">The source rect on that texture to draw.</param>
+    /// <param name="trackedStartPosition">The sprite's starting tracked position (its corner reference, not its visual center — see <see cref="SpawnItemSprite"/>'s own remarks).</param>
+    /// <param name="tint">The color to tint this layer.</param>
+    /// <param name="alphaFade">How fast this layer fades out per tick.</param>
+    /// <param name="startScale">This layer's starting scale.</param>
+    /// <param name="layerDepth">This layer's draw depth.</param>
+    /// <param name="motion">This layer's starting motion.</param>
+    /// <param name="accelerationY">This layer's vertical acceleration.</param>
+    /// <param name="scaleChange">How fast this layer's scale changes per tick.</param>
+    private static TemporaryAnimatedSprite BuildFlyingItemSprite(string textureName, Rectangle sourceRect, Vector2 trackedStartPosition, Color tint, float alphaFade, float startScale, float layerDepth, Vector2 motion, float accelerationY, float scaleChange)
+    {
+        TemporaryAnimatedSprite sprite = TemporaryAnimatedSprite.GetTemporaryAnimatedSprite(textureName, sourceRect, trackedStartPosition, flipped: false, alphaFade: alphaFade, tint);
         sprite.scale = startScale;
-        sprite.layerDepth = baseLayerDepth - 0.0000015f;
-        sprite.motion = trackedMotion;
-        sprite.acceleration = new Vector2(0f, accelerationYUsed);
-        sprite.scaleChange = scaleChangeUsed;
+        sprite.layerDepth = layerDepth;
+        sprite.motion = motion;
+        sprite.acceleration = new Vector2(0f, accelerationY);
+        sprite.scaleChange = scaleChange;
 
         // MOD: added — the motion should be straight down/up; an earlier version drifted diagonally.
         // GetTemporaryAnimatedSprite pulls from the game's own pooled sprite instances, which can carry
@@ -243,6 +291,6 @@ internal static class ContainerVisualEffects
         sprite.rotationChange = 0f;
         sprite.xPeriodic = false;
 
-        Game1.Multiplayer.broadcastSprites(location, sprite);
+        return sprite;
     }
 }

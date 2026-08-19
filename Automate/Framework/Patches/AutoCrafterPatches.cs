@@ -282,7 +282,16 @@ internal static class AutoCrafterPatches
     /// <param name="justStruck">Whether the press just reached fully-pressed (frame 1) on this call — signals <see cref="Draw_Prefix"/> to play the strike particle/sound.</param>
     private static int GetFrameIndex(SObject machine, out bool isProcessing, out double strokeProgressMs, out bool justStruck)
     {
-        double nowMs = Game1.currentGameTime?.TotalGameTime.TotalMilliseconds ?? 0;
+        // MOD: fixed — this used to read Game1.currentGameTime here, compared against a
+        // ProcessingStartMs/AnimStartMs timestamp written (via modData, which syncs to every player) by
+        // whichever client actually started the craft or prime/unprime transition. Game1.currentGameTime
+        // is each client's own local elapsed-time-since-launch clock with no relationship to any other
+        // client's value, so a farmhand reading a timestamp the HOST wrote (automation itself only ever
+        // runs on the host) computed a meaningless elapsed time — usually deeply negative, clamped to
+        // zero by Math.Max below — freezing the animation on one frame instead of cycling, even though
+        // the machine's actual processing (heldObject/readyForHarvest, real synced fields) worked fine.
+        // Unix epoch milliseconds are real wall-clock time and stay consistent across networked clients.
+        double nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         isProcessing = false;
         strokeProgressMs = 0;
         justStruck = false;

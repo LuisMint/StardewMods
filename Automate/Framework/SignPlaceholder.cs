@@ -31,8 +31,7 @@ internal class SignPlaceholder : IAutomatable
     /// <summary>Construct an instance.</summary>
     /// <param name="location">The location which contains the sign.</param>
     /// <param name="tile">The tile covered by the sign.</param>
-    public SignPlaceholder(GameLocation location, Vector2 tile)
-    {
+    public SignPlaceholder(GameLocation location, Vector2 tile){
         this.Location = location;
         this.TileArea = new Rectangle((int)tile.X, (int)tile.Y, 1, 1);
     }

@@ -111,6 +111,9 @@ internal class PowerRelayMenu : IClickableMenu
     /// <summary>The text currently hovered, shown as a tooltip.</summary>
     private string HoverText = "";
 
+    /// <summary>MOD: added. The "Bring" row item ID currently under the mouse, if any — shown as a full vanilla item tooltip (name, description, etc.) in <see cref="draw"/>, matching <see cref="PowerSiloMenu.HoveredBringRowRequirement"/>'s own remarks: the icon alone doesn't say which item it is, and this menu's custom-drawn icons aren't real inventory slots Lookup Anything or similar mods can inspect.</summary>
+    private string? HoveredBringRowItemId;
+
     /// <summary>Elapsed seconds since this menu opened — drives the next-icon pulse, matching <see cref="PowerSiloMenu.AnimationTimer"/>.</summary>
     private float AnimationTimer;
 
@@ -275,6 +278,10 @@ internal class PowerRelayMenu : IClickableMenu
         int partitionY = boxTop + mainZoneHeight;
         this.drawHorizontalPartition(b, partitionY);
 
+        // MOD: added — recomputed fresh every frame (not just on mouse-move), matching PowerSiloMenu's
+        // own HoveredBringRowRequirement remarks — set the moment a hovered icon is found in DrawBringRow.
+        this.HoveredBringRowItemId = null;
+
         int leftX = this.xPositionOnScreen + 88;
         string bringText = "Bring:";
         Vector2 bringTextSize = Game1.smallFont.MeasureString(bringText);
@@ -314,6 +321,16 @@ internal class PowerRelayMenu : IClickableMenu
         if (!string.IsNullOrEmpty(this.HoverText))
             IClickableMenu.drawHoverText(b, this.HoverText, Game1.smallFont);
 
+        // MOD: added — the full vanilla item tooltip (name, description, etc.) for whichever "Bring" row
+        // icon is currently under the mouse, if any — matches PowerSiloMenu's own equivalent. Drawn last
+        // (on top of everything else, including the OK button's own HoverText) so it's never obscured,
+        // same as where vanilla itself draws an item tooltip relative to the rest of a menu.
+        if (this.HoveredBringRowItemId is { } hoveredItemId)
+        {
+            Item hoveredItem = ItemRegistry.Create(hoveredItemId);
+            IClickableMenu.drawToolTip(b, hoveredItem.getDescription(), hoveredItem.DisplayName, hoveredItem);
+        }
+
         this.drawMouse(b);
     }
 
@@ -344,6 +361,12 @@ internal class PowerRelayMenu : IClickableMenu
         float iconScale = PowerRelayMenu.BringRowHeight / (float)sourceRect.Height;
         Vector2 iconPos = new(iconX, rowCenterY - PowerRelayMenu.BringRowHeight / 2f);
         b.Draw(texture, iconPos, sourceRect, Color.White, 0f, Vector2.Zero, iconScale, SpriteEffects.None, 1f);
+
+        // MOD: added — hit-test the drawn icon against the current mouse position for the tooltip,
+        // matching PowerSiloMenu's own equivalent.
+        Rectangle iconBounds = new((int)iconPos.X, (int)iconPos.Y, (int)(sourceRect.Width * iconScale), (int)(sourceRect.Height * iconScale));
+        if (iconBounds.Contains(Game1.getMouseX(), Game1.getMouseY()))
+            this.HoveredBringRowItemId = itemId;
 
         // MOD: added — the same tiny-digit "how many more" badge PowerSiloMenu's own bring rows draw
         // when more than 1 is still needed, now that each level can cost more than a single item.

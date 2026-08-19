@@ -6,7 +6,7 @@
             "Entries": {
                 "{{ModId}}_LowGrunt": {
                     "ID": "{{ModId}}_LowGrunt",
-                    "FilePaths": [ "{{InternalAssetKey: Pipes/LowGrunt.wav}}" ],
+                    "FilePaths": [ "{{AbsoluteFilePath: Pipes/LowGrunt.wav}}" ],
                     "Category": "Sound",
                     "Looped": false,
                     "StreamedVorbis": false

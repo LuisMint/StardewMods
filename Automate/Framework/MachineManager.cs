@@ -63,9 +63,6 @@ internal class MachineManager
     /// </summary>
     private readonly Dictionary<(string LocationKey, Vector2 Tile), (string ItemId, int? Number)?> LastKnownSignItems = new();
 
-    /// <summary>MOD: added. Every managed connector tile left "powered but not part of an active group" as of the last rebuild for a given location key (see <see cref="PoweredFloorSync.Sync"/>) — handed to <see cref="PoweredFloorAnimator"/> directly each frame so it never needs to rescan the location's full terrain feature collection itself.</summary>
-    private readonly Dictionary<string, HashSet<Vector2>> OrphanedConnectorTilesByLocation = new(StringComparer.OrdinalIgnoreCase);
-
     /// <summary>MOD: added. How many ticks to wait between each check for sign content changes — doesn't need to be as frequent as automation itself, since it's just a convenience so players don't need to nudge the world to force a rescan.</summary>
     private const int SignCheckIntervalTicks = 30;
 
@@ -172,11 +169,8 @@ internal class MachineManager
     /// <summary>Constructs machine groups.</summary>
     public MachineGroupFactory Factory { get; }
 
-    /// <summary>MOD: added. Swaps a connector's displayed appearance between its unpowered and powered variant based on power range.</summary>
+    /// <summary>MOD: added. Swaps a connector's displayed appearance between its unpowered, powered, and orphaned category based on power range and group membership.</summary>
     private readonly PoweredFloorSync PoweredFloorSync;
-
-    /// <summary>MOD: added. Animates a connector's displayed appearance while it's powered but not part of a valid automation group.</summary>
-    private readonly PoweredFloorAnimator PoweredFloorAnimator;
 
     /// <summary>MOD: added. Swaps a whitelist/blacklist sign's displayed appearance between a valid and invalid variant based on whether it's actually enforcing its filter.</summary>
     private readonly SignTextureSync SignTextureSync;
@@ -251,20 +245,16 @@ internal class MachineManager
             getPoweredTilesForLocation: location => powerSystem.GetPoweredTiles(location, new LocationFloodFillIndex(location, this.Monitor))
         );
 
-        // MOD: added — swaps a connector's displayed appearance between its unpowered and "powered"
-        // variant based on power range. See PoweredFloorSync.cs for details.
+        // MOD: added — swaps a connector's displayed appearance between its unpowered, "powered", and
+        // orphaned category based on power range and group membership. See PoweredFloorSync.cs for
+        // details — the orphaned category's own local pulse is driven by ConnectorTexturePatches
+        // directly at render time now, wired up (with these same two config values) via its own
+        // Initialize call in ModEntry, not here.
         this.PoweredFloorSync = new PoweredFloorSync();
 
         // MOD: added — swaps a whitelist/blacklist sign's displayed appearance between a valid and
         // invalid variant. See SignTextureSync.cs for details.
         this.SignTextureSync = new SignTextureSync();
-
-        // MOD: added — animates a connector's displayed appearance while it's powered but not part
-        // of a valid automation group. See PoweredFloorAnimator.cs for details.
-        this.PoweredFloorAnimator = new PoweredFloorAnimator(
-            getFps: () => this.Config().PoweredFloorAnimationFps,
-            getUnpoweredHoldMultiplier: () => this.Config().PoweredFloorUnpoweredHoldMultiplier
-        );
 
         this.Factory = new(
             getMachineOverride: this.GetMachineOverride,
@@ -289,18 +279,6 @@ internal class MachineManager
         this.Factory.Add(defaultFactory);
 
         this.JunimoMachineGroup = new(this.Factory.SortMachines, this.BuildStorage, this.Monitor);
-    }
-
-    /// <summary>
-    /// MOD: added. Advance the "powered but not part of a valid group" connector animation by one
-    /// tick for the given location — normally just the current player's location, since this is a
-    /// purely visual effect and there's no reason to animate tiles nobody can see.
-    /// </summary>
-    /// <param name="location">The location to animate.</param>
-    public void TickPoweredFloorAnimation(GameLocation location)
-    {
-        string locationKey = this.Factory.GetLocationKey(location);
-        this.PoweredFloorAnimator.Tick(location, this.OrphanedConnectorTilesByLocation.GetValueOrDefault(locationKey));
     }
 
     /****
@@ -697,12 +675,7 @@ internal class MachineManager
             foreach ((string LocationKey, Vector2 Tile) key in this.LastKnownSignItems.Keys.Where(k => locationKeys.Contains(k.LocationKey)).ToArray())
                 this.LastKnownSignItems.Remove(key);
 
-            // MOD: added — drop stale orphaned-connector-tile caches for locations being
-            // reloaded/removed; reseeded fresh below by PoweredFloorSync.Sync for anything still active.
-            foreach (string locationKey in locationKeys)
-                this.OrphanedConnectorTilesByLocation.Remove(locationKey);
-
-            // MOD: added — drop stale "previously active" tile snapshots only for locations that are
+// MOD: added — drop stale "previously active" tile snapshots only for locations that are
             // actually gone, NOT ones simply being rescanned — unlike the caches above, this one needs
             // to survive a reload/rescan cycle so the "newly joined" diff below has something to
             // compare against; wiping it on every rescan would make every active tile look "new" and
@@ -806,101 +779,116 @@ internal class MachineManager
             // below), so it fires on every rescan of this location, including the very first one.
             this.RescannedGroups.AddRange(sparkleEligibleGroups);
 
-            Dictionary<IMachineGroup, HashSet<Vector2>> entityTilesByGroup = new();
-            HashSet<Vector2> activeEntityTiles = new();
-            foreach (IMachineGroup group in sparkleEligibleGroups)
+            // MOD: added — host-only. This whole "did anything just join/leave an active group"
+            // comparison (and the sparkle/sound it triggers) is a rebuild-over-rebuild DIFF against
+            // this same client's own PreviouslyActive*ByLocation snapshots — before this, a farmhand's
+            // own rebuild ran this exact same diff independently, and Game1.Multiplayer.broadcastSprites/
+            // location.playSound ALREADY reach every player in the location on their own, regardless of
+            // which client's code actually calls them. So whenever host and farmhand were both in the
+            // same location and both rebuilt around the same time, each one independently detected the
+            // SAME join/break and independently broadcast it — everyone saw/heard it twice, once from
+            // each client's own trigger. Gating detection to a single source (the host) doesn't take
+            // anything away from anyone: the broadcast calls below are unchanged and still reach every
+            // connected player, there's just exactly one trigger for each real event now instead of one
+            // per client who happens to be watching.
+            if (Context.IsMainPlayer)
             {
-                HashSet<Vector2> groupEntityTiles = new();
-                foreach (IMachine machine in group.Machines)
-                    groupEntityTiles.UnionWith(machine.TileArea.GetTiles());
-                foreach (IContainer container in group.Containers)
-                    groupEntityTiles.UnionWith(container.TileArea.GetTiles());
-
-                entityTilesByGroup[group] = groupEntityTiles;
-                activeEntityTiles.UnionWith(groupEntityTiles);
-            }
-            if (this.PreviouslyActiveEntityTilesByLocation.TryGetValue(locationKey, out HashSet<Vector2>? previousActiveEntityTiles))
-            {
-                Dictionary<Vector2, Color> sparkleColorByTile = new();
-                HashSet<Vector2> ambiguousSparkleTiles = new();
-                bool anyNewJoin = false;
-
-                void AssignSparkleColor(Vector2 tile, Color? color)
+                Dictionary<IMachineGroup, HashSet<Vector2>> entityTilesByGroup = new();
+                HashSet<Vector2> activeEntityTiles = new();
+                foreach (IMachineGroup group in sparkleEligibleGroups)
                 {
-                    if (ambiguousSparkleTiles.Contains(tile))
-                        return;
+                    HashSet<Vector2> groupEntityTiles = new();
+                    foreach (IMachine machine in group.Machines)
+                        groupEntityTiles.UnionWith(machine.TileArea.GetTiles());
+                    foreach (IContainer container in group.Containers)
+                        groupEntityTiles.UnionWith(container.TileArea.GetTiles());
 
-                    if (color == null || (sparkleColorByTile.TryGetValue(tile, out Color existing) && existing != color))
-                    {
-                        ambiguousSparkleTiles.Add(tile);
-                        sparkleColorByTile.Remove(tile);
-                    }
-                    else
-                        sparkleColorByTile[tile] = color.Value;
+                    entityTilesByGroup[group] = groupEntityTiles;
+                    activeEntityTiles.UnionWith(groupEntityTiles);
                 }
-
-                foreach ((IMachineGroup group, HashSet<Vector2> groupEntityTiles) in entityTilesByGroup)
+                if (this.PreviouslyActiveEntityTilesByLocation.TryGetValue(locationKey, out HashSet<Vector2>? previousActiveEntityTiles))
                 {
-                    IReadOnlyDictionary<Vector2, ConnectorRole> connectorRoles = group.GetConnectorRoles(locationKey);
-                    HashSet<ConnectorRole> distinctGroupRoles = new(connectorRoles.Values);
-                    Color? groupEntityColor = distinctGroupRoles.Count == 1 ? MachineManager.GetConnectionSparkleColor(distinctGroupRoles.First()) : null;
+                    Dictionary<Vector2, Color> sparkleColorByTile = new();
+                    HashSet<Vector2> ambiguousSparkleTiles = new();
+                    bool anyNewJoin = false;
 
-                    bool groupHasNewJoin = false;
-                    foreach (Vector2 tile in groupEntityTiles)
+                    void AssignSparkleColor(Vector2 tile, Color? color)
                     {
-                        if (previousActiveEntityTiles.Contains(tile))
-                            continue;
+                        if (ambiguousSparkleTiles.Contains(tile))
+                            return;
 
-                        groupHasNewJoin = true;
-                        AssignSparkleColor(tile, groupEntityColor);
+                        if (color == null || (sparkleColorByTile.TryGetValue(tile, out Color existing) && existing != color))
+                        {
+                            ambiguousSparkleTiles.Add(tile);
+                            sparkleColorByTile.Remove(tile);
+                        }
+                        else
+                            sparkleColorByTile[tile] = color.Value;
                     }
 
-                    if (groupHasNewJoin)
+                    foreach ((IMachineGroup group, HashSet<Vector2> groupEntityTiles) in entityTilesByGroup)
                     {
-                        anyNewJoin = true;
-                        this.GroupsWithNewMembers.Add(group); // MOD: added — see TakeGroupsWithNewMembers's own remarks
-                        foreach ((Vector2 connectorTile, ConnectorRole role) in connectorRoles)
-                            AssignSparkleColor(connectorTile, MachineManager.GetConnectionSparkleColor(role));
+                        IReadOnlyDictionary<Vector2, ConnectorRole> connectorRoles = group.GetConnectorRoles(locationKey);
+                        HashSet<ConnectorRole> distinctGroupRoles = new(connectorRoles.Values);
+                        Color? groupEntityColor = distinctGroupRoles.Count == 1 ? MachineManager.GetConnectionSparkleColor(distinctGroupRoles.First()) : null;
+
+                        bool groupHasNewJoin = false;
+                        foreach (Vector2 tile in groupEntityTiles)
+                        {
+                            if (previousActiveEntityTiles.Contains(tile))
+                                continue;
+
+                            groupHasNewJoin = true;
+                            AssignSparkleColor(tile, groupEntityColor);
+                        }
+
+                        if (groupHasNewJoin)
+                        {
+                            anyNewJoin = true;
+                            this.GroupsWithNewMembers.Add(group); // MOD: added — see TakeGroupsWithNewMembers's own remarks
+                            foreach ((Vector2 connectorTile, ConnectorRole role) in connectorRoles)
+                                AssignSparkleColor(connectorTile, MachineManager.GetConnectionSparkleColor(role));
+                        }
                     }
-                }
 
-                foreach (Vector2 tile in sparkleColorByTile.Keys.Concat(ambiguousSparkleTiles))
-                {
-                    Color color = ambiguousSparkleTiles.Contains(tile) ? MachineManager.AmbiguousConnectionSparkleColor : sparkleColorByTile[tile];
-                    TemporaryAnimatedSprite sparkle = new("TileSheets\\animations", new Rectangle(0, 640, 64, 64), 100f, 8, 0, tile * Game1.tileSize, flicker: false, flipped: false)
+                    foreach (Vector2 tile in sparkleColorByTile.Keys.Concat(ambiguousSparkleTiles))
                     {
-                        color = color,
-                        interval = MachineManager.JoinSparkleInterval
-                    };
-                    Game1.Multiplayer.broadcastSprites(location, sparkle);
+                        Color color = ambiguousSparkleTiles.Contains(tile) ? MachineManager.AmbiguousConnectionSparkleColor : sparkleColorByTile[tile];
+                        TemporaryAnimatedSprite sparkle = new("TileSheets\\animations", new Rectangle(0, 640, 64, 64), 100f, 8, 0, tile * Game1.tileSize, flicker: false, flipped: false)
+                        {
+                            color = color,
+                            interval = MachineManager.JoinSparkleInterval
+                        };
+                        Game1.Multiplayer.broadcastSprites(location, sparkle);
+                    }
+
+                    // MOD: added — play a sound once per location per rebuild when at least one group
+                    // gained a new member (a connection was made / a group formed).
+                    if (anyNewJoin)
+                        location.playSound("dialogueCharacterClose");
                 }
+                this.PreviouslyActiveEntityTilesByLocation[locationKey] = activeEntityTiles;
 
-                // MOD: added — play a sound once per location per rebuild when at least one group
-                // gained a new member (a connection was made / a group formed).
-                if (anyNewJoin)
-                    location.playSound("dialogueCharacterClose");
+                // MOD: added — play a sound when a previously-valid group stops being valid ENTIRELY (not
+                // just shrinking — losing one member from an otherwise-still-active group doesn't count).
+                // Since IMachineGroup instances are rebuilt fresh every rescan (no stable identity across
+                // rebuilds), "the same group" is tracked by tile-set overlap instead: a previously-active
+                // group's full footprint (entities + connectors, via GetTiles) is considered "still alive"
+                // as long as it overlaps at least one currently-active group's footprint; if it has zero
+                // overlap with every currently-active group, that group broke completely.
+                List<HashSet<Vector2>> currentActiveGroupTileSets = sparkleEligibleGroups
+                    .Select(group => new HashSet<Vector2>(group.GetTiles(locationKey)))
+                    .ToList();
+                if (this.PreviouslyActiveGroupTileSetsByLocation.TryGetValue(locationKey, out List<HashSet<Vector2>>? previousActiveGroupTileSets))
+                {
+                    bool anyGroupCompletelyBroken = previousActiveGroupTileSets.Any(previousGroupTiles =>
+                        !currentActiveGroupTileSets.Any(currentGroupTiles => currentGroupTiles.Overlaps(previousGroupTiles)));
+
+                    if (anyGroupCompletelyBroken)
+                        location.playSound("cancel");
+                }
+                this.PreviouslyActiveGroupTileSetsByLocation[locationKey] = currentActiveGroupTileSets;
             }
-            this.PreviouslyActiveEntityTilesByLocation[locationKey] = activeEntityTiles;
-
-            // MOD: added — play a sound when a previously-valid group stops being valid ENTIRELY (not
-            // just shrinking — losing one member from an otherwise-still-active group doesn't count).
-            // Since IMachineGroup instances are rebuilt fresh every rescan (no stable identity across
-            // rebuilds), "the same group" is tracked by tile-set overlap instead: a previously-active
-            // group's full footprint (entities + connectors, via GetTiles) is considered "still alive"
-            // as long as it overlaps at least one currently-active group's footprint; if it has zero
-            // overlap with every currently-active group, that group broke completely.
-            List<HashSet<Vector2>> currentActiveGroupTileSets = sparkleEligibleGroups
-                .Select(group => new HashSet<Vector2>(group.GetTiles(locationKey)))
-                .ToList();
-            if (this.PreviouslyActiveGroupTileSetsByLocation.TryGetValue(locationKey, out List<HashSet<Vector2>>? previousActiveGroupTileSets))
-            {
-                bool anyGroupCompletelyBroken = previousActiveGroupTileSets.Any(previousGroupTiles =>
-                    !currentActiveGroupTileSets.Any(currentGroupTiles => currentGroupTiles.Overlaps(previousGroupTiles)));
-
-                if (anyGroupCompletelyBroken)
-                    location.playSound("cancel");
-            }
-            this.PreviouslyActiveGroupTileSetsByLocation[locationKey] = currentActiveGroupTileSets;
 
             // add groups
             // MOD: passes `junimo` through too — MachineDataForLocation folds it into its
@@ -911,10 +899,11 @@ internal class MachineManager
             this.MachineData[locationKey] = locationData;
             this.LocationsByKey[locationKey] = location; // MOD: added — keep the cache fresh for CheckForSignChanges
 
-            // MOD: added — swap any managed connector's displayed appearance to match its current
-            // power and group state (needs the just-built locationData for its ActiveTiles), and cache
-            // the tiles left "powered but orphaned" for PoweredFloorAnimator to use directly each frame.
-            this.OrphanedConnectorTilesByLocation[locationKey] = this.PoweredFloorSync.Sync(location, locationData);
+            // MOD: added — swap any managed connector's displayed category to match its current power
+            // and group state (needs the just-built locationData for its ActiveTiles) — the "orphaned"
+            // category's own pulse animation is computed locally by ConnectorTexturePatches at render
+            // time, not here (see that class's own remarks).
+            this.PoweredFloorSync.Sync(location, locationData);
 
             // MOD: added — swap any managed whitelist/blacklist sign's displayed appearance to match
             // whether it's currently valid (enforcing its filter) or not.
