@@ -85,6 +85,18 @@ internal static class ContainerVisualEffects
         if (!location.farmers.Any())
             return;
 
+        // MOD: added — automation itself (and this method along with it) keeps running via SMAPI's own
+        // UpdateTicked even while the game window is unfocused, but location.temporarySprites' own
+        // per-frame cleanup effectively stalls then — see PowerCoilAmbientEffect.Tick's own remarks,
+        // which hit the exact same underlying issue first for the ambient Power Coil/Relay particles.
+        // Without this guard, every item-transfer sprite/sound queued while unfocused just piles up
+        // unseen and then all plays/fades out at once the moment focus returns. Skipping the spawn
+        // entirely while unfocused means nothing accumulates to dump later — the player just doesn't see
+        // the (inherently transient) flourish for transfers that happened while they weren't looking,
+        // same as they wouldn't hear a real-world sound effect while alt-tabbed away.
+        if (!Game1.game1.IsActive)
+            return;
+
         Vector2 tile = new(container.TileArea.X, container.TileArea.Y);
 
         // MOD: changed — the jolt (chest.shakeTimer) is removed entirely; the lid

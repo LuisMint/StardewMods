@@ -225,6 +225,22 @@ internal class PoweredChestMachine : BaseMachine, IContainer, IChestLikeMachine,
             if (this.ShouldSkip(container) || !eligible || !this.IsOwnLocalTouchpoint(container))
                 continue;
 
+            // MOD: added — a PULL normally isn't gated by the SOURCE container's own budget at all
+            // (ThrottledContainer.Store's per-window budget only ever throttles something being STORED
+            // INTO a container — pulling OUT of one is deliberately unpaced there, since a container has
+            // no way to know who's about to reach in and take from it). Without this, a container that
+            // JUST had this exact window's one delivery pushed into it by some OTHER active mover could be
+            // immediately drained right back out by THIS chest on the very next check — no matter how far
+            // apart the two machines' own independent delay timers happened to land (confirmed directly:
+            // random per-cycle jitter on those two timers only changes how OFTEN this coincidence recurs,
+            // never eliminates it, since the gap between two independently-jittered timers is a symmetric
+            // random walk that's mathematically guaranteed to wander back near zero again eventually).
+            // Charging the PULL against the source's own budget too — the same one its own pushes already
+            // respect — makes "one action per window" a real property of the container itself, regardless
+            // of which direction touches it or how many different machines are involved.
+            if (isPull && container is ThrottledContainer pullSourceThrottled && !pullSourceThrottled.HasBudgetRemainingThisWindow())
+                continue;
+
             IContainer source = isPull ? container : selfContainer;
             IContainer destination = isPull ? selfContainer : container;
 
@@ -236,7 +252,12 @@ internal class PoweredChestMachine : BaseMachine, IContainer, IChestLikeMachine,
                 int before = stack.Count;
                 destination.Store(stack);
                 if (stack.Count < before)
+                {
+                    if (isPull && container is ThrottledContainer pulledFrom)
+                        pulledFrom.ConsumeBudget();
+
                     return true; // one action done this turn — the rest waits for a later turn
+                }
             }
         }
 

@@ -130,15 +130,27 @@ internal static class PowerRelayEffectPatches
         );
     }
 
-    /// <summary>Advance every known Power Relay's shake timer, and make sure every fully-built Relay has its light — called once per tick from <c>ModEntry.OnUpdateTicked</c>.</summary>
+    /// <summary>
+    /// Advance every known Power Relay's shake timer, and make sure every fully-built Relay has its
+    /// light — called once per tick from <c>ModEntry.OnUpdateTicked</c>.
+    ///
+    /// MOD: added — skips entirely while the window is unfocused, same as
+    /// <see cref="PowerCoilAmbientEffect.Tick"/>/<see cref="PowerRelayAmbientEffect.Tick"/> (see their own
+    /// remarks for why SMAPI's UpdateTicked firing regardless of focus matters here): without this, a
+    /// Relay's shake timer kept counting down by real elapsed time while alt-tabbed away, so a level-up
+    /// shake could finish silently off-screen instead of actually being seen when focus returned.
+    /// </summary>
     public static void Tick()
     {
+        if (!Game1.game1.IsActive)
+            return;
+
         if (PowerRelayEffectPatches.GetRelayBuildingNames is not { } getRelayBuildingNames)
             return;
 
         HashSet<string> relayBuildingNames = getRelayBuildingNames();
-        if (relayBuildingNames.Count == 0)
-            return;
+        if (relayBuildingNames.Count == 0 || PowerRelayEffectPatches.KnownRelays.Count == 0)
+            return; // MOD: added — no known Relay yet (e.g. a fresh save that's never built one) means nothing below has anything to do; skip the per-tick HashSet allocation entirely rather than iterating zero entries
 
         float deltaSeconds = (float)Game1.currentGameTime.ElapsedGameTime.TotalSeconds;
         HashSet<Building> seenBuildings = new();

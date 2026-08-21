@@ -195,15 +195,26 @@ internal static class PowerSiloCapPatches
     /// keeps animating correctly even while off-screen or in an unvisited location, the same way
     /// <see cref="PowerSiloSystem"/>'s own capacity bookkeeping isn't tied to what's currently rendered
     /// either).
+    ///
+    /// MOD: added — skips entirely while the window is unfocused, same as
+    /// <see cref="PowerCoilAmbientEffect.Tick"/>/<see cref="PowerRelayAmbientEffect.Tick"/> (see their own
+    /// remarks for why SMAPI's UpdateTicked firing regardless of focus matters here): without this, a
+    /// Silo's rise animation kept advancing by real elapsed time while alt-tabbed away, so its cap could
+    /// visibly jump straight to a later point in the ease the moment focus returned, instead of picking up
+    /// smoothly from wherever it actually was. Freezing the clock (and the light reposition below) while
+    /// unfocused means it just resumes exactly where it left off.
     /// </summary>
     public static void Tick()
     {
+        if (!Game1.game1.IsActive)
+            return;
+
         if (PowerSiloCapPatches.GetSiloBuildingNames is not { } getSiloBuildingNames || PowerSiloCapPatches.PowerSiloSystem is not { } powerSiloSystem)
             return;
 
         HashSet<string> siloBuildingNames = getSiloBuildingNames();
-        if (siloBuildingNames.Count == 0)
-            return;
+        if (siloBuildingNames.Count == 0 || PowerSiloCapPatches.KnownSilos.Count == 0)
+            return; // MOD: added — no known Silo yet (e.g. a fresh save that's never built one) means nothing below has anything to do; skip the per-tick HashSet allocation entirely rather than iterating zero entries
 
         float deltaSeconds = (float)Game1.currentGameTime.ElapsedGameTime.TotalSeconds;
         HashSet<Building> seenBuildings = new(); // MOD: added — tracks which Silos are still actually placed this tick, so CleanUpRemovedCapLights can tell a torn-down one from one that's just off-screen

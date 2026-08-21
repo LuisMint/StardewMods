@@ -101,6 +101,25 @@ internal class ModEntry : Mod
     private bool RunAutomationPassOnNextTick;
 
     /// <summary>
+    /// MOD: added. Set on <see cref="OnSaveLoaded"/>, cleared at the end of <see cref="OnDayStarted"/> —
+    /// while true, <see cref="OnLocationListChanged"/> skips queuing anything, since every location
+    /// populating as a save loads is guaranteed to be re-scanned anyway moments later by
+    /// <see cref="OnDayStarted"/>'s own unconditional <see cref="MachineManager.Reset"/> (which discards
+    /// every group and queues literally every current location for a full rebuild, regardless of what
+    /// specifically changed). Without this, a fresh save load did the ENTIRE world's machine-group scan
+    /// TWICE back to back — once draining the queue <see cref="OnLocationListChanged"/> built while the
+    /// world's locations were still populating, then again from <see cref="OnDayStarted"/>'s reset —
+    /// confirmed directly via a diagnostic log showing every single Powered Chest enqueued twice, ~75-90ms
+    /// apart, each time under a totally different (freshly rebuilt) <see cref="IMachineGroup"/> instance.
+    /// That doubled real scan cost (location flood-fill, connector traversal, Power Silo capacity/coil
+    /// calculations) is a very plausible cause of a real frame hitch right at load, independent of
+    /// anything about automation pacing. Scoped to the SaveLoaded→DayStarted window specifically (not a
+    /// one-time session flag) so it correctly re-arms on every subsequent load too (e.g. returning to the
+    /// title screen and loading a different save).
+    /// </summary>
+    private bool SuppressLocationListChangedUntilDayStarted;
+
+    /// <summary>
     /// MOD: added. Locations whose <see cref="IWorldEvents.ChestInventoryChanged"/> pass may have found
     /// its containers locked (the player has a chest menu open, so <see cref="MachineGroup.Automate"/>
     /// bails out immediately) — retried once any menu closes (see <see cref="OnMenuChanged"/>), since
@@ -124,6 +143,20 @@ internal class ModEntry : Mod
 
     /// <summary>MOD: added. How many <see cref="OnTimeChanged"/> firings to let pass between full backstop scans (see <see cref="TicksSinceFullBackstopScan"/>) — once per in-game hour.</summary>
     private const int FullBackstopScanIntervalTicks = 6;
+
+    /// <summary>
+    /// MOD: added. The most <see cref="PendingDelayedPasses"/> entries <see cref="RunDuePendingPasses"/>
+    /// will execute in one <see cref="OnUpdateTicked"/> call. Without this, every group whose delay
+    /// happened to land at the same moment (the normal case now that entries aren't jittered — see
+    /// EnqueueForAutomation's own remarks) ran synchronously in the SAME frame: dozens of real container
+    /// scans/transfers/event notifications back to back, a plausible source of a real frame hitch right
+    /// when a lot of Powered Chests all become due together (e.g. day start). Anything beyond this cap
+    /// simply carries over to the next tick(s) instead — each entry's own delay already elapsed by the
+    /// time it's picked here, so being executed a few ~16ms ticks later is an imperceptible difference
+    /// against a multi-second <see cref="ModConfig.ActionDelaySeconds"/>, in exchange for spreading a
+    /// large burst's real cost across several frames instead of spiking one.
+    /// </summary>
+    private const int MaxDuePassesPerTick = 8;
 
     /// <summary>
     /// MOD: added. Group batches queued to run after <see cref="ModConfig.ActionDelaySeconds"/> has passed,
@@ -162,7 +195,26 @@ internal class ModEntry : Mod
     /// where something else reliably wins the single per-firing budget slot every cycle, a chest shared by
     /// several groups could go many cycles in THIS particular group without ever actually being dequeued and
     /// attempted at all, even though its own cross-group nudge only fires once it's actually tried and failed.
-    private readonly Dictionary<IMachineGroup, LinkedList<IMachine>> GroupActionQueues = new(new ObjectReferenceComparer<IMachineGroup>());
+    ///
+    /// MOD: added — each entry now also carries its own <c>EligibleAtMs</c> timestamp (set once, at the
+    /// moment it's enqueued — see <see cref="EnqueueForAutomation"/>), and <see cref="RunGroupBatch"/> only
+    /// ever commits an entry once <see cref="UnpausedElapsedMs"/> has actually reached it. Before this, a
+    /// group's timer was armed ONCE per priming cycle (see <see cref="ArmedGroupBatches"/>) and, whenever it
+    /// fired, drained WHATEVER was in the queue at that moment — including anything enqueued moments
+    /// earlier, mid-countdown, which then only ever waited however much of that ALREADY-ticking timer
+    /// happened to be left, not its own full <see cref="ModConfig.ActionDelaySeconds"/>. That's what let a
+    /// Powered Chest pushing into a container, and a second Powered Chest immediately pulling that exact
+    /// item back out, both land in the SAME already-armed shot — visually an instant two-hop chain, even
+    /// though each individual chest's own automation is still correctly paced on its own.
+    ///
+    /// MOD: added — each entry now also carries whether it was queued by a <c>Confirmed</c> signal (a
+    /// specific container actually changing — see <see cref="ScheduleInputFeedsFor"/>) versus a blind one
+    /// (a group merely being built/rebuilt, or — in interval mode — the periodic bulk sweep, neither of
+    /// which says anything about whether real work exists). This only matters for a
+    /// <see cref="IChestLikeMachine"/> (e.g. <see cref="Machines.Objects.PoweredChestMachine"/>), whose
+    /// <see cref="IMachine.GetState"/> is hardcoded to always report Empty and so carries no information of
+    /// its own either way — see <see cref="EnqueueForAutomation"/>'s own remarks for how it's used.
+    private readonly Dictionary<IMachineGroup, LinkedList<(IMachine Machine, double EligibleAtMs, bool Confirmed)>> GroupActionQueues = new(new ObjectReferenceComparer<IMachineGroup>());
 
     /// <summary>
     /// MOD: added. Every machine currently sitting in some group's <see cref="GroupActionQueues"/>, waiting
@@ -532,6 +584,19 @@ internal class ModEntry : Mod
         // CaveHoleHumanDoorCrashPatches's own remarks).
         CaveHoleHumanDoorCrashPatches.Apply(harmony);
 
+        // MOD: added — keeps an upgraded Cave Hole's own Name in sync with its stable NameOrUniqueName,
+        // a real inconsistency vanilla's own upgrade path produces (see CaveHoleLocationNamePatches's own
+        // remarks) — confirmed NOT sufficient on its own to fix every third-party mod compatibility issue
+        // with this location; see CaveHoleUniqueDisplayNamePatches below for the actual root cause found
+        // for one such report (Chests Anywhere).
+        CaveHoleLocationNamePatches.Apply(harmony);
+
+        // MOD: added — gives each Cave Hole/Big Cave Hole a display name unique to its own physical
+        // building instead of the generic, shared-across-every-instance string every tier's own
+        // Data/Buildings entry uses — fixes a confirmed Chests Anywhere crash specific to having more
+        // than one Cave Hole on the farm (see CaveHoleUniqueDisplayNamePatches's own remarks).
+        CaveHoleUniqueDisplayNamePatches.Apply(harmony);
+
         // MOD: added — restricts the loot a Barrel/Crate gives inside a Cave Hole interior to 1-3 Cave
         // Carrots or nothing (see CaveHoleCrateLootPatches's own remarks).
         CaveHoleCrateLootPatches.Apply(harmony);
@@ -697,6 +762,10 @@ internal class ModEntry : Mod
         // rebuilds every group) — this covers the broader "entirely different save" case.
         this.ResetDelayQueueState();
 
+        // MOD: added — see SuppressLocationListChangedUntilDayStarted's own remarks for why this avoids
+        // scanning the whole world's machine groups twice on every load.
+        this.SuppressLocationListChangedUntilDayStarted = true;
+
         // MOD: added — same reasoning: a cached rolled tier list from a PREVIOUS save must not leak into
         // this one. Reset() just clears the cache; the next GetEffectiveTiers() call re-reads (or rolls
         // fresh for) THIS save's own persisted result.
@@ -770,6 +839,11 @@ internal class ModEntry : Mod
             this.MachineManager.Factory.PowerRequiredMachineSystem.Reset();
         }
 
+        // MOD: added — see SuppressLocationListChangedUntilDayStarted's own remarks. The comprehensive
+        // reset above (when not a secondary screen) already covers every location that populated since
+        // OnSaveLoaded; from here on, a genuinely new location change should queue normally again.
+        this.SuppressLocationListChangedUntilDayStarted = false;
+
         // MOD: fixed — gated behind Context.IsMainPlayer. This spawns every placed Cave Hole's own
         // quarry-style stone/ore nodes: a full dense fill the first morning after construction, then a
         // smaller daily top-up after that (see CaveHoleQuarrySystem's own remarks). IGameLoopEvents.DayStarted
@@ -802,6 +876,12 @@ internal class ModEntry : Mod
     private void OnLocationListChanged(object? sender, LocationListChangedEventArgs e)
     {
         if (!this.EnableAutomationChangeTracking)
+            return;
+
+        // MOD: added — see SuppressLocationListChangedUntilDayStarted's own remarks. Every location
+        // populating right now is about to be fully rebuilt anyway by OnDayStarted's own unconditional
+        // reset, so queuing it here too would just scan the whole world twice back to back.
+        if (this.SuppressLocationListChangedUntilDayStarted)
             return;
 
         this.Monitor.VerboseLog("Location list changed, reloading machines in affected locations.");
@@ -952,11 +1032,14 @@ internal class ModEntry : Mod
                     // machine joining isn't itself "becoming ready." Without this, a newly-connected
                     // chest/machine just sat there until the player happened to open/edit a chest (or the
                     // ~7s backstop scan) triggered an unrelated rescan.
+                    // MOD: added — isConfirmedSignal: false. A group merely gaining a member doesn't confirm
+                    // any of its machines actually have real work available yet — see EnqueueForAutomation's
+                    // own remarks.
                     IReadOnlyList<IMachineGroup> newlyJoinedGroups = this.MachineManager.TakeGroupsWithNewMembers();
                     if (this.Config.UseEventBasedAutomation)
                     {
                         foreach (IMachineGroup group in newlyJoinedGroups)
-                            this.ScheduleGroupCheck(group);
+                            this.ScheduleGroupCheck(group, isConfirmedSignal: false);
                     }
 
                     // MOD: added — always drain (even outside event-based mode, so this can't grow
@@ -971,8 +1054,9 @@ internal class ModEntry : Mod
                     // it.
                     foreach (IMachineGroup group in this.MachineManager.TakeRescannedGroups())
                     {
+                        // MOD: added — isConfirmedSignal: false, same reasoning as newlyJoinedGroups above.
                         if (this.Config.UseEventBasedAutomation)
-                            this.ScheduleGroupCheck(group);
+                            this.ScheduleGroupCheck(group, isConfirmedSignal: false);
                     }
                 }
 
@@ -1348,8 +1432,25 @@ internal class ModEntry : Mod
             {
                 foreach (IMachine machine in group.Machines)
                 {
-                    if (machine.GetState() is MachineState.Done or MachineState.Empty)
-                        this.EnqueueForAutomation(group, machine);
+                    if (machine.GetState() is not (MachineState.Done or MachineState.Empty))
+                        continue;
+
+                    // MOD: added — in event-based mode, don't let this blind periodic/backstop/day-start
+                    // sweep enqueue a IChestLikeMachine (e.g. PoweredChestMachine) at all. Its GetState() is
+                    // hardcoded to always report Empty, so unlike a real machine, this check carries no
+                    // information about whether it actually has anything new to move. Event-based mode
+                    // already has a precise, comprehensive discovery path for it instead:
+                    // OnChestInventoryChanged/ScheduleInputFeedsFor when a neighboring container actually
+                    // changes, and TakeGroupsWithNewMembers/TakeRescannedGroups when its own group is
+                    // (re)built (including right after a save loads or a new day starts) — each anchors its
+                    // own delay to a real reason, not a periodic sweep. Interval mode has no such alternative
+                    // (it never calls those event hooks), so it still needs this blind sweep below to
+                    // discover chest-like machines at all — passed through as an unconfirmed signal (see
+                    // EnqueueForAutomation's own remarks) so a later confirmed one can still promote it.
+                    if (this.Config.UseEventBasedAutomation && MachineGroup.IsChestLikeMachine(machine))
+                        continue;
+
+                    this.EnqueueForAutomation(group, machine, isConfirmedSignal: false);
                 }
 
                 this.TryScheduleGroupBatch(group);
@@ -1470,24 +1571,75 @@ internal class ModEntry : Mod
     /// </summary>
     /// <param name="group">The machine's owning group.</param>
     /// <param name="machine">The machine believed ready for a push/pull.</param>
-    private void EnqueueForAutomation(IMachineGroup group, IMachine machine)
+    /// <param name="isConfirmedSignal">
+    /// MOD: added. Whether this call is backed by a specific container actually changing (see
+    /// <see cref="ScheduleInputFeedsFor"/>) as opposed to a blind poll that says nothing about whether real
+    /// work exists (a group merely being built/rebuilt, or the periodic/interval bulk sweep). Only matters
+    /// for a <see cref="IChestLikeMachine"/> that's already queued: a blind entry gets refreshed to a fresh
+    /// full delay the first time a confirmed signal arrives for it (see below), but a confirmed entry is
+    /// left alone by anything arriving after it — it's already honestly counting down toward real work, so
+    /// resetting it again would just delay something that's already correctly in progress. Irrelevant for
+    /// an ordinary machine, whose <see cref="IMachine.GetState"/> already IS a real signal by itself.
+    /// </param>
+    private void EnqueueForAutomation(IMachineGroup group, IMachine machine, bool isConfirmedSignal = true)
     {
-        if (this.GetEffectiveActionDelaySeconds() <= 0)
+        float effectiveActionDelaySeconds = this.GetEffectiveActionDelaySeconds();
+        if (effectiveActionDelaySeconds <= 0)
             return;
 
-        if (!this.QueuedMachines.Add(machine))
-            return; // already queued — see QueuedMachines's own remarks
+        // MOD: added — this machine's own entry isn't eligible to be committed until its own full delay
+        // has elapsed from right now, regardless of whether the group's batch timer is already armed and
+        // about to fire sooner than that — see GroupActionQueues's own remarks for why.
+        //
+        // MOD: added, then removed for good — this used to add a small extra jitter (0-15% of the base
+        // delay) on top of the delay below, to reduce (not eliminate — it's a random walk, so it can only
+        // ever make the coincidence rarer, never impossible) how often two independently-paced groups that
+        // cross-trigger each other landed suspiciously close together. No longer needed: the REAL fix for
+        // that is PoweredChestMachine.TryMoveOne now charging a PULL against its source container's own
+        // ThrottledContainer budget (the same one a PUSH already respects), which deterministically
+        // prevents any one container being touched twice within the same delay window, regardless of how
+        // the two machines' independent timers happen to line up. Every entry's delay is exactly
+        // effectiveActionDelaySeconds now — nothing added, nothing random.
+        double eligibleAtMs = this.UnpausedElapsedMs + effectiveActionDelaySeconds * 1000;
 
-        if (!this.GroupActionQueues.TryGetValue(group, out LinkedList<IMachine>? queue))
-            this.GroupActionQueues[group] = queue = new LinkedList<IMachine>();
+        if (!this.QueuedMachines.Add(machine))
+        {
+            // MOD: added — a blind entry (queued without a confirmed signal — see this parameter's own
+            // remarks) is just a placeholder that might not represent any real work at all. If THIS attempt
+            // is the first confirmed signal to arrive for it, promote it: refresh to a fresh full delay from
+            // right now (so the real opportunity gets its own honest wait, same as every other machine gets)
+            // and mark it confirmed. An already-confirmed entry is left untouched no matter what arrives
+            // after it — it's already honestly counting down toward real work, so this is deliberately NOT
+            // "refresh on every new signal": that would let a busy neighborhood reset it forever and starve
+            // it, and would also delay work that's already correctly in progress for no reason. A second
+            // blind signal against a still-blind entry is likewise a no-op — nothing new was actually
+            // confirmed, so there's nothing to promote it with yet.
+            if (isConfirmedSignal && MachineGroup.IsChestLikeMachine(machine) && this.GroupActionQueues.TryGetValue(group, out LinkedList<(IMachine Machine, double EligibleAtMs, bool Confirmed)>? existingQueue))
+            {
+                for (LinkedListNode<(IMachine Machine, double EligibleAtMs, bool Confirmed)>? node = existingQueue.First; node != null; node = node.Next)
+                {
+                    if (ReferenceEquals(node.Value.Machine, machine))
+                    {
+                        if (!node.Value.Confirmed)
+                            node.Value = (machine, eligibleAtMs, true);
+                        break;
+                    }
+                }
+            }
+
+            return; // already queued — see QueuedMachines's own remarks
+        }
+
+        if (!this.GroupActionQueues.TryGetValue(group, out LinkedList<(IMachine Machine, double EligibleAtMs, bool Confirmed)>? queue))
+            this.GroupActionQueues[group] = queue = new LinkedList<(IMachine, double, bool)>();
 
         // MOD: added — a chest-like machine jumps to the front instead of the back, so it's never crowded
         // out of its own turn by ordinary machines already ahead of it in FIFO order — see GroupActionQueues's
         // own remarks for why.
         if (MachineGroup.IsChestLikeMachine(machine))
-            queue.AddFirst(machine);
+            queue.AddFirst((machine, eligibleAtMs, isConfirmedSignal));
         else
-            queue.AddLast(machine);
+            queue.AddLast((machine, eligibleAtMs, isConfirmedSignal));
     }
 
     /// <summary>
@@ -1519,13 +1671,47 @@ internal class ModEntry : Mod
             return;
         }
 
-        if (!this.GroupActionQueues.TryGetValue(group, out LinkedList<IMachine>? queue) || queue.Count == 0)
+        if (!this.GroupActionQueues.TryGetValue(group, out LinkedList<(IMachine Machine, double EligibleAtMs, bool Confirmed)>? queue) || queue.Count == 0)
             return; // nothing queued for this group — nothing to prime for
 
         if (!this.ArmedGroupBatches.Add(group))
             return; // already priming — it'll drain the queue (including anything just added to it) when it fires
 
-        this.RunOrScheduleDelayedPass(() => this.RunGroupBatch(group), effectiveActionDelaySeconds, group);
+        // MOD: added — arm for however long until the SOONEST entry in the queue actually becomes
+        // eligible, not blindly for effectiveActionDelaySeconds. Every entry's own EligibleAtMs already
+        // includes 0-15% of extra jitter on top of the base delay (see EnqueueForAutomation's own remarks
+        // for why), which is always >= effectiveActionDelaySeconds — so arming for the flat config value
+        // meant this timer almost always fired a hair BEFORE the entry that triggered it had actually
+        // become eligible, found nothing to commit, and then re-armed for another FULL effectiveActionDelaySeconds
+        // from that point (see the "genuinely isn't eligible yet" re-priming below) — nearly doubling the
+        // real wait for what should have been one single delay. Confirmed directly via user report: actions
+        // were consistently taking close to double the configured delay. Arming for the queue's own actual
+        // soonest deadline instead means the timer fires right when there's genuinely something to do.
+        double minEligibleAtMs = double.MaxValue;
+        foreach ((IMachine _, double entryEligibleAtMs, bool _) in queue)
+        {
+            if (entryEligibleAtMs < minEligibleAtMs)
+                minEligibleAtMs = entryEligibleAtMs;
+        }
+        double curTimeMs = this.UnpausedElapsedMs;
+
+        // MOD: added — if the soonest entry is ALREADY eligible (not in the future), this call is
+        // re-priming right after RunGroupBatch's own drain loop hit its ActionsPerDelayWindow budget cap
+        // with more already-eligible work left over — a real, live crash was traced to exactly this case:
+        // an "eligible in the past" entry made the line above compute an arm delay of (near) zero, which
+        // hit RunOrScheduleDelayedPass's own "0 or less runs immediately" fast path and called RunGroupBatch
+        // again SYNCHRONOUSLY, which hit the SAME budget cap again with the SAME leftover entries and
+        // re-armed for (near) zero again — an infinite synchronous recursion with no time ever elapsing
+        // between iterations, blowing the call stack (a StackOverflowException, which .NET can't catch or
+        // log, so the process just died instantly with nothing useful in the log). This case isn't a timing
+        // mismatch to correct for — genuinely waiting a full fresh window before the budget replenishes is
+        // exactly what ActionsPerDelayWindow is supposed to mean, so it gets the ordinary flat delay instead
+        // of the precise-timing calculation above (which only applies when nothing is eligible yet).
+        float armDelaySeconds = minEligibleAtMs > curTimeMs
+            ? (float)((minEligibleAtMs - curTimeMs) / 1000.0)
+            : effectiveActionDelaySeconds;
+
+        this.RunOrScheduleDelayedPass(() => this.RunGroupBatch(group), armDelaySeconds, group);
     }
 
     /// <summary>
@@ -1544,12 +1730,13 @@ internal class ModEntry : Mod
         if (!this.ArmedGroupBatches.Remove(group))
             return; // stale fire for a group whose pacing state was since purged/reset — nothing to do
 
-        if (!this.GroupActionQueues.TryGetValue(group, out LinkedList<IMachine>? queue))
+        if (!this.GroupActionQueues.TryGetValue(group, out LinkedList<(IMachine Machine, double EligibleAtMs, bool Confirmed)>? queue))
             return;
 
         int committed = 0;
         int effectiveActionsPerDelayWindow = this.GetEffectiveActionsPerDelayWindow();
         bool unlimited = effectiveActionsPerDelayWindow <= 0;
+        double curTimeMs = this.UnpausedElapsedMs;
 
         // MOD: added. A machine dequeued here and dropped for good is only rediscovered if some OTHER
         // event happens to touch this group again — its own state didn't change (still Done, holding the
@@ -1559,12 +1746,26 @@ internal class ModEntry : Mod
         // group's next scheduled batch instead of competing from scratch with whatever else got queued in
         // the meantime. See MachineGroup.WasLastPushRejectedForBudget's own remarks for why only a
         // purely-budget rejection earns this treatment, not a genuine one.
-        List<IMachine>? budgetRejectedMachines = null;
+        List<(IMachine Machine, double EligibleAtMs, bool Confirmed)>? budgetRejectedMachines = null;
 
-        while (queue.Count > 0 && (unlimited || committed < effectiveActionsPerDelayWindow))
+        while (unlimited || committed < effectiveActionsPerDelayWindow)
         {
-            IMachine machine = queue.First!.Value;
-            queue.RemoveFirst();
+            // MOD: added — find the first entry (front-to-back, respecting the existing chest-jumps-to-
+            // front priority) whose OWN full delay has actually elapsed, rather than just always taking
+            // the front of the queue. The group's shared timer firing only means IT'S time to check again
+            // — it doesn't mean every entry currently sitting in the queue has actually waited out its own
+            // full ActionDelaySeconds yet (one could have been enqueued moments ago, mid-countdown, or
+            // jumped ahead of an older ordinary machine by the chest-priority rule above). See
+            // GroupActionQueues's own remarks for the exact symptom this fixes.
+            LinkedListNode<(IMachine Machine, double EligibleAtMs, bool Confirmed)>? node = queue.First;
+            while (node != null && node.Value.EligibleAtMs > curTimeMs)
+                node = node.Next;
+
+            if (node == null)
+                break; // nothing left in the queue is eligible yet this shot
+
+            (IMachine machine, double eligibleAtMs, bool confirmed) = node.Value;
+            queue.Remove(node);
             this.QueuedMachines.Remove(machine);
 
             bool wasDoneBefore = machine.GetState() is MachineState.Done;
@@ -1575,7 +1776,7 @@ internal class ModEntry : Mod
             }
             else if (wasDoneBefore && group is MachineGroup { WasLastPushRejectedForBudget: true })
             {
-                (budgetRejectedMachines ??= []).Add(machine);
+                (budgetRejectedMachines ??= []).Add((machine, eligibleAtMs, confirmed));
             }
         }
 
@@ -1583,12 +1784,17 @@ internal class ModEntry : Mod
         {
             for (int i = budgetRejectedMachines.Count - 1; i >= 0; i--)
             {
-                IMachine machine = budgetRejectedMachines[i];
-                queue.AddFirst(machine);
+                (IMachine machine, double eligibleAtMs, bool confirmed) = budgetRejectedMachines[i];
+                queue.AddFirst((machine, eligibleAtMs, confirmed)); // MOD: changed — already-eligible, so it keeps its ORIGINAL timestamp instead of being reset to a fresh delay
                 this.QueuedMachines.Add(machine);
             }
         }
 
+        // MOD: added — if anything's left, re-prime; TryScheduleGroupBatch itself now arms for exactly
+        // however long until the soonest remaining entry becomes eligible (see its own remarks), so this
+        // never waits longer than necessary and — since that arm time is always derived from the entries'
+        // own EligibleAtMs, never a flat guess — can't reintroduce the "acted before its own delay elapsed"
+        // bug this whole change exists to close either.
         if (queue.Count > 0)
             this.TryScheduleGroupBatch(group);
     }
@@ -1653,7 +1859,15 @@ internal class ModEntry : Mod
     /// <see cref="TryScheduleGroupBatch"/>, rather than automating the whole group synchronously in one call.
     /// </summary>
     /// <param name="group">The group to check.</param>
-    private void ScheduleGroupCheck(IMachineGroup group)
+    /// <param name="isConfirmedSignal">
+    /// MOD: added. Whether this check was triggered by a specific container actually changing (the
+    /// <see cref="ScheduleInputFeedsFor"/> callers — <c>true</c>, the default) as opposed to the group
+    /// merely being built/rebuilt (the <see cref="MachineManager.TakeGroupsWithNewMembers"/>/
+    /// <see cref="MachineManager.TakeRescannedGroups"/> callers — <c>false</c>, passed explicitly), which
+    /// says nothing about whether any of its members actually have real work available yet. See
+    /// <see cref="EnqueueForAutomation"/>'s own remarks for how this is used.
+    /// </param>
+    private void ScheduleGroupCheck(IMachineGroup group, bool isConfirmedSignal = true)
     {
         foreach (IMachine machine in group.Machines)
         {
@@ -1661,7 +1875,7 @@ internal class ModEntry : Mod
             if (state is not (MachineState.Done or MachineState.Empty))
                 continue;
 
-            this.EnqueueForAutomation(group, machine);
+            this.EnqueueForAutomation(group, machine, isConfirmedSignal);
             this.TryScheduleGroupBatch(group);
         }
     }
@@ -1721,13 +1935,22 @@ internal class ModEntry : Mod
             return;
 
         double curTimeMs = this.UnpausedElapsedMs;
+        int executedThisTick = 0;
         for (int i = this.PendingDelayedPasses.Count - 1; i >= 0; i--)
         {
             (double createdAtMs, double scheduledTimeMs, Action action, IMachineGroup? _) = this.PendingDelayedPasses[i];
             if (curTimeMs < scheduledTimeMs)
                 continue;
 
+            // MOD: added — see MaxDuePassesPerTick's own remarks. Only counts entries that were actually
+            // due (not every entry scanned), and stops the WHOLE scan for this tick rather than skipping
+            // just this one — any other still-due entries beyond this point are left untouched, to be
+            // picked up (still correctly recognized as due, now even more overdue) on a later tick.
+            if (executedThisTick >= ModEntry.MaxDuePassesPerTick)
+                break;
+
             this.PendingDelayedPasses.RemoveAt(i);
+            executedThisTick++;
 
             // MOD: added — see LastActualDelayMs's own remarks; lets the perf overlay show the real
             // measured delay instead of going on feel alone.
@@ -2083,9 +2306,9 @@ internal class ModEntry : Mod
 
         foreach (IMachineGroup group in removedGroups)
         {
-            if (this.GroupActionQueues.Remove(group, out LinkedList<IMachine>? queue))
+            if (this.GroupActionQueues.Remove(group, out LinkedList<(IMachine Machine, double EligibleAtMs, bool Confirmed)>? queue))
             {
-                foreach (IMachine machine in queue)
+                foreach ((IMachine machine, double _, bool _) in queue)
                     this.QueuedMachines.Remove(machine);
             }
 
