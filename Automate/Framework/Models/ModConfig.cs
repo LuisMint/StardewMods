@@ -230,7 +230,22 @@ internal class ModConfig
         "ConveyorBelt",
         "FastConveyorBelt",
         "TurboConveyorBelt",
-        "TurboPushingConveyorBelt"
+        "TurboPushingConveyorBelt",
+
+        // MOD: added — the rest of Stardio's factory pieces, gated the same way as the belts above (also
+        // via StardioConveyorBeltPatches). Filter/InvertedFilter/Bridge/WarpNexus have no per-tick update
+        // of their own — they're pure routing logic inside whichever belt/splitter pushes an item into
+        // them — so gating them means refusing to route through/pull from a starved one, rather than
+        // pausing a countdown. InputHub/OutputHub are plain BigCraftables (not part of this custom class
+        // hierarchy at all) already covered by the fully generic PowerRequiredMachinePatches above; they're
+        // listed here purely for discoverability alongside the rest of Stardio's items.
+        "Filter",
+        "InvertedFilter",
+        "Bridge",
+        "Splitter",
+        "WarpNexus",
+        "InputHub",
+        "OutputHub"
     };
 
     /// <summary>

@@ -487,9 +487,19 @@ internal static class PowerRequiredMachinePatches
         spriteBatch.Draw(texture, centerPosition, new Rectangle(0, 0, texture.Width, texture.Height), Color.White * pulseAlpha * alpha, 0f, origin, scale, SpriteEffects.None, layerDepth);
     }
 
-    /// <summary>Get whether an object is a configured power-required machine type whose own tile is currently out of power range.</summary>
+    /// <summary>
+    /// Get whether an object is a configured power-required machine type whose own tile is currently out of
+    /// power range. Internal (not private) so <see cref="StardioConveyorBeltPatches"/> can reuse this exact
+    /// check for the Input Hub/Output Hub — those are plain BigCraftables gated entirely through this
+    /// generic path (see <see cref="MachineTypeIdNameOverrides"/>'s own remarks), but a belt pushing into
+    /// or pulling from one needs a live, on-demand answer rather than the cached
+    /// <see cref="PowerStarvedChestModDataKey"/> tag this class's own <see cref="ChestAddItem_Prefix"/>
+    /// relies on elsewhere — that tag is only refreshed roughly once per night (see its own remarks), fine
+    /// for an Auto-Grabber's overnight-only production but far too stale for a belt interacting with a Hub
+    /// continuously all day.
+    /// </summary>
     /// <param name="obj">The object to check.</param>
-    private static bool IsPowerStarved(SObject obj)
+    internal static bool IsPowerStarved(SObject obj)
     {
         GameLocation? location = obj.Location;
         if (location == null)
@@ -529,6 +539,21 @@ internal static class PowerRequiredMachinePatches
     private static readonly Dictionary<string, string> MachineTypeIdCache = new();
 
     /// <summary>
+    /// MOD: added. Raw <see cref="SObject.Name"/> values whose own internal codename doesn't match the
+    /// short ID a config author would derive from that object's in-game DISPLAY name — so
+    /// <see cref="BaseMachine.GetDefaultMachineId(string)"/> alone would resolve to the wrong ID no matter
+    /// how its generic mod-prefix-stripping is extended. Currently just the Stardio mod's Input/Output Hub
+    /// (raw Name "Jok.Stardio.InputChest"/"Jok.Stardio.OutputChest", but displayed and configured as
+    /// "Input Hub"/"Output Hub" — an internal "Chest" vs. display "Hub" wording mismatch, not just a
+    /// namespace prefix) — checked before falling through to the generic derivation below.
+    /// </summary>
+    private static readonly Dictionary<string, string> MachineTypeIdNameOverrides = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Jok.Stardio.InputChest"] = "InputHub",
+        ["Jok.Stardio.OutputChest"] = "OutputHub"
+    };
+
+    /// <summary>
     /// MOD: added. Resolve an object's own machine type ID from its vanilla <see cref="SObject.Name"/> —
     /// shared by <see cref="IsPowerStarved"/> and <see cref="SyncHeldChestTag"/> so the two can't drift
     /// apart.
@@ -556,7 +581,9 @@ internal static class PowerRequiredMachinePatches
         if (PowerRequiredMachinePatches.MachineTypeIdCache.TryGetValue(rawName, out string? cached))
             return cached;
 
-        string result = BaseMachine.GetDefaultMachineId(rawName);
+        string result = PowerRequiredMachinePatches.MachineTypeIdNameOverrides.TryGetValue(rawName, out string? overridden)
+            ? overridden
+            : BaseMachine.GetDefaultMachineId(rawName);
         PowerRequiredMachinePatches.MachineTypeIdCache[rawName] = result;
         return result;
     }
