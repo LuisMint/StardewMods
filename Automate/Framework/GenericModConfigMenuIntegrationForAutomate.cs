@@ -64,7 +64,19 @@ internal class GenericModConfigMenuIntegrationForAutomate : IGenericModConfigMen
                 name: I18n.Config_OverwriteAutomationDelay_Name,
                 tooltip: I18n.Config_OverwriteAutomationDelay_Desc,
                 get: config => config.OverwriteAutomationDelay,
-                set: (config, value) => config.OverwriteAutomationDelay = value
+                set: (config, value) =>
+                {
+                    config.OverwriteAutomationDelay = value;
+
+                    // MOD: added — ActionDelaySeconds is otherwise only ever reset to its default on a
+                    // config FILE load (see ModConfig.OnDeserialized), never live while the game's
+                    // running, so disabling this checkbox alone used to leave the slider (and the actual
+                    // automation speed) sitting at whatever custom value was last dialed in until the
+                    // slider itself was touched again. Resetting it here the instant the box is unchecked
+                    // means disabling really does mean "back to default," visibly and immediately.
+                    if (!value)
+                        config.ActionDelaySeconds = ModConfig.DefaultActionDelaySeconds;
+                }
             )
             .AddNumberField(
                 name: I18n.Config_ActionDelaySeconds_Name,
@@ -79,7 +91,15 @@ internal class GenericModConfigMenuIntegrationForAutomate : IGenericModConfigMen
                 name: I18n.Config_OverwriteAutomationActions_Name,
                 tooltip: I18n.Config_OverwriteAutomationActions_Desc,
                 get: config => config.OverwriteAutomationActions,
-                set: (config, value) => config.OverwriteAutomationActions = value
+                set: (config, value) =>
+                {
+                    config.OverwriteAutomationActions = value;
+
+                    // MOD: added — same reasoning as OverwriteAutomationDelay's own checkbox above, for
+                    // ActionsPerDelayWindow.
+                    if (!value)
+                        config.ActionsPerDelayWindow = ModConfig.DefaultActionsPerDelayWindow;
+                }
             )
             .AddNumberField(
                 name: I18n.Config_ActionsPerDelayWindow_Name,
@@ -152,6 +172,21 @@ internal class GenericModConfigMenuIntegrationForAutomate : IGenericModConfigMen
                 set: (config, value) => config.ConnectedMachineLocationPowerCalloutIntervalSeconds = value,
                 min: 1,
                 max: 30
+            )
+            .AddCheckbox(
+                name: I18n.Config_OverwritePowerGridCapacity_Name,
+                tooltip: I18n.Config_OverwritePowerGridCapacity_Desc,
+                get: config => config.OverwritePowerGridCapacity,
+                set: (config, value) => config.OverwritePowerGridCapacity = value
+            )
+            .AddNumberField(
+                name: I18n.Config_PowerGridCapacityOverride_Name,
+                tooltip: I18n.Config_PowerGridCapacityOverride_Desc,
+                get: config => config.PowerGridCapacityOverride,
+                set: (config, value) => config.PowerGridCapacityOverride = (int)value,
+                min: 0,
+                max: ModConfig.PowerGridCapacityOverrideInfiniteValue,
+                interval: 1
             );
 
         // MOD: removed the "connectors" section — a per-vanilla-path checkbox list plus a custom-IDs

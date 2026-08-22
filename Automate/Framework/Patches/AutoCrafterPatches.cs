@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using HarmonyLib;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -17,12 +18,61 @@ namespace Pathoschild.Stardew.Automate.Framework.Patches;
 /// (<see cref="MinutesElapsed_Prefix"/>, needed because it has no <c>Data/Machines</c> entry for the
 /// generic <see cref="PowerRequiredMachinePatches"/> freeze to apply to), and its custom 5-frame press
 /// animation plus sign-style assigned-item display (<see cref="Draw_Prefix"/>).
+///
+/// MOD: fixed — <see cref="GetFrameIndex"/> used to compare <see cref="DateTimeOffset.UtcNow"/> against a
+/// <see cref="AutoCrafterMachine.ProcessingStartMsModDataKey"/>/<see cref="AutoCrafterMachine.AnimStartModDataKey"/>
+/// timestamp written by whichever client actually started the craft (always the host) or the prime/unprime
+/// transition (whichever player physically clicked it) — synced via <see cref="StardewValley.Object.modData"/>,
+/// but read back against a DIFFERENT client's own clock on every other connected player. Correct on whoever
+/// wrote it, wrong on everyone else by however much that machine's system clock happens to differ — the
+/// same mistake found and fixed for <see cref="ContainerVisualEffects.TriggerLidAnimation"/>'s lid timing.
+/// Now, exactly like that fix, the synced values are treated as opaque CHANGE MARKERS only — each client
+/// independently notices when one changes and anchors ITS OWN local clock to it (see
+/// <see cref="LocalAnimStates"/>), so the elapsed-time math is always both computed AND consumed on the
+/// same machine. The strike-cycle dedup (<see cref="LocalAnimState.LastHandledStrikeCycle"/>) moved off
+/// networked modData into this same local state for the same reason — its only visible effects
+/// (<see cref="SpawnStrikePlume"/>'s dust puff and the "crafting" cue via <c>GameLocation.localSound</c>)
+/// were ALREADY local-only per client, so sharing the dedup flag across clients via modData never bought
+/// anything once each client's own elapsed-time calculation is independently correct; it just meant an
+/// unnecessary networked write from a per-frame draw call, and a real chance of clients disagreeing about
+/// which cycle they're even on. This requires zero new network messages — it reuses the modData sync that
+/// was already happening (see <see cref="ContainerVisualEffects"/>'s own remarks for why a per-transfer
+/// SMAPI mod message was tried elsewhere for the analogous problem and reverted for causing severe lag).
 /// </summary>
 internal static class AutoCrafterPatches
 {
     /*********
     ** Fields
     *********/
+    /// <summary>
+    /// MOD: added. Per-machine, purely LOCAL (never networked) animation anchor state — see this class's
+    /// own remarks for why. Keyed via <see cref="ConditionalWeakTable{TKey,TValue}"/> so an entry for a
+    /// machine that stops being drawn is reclaimed by the GC on its own, with no explicit cleanup needed.
+    /// </summary>
+    private static readonly ConditionalWeakTable<SObject, LocalAnimState> LocalAnimStates = new();
+
+    /// <summary>MOD: added. Per-machine mutable state tracked by <see cref="LocalAnimStates"/>.</summary>
+    private sealed class LocalAnimState
+    {
+        /// <summary>The <see cref="AutoCrafterMachine.ProcessingStartMsModDataKey"/> value this client last saw, or <c>null</c> if no craft has been observed yet.</summary>
+        public double? LastSeenProcessingStartMarker;
+
+        /// <summary>This client's own <see cref="DateTimeOffset.UtcNow"/> reading (as Unix ms) from the moment it first noticed <see cref="LastSeenProcessingStartMarker"/> change — the press-cycle animation's own local anchor.</summary>
+        public double LocalProcessingAnchorMs;
+
+        /// <summary>MOD: moved off networked modData — see this class's own remarks. Which press-cycle index (0-based, since the current craft started) THIS client has already played the strike particle/sound for, or -1 if none yet this craft.</summary>
+        public int LastHandledStrikeCycle = -1;
+
+        /// <summary>The <see cref="AutoCrafterMachine.AnimStartModDataKey"/> value this client last saw, or <c>null</c> if no prime/unprime transition has been observed yet.</summary>
+        public double? LastSeenAnimStartMarker;
+
+        /// <summary>This client's own <see cref="DateTimeOffset.UtcNow"/> reading (as Unix ms) from the moment it first noticed <see cref="LastSeenAnimStartMarker"/> change — the prime/unprime transition's own local anchor.</summary>
+        public double LocalTransitionAnchorMs;
+
+        /// <summary>Whether this client has already determined <see cref="LastSeenAnimStartMarker"/>'s own transition to be over (or — on this client's first-ever sighting of this machine — is being treated as already-settled rather than replayed, matching <see cref="Patches.ChestLidAnimationPatches"/>'s own first-sight handling) — a cheap early-out, same purpose the lid animation's own expired flag serves.</summary>
+        public bool IsTransitionSettled;
+    }
+
     /// <summary>The asset name of the powered sprite sheet (5 frames, 16x32 each, horizontal strip).</summary>
     private const string PoweredAssetName = "Mods/luisMint.PoweredAutomation/AutoCrafter";
 
@@ -152,7 +202,23 @@ internal static class AutoCrafterPatches
         if (location == null)
             return false;
 
-        string machineTypeId = BaseMachine.GetDefaultMachineId(obj.Name);
+        // MOD: fixed — was BaseMachine.GetDefaultMachineId(obj.Name), which strips non-alphanumeric
+        // characters from the vanilla object's OWN Name field. That works for a vanilla-style short name
+        // (e.g. "Crystalarium"), but this machine's own Data/BigCraftables entry deliberately sets Name to
+        // the qualified "{{ModId}}_AutoCrafter" (every custom object in this mod's content pack does the
+        // same, to avoid colliding with another mod's object of the same short name) — stripping that
+        // instead produced "luisMintPoweredAutomationAutoCrafter", which could never match "AutoCrafter" in
+        // Models.ModConfig.PowerRequiredMachineNames. Every check below silently always saw this machine as
+        // powered as a result: the no-power overlay never showed, the processing countdown never actually
+        // paused while unpowered, and the recipe-assignment interaction was never blocked either — even
+        // with "AutoCrafter" correctly configured. This machine has exactly one well-known type ID
+        // (see AutoCrafterMachine's own constructor), so it's used directly here instead of re-deriving one.
+        //
+        // NOTE: PowerRequiredMachinePatches.GetMachineTypeId fixes this exact same root cause generically
+        // (stripping the content pack's own ID prefix) for every OTHER power-required machine, since that
+        // class can't hardcode one specific type. If this Auto Crafter's own MachineTypeID resolution ever
+        // changes, or another custom machine needs this same treatment, check both places.
+        string machineTypeId = BaseMachine.GetDefaultMachineId<AutoCrafterMachine>();
         IReadOnlySet<Vector2>? poweredTiles = AutoCrafterPatches.GetPoweredTiles!(location);
 
         return AutoCrafterPatches.GetSystem!().IsPowerStarved(machineTypeId, [obj.TileLocation], poweredTiles);
@@ -280,21 +346,22 @@ internal static class AutoCrafterPatches
     /// <param name="isProcessing">Whether the machine is actively processing right now (i.e. the squash-and-stretch should apply) — see <see cref="Draw_Prefix"/>.</param>
     /// <param name="strokeProgressMs">How many real milliseconds have elapsed since the current press cycle started — meaningful only when <paramref name="isProcessing"/> is true, used by <see cref="GetSquashStretchScale"/>.</param>
     /// <param name="justStruck">Whether the press just reached fully-pressed (frame 1) on this call — signals <see cref="Draw_Prefix"/> to play the strike particle/sound.</param>
-    private static int GetFrameIndex(SObject machine, out bool isProcessing, out double strokeProgressMs, out bool justStruck)
+    /// <param name="lastHandledStrikeCycle">MOD: added. THIS client's own <see cref="LocalAnimState.LastHandledStrikeCycle"/> as of this call (meaningful only when <paramref name="justStruck"/> is true) — lets <see cref="Draw_Prefix"/> read it back without a second <see cref="LocalAnimStates"/> lookup, now that it's local state rather than something re-readable from modData.</param>
+    private static int GetFrameIndex(SObject machine, out bool isProcessing, out double strokeProgressMs, out bool justStruck, out int lastHandledStrikeCycle)
     {
-        // MOD: fixed — this used to read Game1.currentGameTime here, compared against a
-        // ProcessingStartMs/AnimStartMs timestamp written (via modData, which syncs to every player) by
-        // whichever client actually started the craft or prime/unprime transition. Game1.currentGameTime
-        // is each client's own local elapsed-time-since-launch clock with no relationship to any other
-        // client's value, so a farmhand reading a timestamp the HOST wrote (automation itself only ever
-        // runs on the host) computed a meaningless elapsed time — usually deeply negative, clamped to
-        // zero by Math.Max below — freezing the animation on one frame instead of cycling, even though
-        // the machine's actual processing (heldObject/readyForHarvest, real synced fields) worked fine.
-        // Unix epoch milliseconds are real wall-clock time and stay consistent across networked clients.
-        double nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        // MOD: fixed — see this class's own remarks for why ProcessingStartMs/AnimStartMs are no longer
+        // read as literal cross-machine-comparable timestamps; localNowMs is ONLY ever compared against
+        // THIS SAME client's own earlier reading (state.LocalProcessingAnchorMs/LocalTransitionAnchorMs),
+        // anchored fresh the moment THIS client notices either marker change — never against a value some
+        // OTHER machine wrote. Still real wall-clock time (continues through a pause, etc.), just no
+        // longer trusted to mean the same instant on a different computer.
+        double localNowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         isProcessing = false;
         strokeProgressMs = 0;
         justStruck = false;
+        lastHandledStrikeCycle = -1;
+
+        LocalAnimState state = AutoCrafterPatches.LocalAnimStates.GetOrCreateValue(machine);
 
         // MOD: an in-progress craft is entirely self-contained in heldObject/MinutesUntilReady once
         // SetInput starts it — it keeps animating normally (and finishes normally) even if the assigned
@@ -307,7 +374,21 @@ internal static class AutoCrafterPatches
 
             isProcessing = true;
 
-            double elapsedSinceStart = Math.Max(0, nowMs - AutoCrafterMachine.GetProcessingStartMs(machine));
+            double processingStartMarker = AutoCrafterMachine.GetProcessingStartMs(machine);
+            if (state.LastSeenProcessingStartMarker != processingStartMarker)
+            {
+                // MOD: added — a genuinely new craft, from THIS client's own perspective (whether that's
+                // because one truly just started, or because this is the first time this client has drawn
+                // this machine while a craft happens to be active) — anchor MY OWN local clock to it right
+                // now, and reset the strike-cycle dedup for it (see LocalAnimState.LastHandledStrikeCycle's
+                // own remarks for why that's local now too, no longer AutoCrafterMachine.SetInput's own
+                // modData.Remove).
+                state.LastSeenProcessingStartMarker = processingStartMarker;
+                state.LocalProcessingAnchorMs = localNowMs;
+                state.LastHandledStrikeCycle = -1;
+            }
+
+            double elapsedSinceStart = Math.Max(0, localNowMs - state.LocalProcessingAnchorMs);
             (double pressDownMs, double holdMs, double pressUpMs, double cycleMs) = AutoCrafterPatches.GetPressCycleTiming();
             strokeProgressMs = elapsedSinceStart % cycleMs;
 
@@ -323,11 +404,12 @@ internal static class AutoCrafterPatches
                 // drawn for a stretch (e.g. off-screen) — it just fires once, for whatever the CURRENT
                 // cycle is, rather than bursting for every cycle that passed unseen.
                 int cycleIndex = (int)(elapsedSinceStart / cycleMs);
-                if (cycleIndex > AutoCrafterMachine.GetLastHandledStrikeCycle(machine))
+                if (cycleIndex > state.LastHandledStrikeCycle)
                 {
-                    AutoCrafterMachine.SetLastHandledStrikeCycle(machine, cycleIndex);
+                    state.LastHandledStrikeCycle = cycleIndex;
                     justStruck = true;
                 }
+                lastHandledStrikeCycle = state.LastHandledStrikeCycle;
 
                 return 1; // hold at fully-pressed before springing back up
             }
@@ -340,9 +422,42 @@ internal static class AutoCrafterPatches
         }
 
         bool hasRecipe = AutoCrafterMachine.TryGetAssignedRecipe(machine, out _);
-        double elapsedSinceTransition = nowMs - AutoCrafterMachine.GetAnimStartMs(machine);
-        bool transitionInProgress = elapsedSinceTransition >= 0 && elapsedSinceTransition < AutoCrafterPatches.TransitionDurationMs;
-        double transitionProgress = Math.Clamp(elapsedSinceTransition / AutoCrafterPatches.TransitionDurationMs, 0, 1);
+        double animStartMarker = AutoCrafterMachine.GetAnimStartMs(machine);
+
+        if (state.LastSeenAnimStartMarker != animStartMarker)
+        {
+            if (state.LastSeenAnimStartMarker == null)
+            {
+                // MOD: fixed — the FIRST time THIS client ever draws THIS machine (e.g. just walked into
+                // the location, or it just finished loading), animStartMarker could be an arbitrarily old
+                // value from a transition that finished long ago (even in a previous session) — without
+                // this branch, it would still visibly replay that transition the instant any client first
+                // laid eyes on it, the exact same bug already found and fixed for the item-transfer lid
+                // animation (see ChestLidAnimationPatches's own remarks). Recording the current marker as
+                // an already-known, already-settled baseline fixes this — only a marker that changes AFTER
+                // this client has already seen one counts as a genuinely new trigger.
+                state.LastSeenAnimStartMarker = animStartMarker;
+                state.IsTransitionSettled = true;
+            }
+            else
+            {
+                state.LastSeenAnimStartMarker = animStartMarker;
+                state.LocalTransitionAnchorMs = localNowMs;
+                state.IsTransitionSettled = false;
+            }
+        }
+
+        bool transitionInProgress = false;
+        double transitionProgress = 0;
+        if (!state.IsTransitionSettled)
+        {
+            double elapsedSinceTransition = localNowMs - state.LocalTransitionAnchorMs;
+            transitionInProgress = elapsedSinceTransition < AutoCrafterPatches.TransitionDurationMs;
+            transitionProgress = Math.Clamp(elapsedSinceTransition / AutoCrafterPatches.TransitionDurationMs, 0, 1);
+
+            if (!transitionInProgress)
+                state.IsTransitionSettled = true; // cheap early-out next time, same purpose as the lid animation's own expired flag
+        }
 
         if (!hasRecipe)
         {
@@ -467,25 +582,26 @@ internal static class AutoCrafterPatches
         if (isPowered)
         {
             texture = Game1.content.Load<Texture2D>(AutoCrafterPatches.PoweredAssetName);
-            int frameIndex = AutoCrafterPatches.GetFrameIndex(__instance, out isProcessing, out strokeProgressMs, out bool justStruck);
+            int frameIndex = AutoCrafterPatches.GetFrameIndex(__instance, out isProcessing, out strokeProgressMs, out bool justStruck, out int lastHandledStrikeCycle);
             sourceRect = new Rectangle(frameIndex * AutoCrafterPatches.FrameWidth, 0, AutoCrafterPatches.FrameWidth, AutoCrafterPatches.FrameHeight);
 
             // MOD: changed — a light dust puff every press-cycle right as it reaches
             // fully-pressed, plus the "crafting" cue but ONLY for the craft's first three strikes (cycle
-            // index 0-2 — GetFrameIndex already records the just-handled cycle index via
-            // AutoCrafterMachine.SetLastHandledStrikeCycle, so it's read back here right after justStruck
-            // fires). Uses GameLocation.localSound rather than the broadcasting playSound used elsewhere:
-            // this draw call runs independently on EVERY client that can see the machine (unlike machine
-            // logic, which only runs once on the host), so a broadcasting sound here would multiply into
-            // an echo — one play per observing client, re-broadcast to everyone else. localSound plays
-            // only for the local client that just triggered it, and since every client derives justStruck
-            // from the same synced modData/game-time, they each fire their own local copy at the same
-            // moment without any of them stacking.
+            // index 0-2 — GetFrameIndex already returns the just-handled cycle index via its own
+            // lastHandledStrikeCycle out parameter, now that it's purely local per-client state rather
+            // than something re-readable from modData — see LocalAnimState's own remarks). Uses
+            // GameLocation.localSound rather than the broadcasting playSound used elsewhere: this draw
+            // call runs independently on EVERY client that can see the machine (unlike machine logic,
+            // which only runs once on the host), so a broadcasting sound here would multiply into an
+            // echo — one play per observing client, re-broadcast to everyone else. localSound plays only
+            // for the local client that just triggered it — each client now independently (and
+            // correctly, regardless of any clock drift from another machine) decides when its OWN
+            // justStruck fires, so there's nothing left to keep in sync across clients for this at all.
             if (justStruck && __instance.Location != null)
             {
                 AutoCrafterPatches.SpawnStrikePlume(__instance.Location, x, y);
 
-                if (!Game1.paused && AutoCrafterMachine.GetLastHandledStrikeCycle(__instance) < 3)
+                if (!Game1.paused && lastHandledStrikeCycle < 3)
                     __instance.Location.localSound("crafting", new Vector2(x, y));
             }
         }

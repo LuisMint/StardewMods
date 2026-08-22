@@ -99,6 +99,30 @@ internal static class PowerRequiredMachinePatches
     /// <summary>Get the currently-powered tiles for a location (or <c>null</c> if the power system is disabled), set via <see cref="Initialize"/>.</summary>
     private static Func<GameLocation, IReadOnlySet<Vector2>?>? GetPoweredTiles;
 
+    /// <summary>
+    /// MOD: added. The PoweredAutomation CONTENT PACK's own mod ID (<c>"luisMint.PoweredAutomation"</c> —
+    /// a separate mod from this C# code mod, whose own manifest UniqueID is <c>"Pathoschild.Automate"</c>;
+    /// this codebase already hardcodes the content pack's ID elsewhere, e.g. <see cref="NoPowerIconAssetName"/>'s
+    /// own asset path), set via <see cref="Initialize"/> — used by <see cref="IsPowerStarved"/> to strip a
+    /// leading <c>"{ContentPackID}_"</c> prefix from an object's own <see cref="SObject.Name"/> before
+    /// deriving its machine type ID. Every custom object in that content pack deliberately sets its own
+    /// Content Patcher <c>{{ModId}}</c> token — which resolves to the content pack's OWN ID, not this C#
+    /// mod's — as a <c>Name</c> prefix (to avoid colliding with another mod's object sharing the same
+    /// short name — e.g. "AutoCrafter" — the same reason a BigCraftable/Object's own ID key is qualified
+    /// too), which otherwise reduces to something like "luisMintPoweredAutomationAutoCrafter" once
+    /// <see cref="BaseMachine.GetDefaultMachineId(string)"/> strips its non-alphanumeric characters — never
+    /// matching a short entry like "AutoCrafter" in <see cref="Models.ModConfig.PowerRequiredMachineNames"/>.
+    /// MOD: fixed — this was passed <c>ModEntry</c>'s own <c>ModManifest.UniqueID</c> at first, which is
+    /// this C# mod's OWN id ("Pathoschild.Automate") and therefore never matched the content pack's actual
+    /// "luisMint.PoweredAutomation" prefix at all — silently making the whole strip a no-op and leaving the
+    /// no-power icon overlay broken for the Auto Crafter exactly as before, confirmed via direct user
+    /// report (it showed correctly after a save reload — likely via some other, separately-correct path —
+    /// but never right after placing a new one). A vanilla or other-mod machine's own Name never starts
+    /// with the content pack's prefix either way, so stripping is a safe no-op for every machine this bug
+    /// doesn't apply to.
+    /// </summary>
+    private static string? ModIdPrefix;
+
 
     /*********
     ** Public methods
@@ -106,10 +130,12 @@ internal static class PowerRequiredMachinePatches
     /// <summary>Provide the accessors needed to resolve which machines are power-starved. Must be called before <see cref="Apply"/>.</summary>
     /// <param name="getSystem">Get the shared power-required-machines system.</param>
     /// <param name="getPoweredTiles">Get the currently-powered tiles for a location (or <c>null</c> if the power system is disabled).</param>
-    public static void Initialize(Func<PowerRequiredMachineSystem> getSystem, Func<GameLocation, IReadOnlySet<Vector2>?> getPoweredTiles)
+    /// <param name="modId">MOD: added. The PoweredAutomation CONTENT PACK's own mod ID (NOT this C# mod's own <c>ModManifest.UniqueID</c>) — see <see cref="ModIdPrefix"/>'s own remarks.</param>
+    public static void Initialize(Func<PowerRequiredMachineSystem> getSystem, Func<GameLocation, IReadOnlySet<Vector2>?> getPoweredTiles, string modId)
     {
         PowerRequiredMachinePatches.GetSystem = getSystem;
         PowerRequiredMachinePatches.GetPoweredTiles = getPoweredTiles;
+        PowerRequiredMachinePatches.ModIdPrefix = modId + "_";
     }
 
     /// <summary>MOD: added. Reset the per-night "already queued" flags for the Auto-Grabber/Auto-Petter wake-up failure messages. Must be called once at the start of each night's processing (before the overnight machine/animal updates run), so a failure on a later night can queue the message again.</summary>
@@ -272,7 +298,7 @@ internal static class PowerRequiredMachinePatches
         // item ID like "(BC)165" instead would never match anything in the configured machine list)
         // and tell WHICH machine a starved chest belongs to, to show the right wake-up failure message.
         if (isStarved)
-            heldChest.modData[PowerRequiredMachinePatches.PowerStarvedChestModDataKey] = BaseMachine.GetDefaultMachineId(obj.Name);
+            heldChest.modData[PowerRequiredMachinePatches.PowerStarvedChestModDataKey] = PowerRequiredMachinePatches.GetMachineTypeId(obj);
         else
             heldChest.modData.Remove(PowerRequiredMachinePatches.PowerStarvedChestModDataKey);
     }
@@ -471,9 +497,55 @@ internal static class PowerRequiredMachinePatches
         if (location == null)
             return false;
 
-        string machineTypeId = BaseMachine.GetDefaultMachineId(obj.Name);
+        string machineTypeId = PowerRequiredMachinePatches.GetMachineTypeId(obj);
         IReadOnlySet<Vector2>? poweredTiles = PowerRequiredMachinePatches.GetPoweredTiles!(location);
 
         return PowerRequiredMachinePatches.GetSystem!().IsPowerStarved(machineTypeId, [obj.TileLocation], poweredTiles);
+    }
+
+    /// <summary>
+    /// MOD: added. Caches <see cref="GetMachineTypeId"/>'s own result, keyed by an object's raw (unstripped)
+    /// <see cref="SObject.Name"/> — that name never changes after construction (it's fixed by the object's
+    /// own <c>Data/BigCraftables</c>/<c>Data/Objects</c> entry), and every OTHER instance sharing the same
+    /// Name always resolves to the exact same type ID, so this is safe to key by name rather than by
+    /// instance. <see cref="IsPowerStarved"/>/<see cref="Draw_Postfix"/> (via the shared
+    /// <see cref="SObject.draw"/>/<see cref="WoodChipper.draw"/> patches) call this once per visible
+    /// power-required machine EVERY FRAME — without this cache, that repeated the same
+    /// <see cref="string.StartsWith"/>/<see cref="string.Substring"/>/<see cref="BaseMachine.GetDefaultMachineId(string)"/>
+    /// (itself a LINQ filter + array + string allocation) from scratch every single draw call, for a result
+    /// that's always identical for a given Name. Bounded in size by however many DISTINCT machine Names
+    /// exist in the save (a handful to a few dozen at most), never per-instance, so this never needs eviction.
+    /// </summary>
+    private static readonly Dictionary<string, string> MachineTypeIdCache = new();
+
+    /// <summary>
+    /// MOD: added. Resolve an object's own machine type ID from its vanilla <see cref="SObject.Name"/> —
+    /// shared by <see cref="IsPowerStarved"/> and <see cref="SyncHeldChestTag"/> so the two can't drift
+    /// apart. See <see cref="ModIdPrefix"/>'s own remarks for why a leading match against THIS mod's own ID
+    /// is stripped first: every custom object in this mod's own content pack deliberately sets <c>Name</c>
+    /// to a qualified <c>"{ModID}_ShortName"</c> form, which <see cref="BaseMachine.GetDefaultMachineId(string)"/>
+    /// alone would otherwise mangle into something that can never match a short configured entry like
+    /// "AutoCrafter". A vanilla or other-mod machine's own Name never starts with this mod's own prefix, so
+    /// this is a safe no-op for every machine that isn't affected.
+    ///
+    /// NOTE: <see cref="Patches.AutoCrafterPatches.IsStarved"/> fixes this exact same root cause for the
+    /// Auto Crafter specifically, but via a hardcoded <see cref="BaseMachine.GetDefaultMachineId{TMachine}"/>
+    /// instead — that class only ever needs ONE well-known type ID, so hardcoding it there is simpler and
+    /// avoids re-deriving one. If this generic stripping logic ever changes, check that call site too.
+    /// </summary>
+    /// <param name="obj">The object to resolve.</param>
+    private static string GetMachineTypeId(SObject obj)
+    {
+        string rawName = obj.Name;
+        if (PowerRequiredMachinePatches.MachineTypeIdCache.TryGetValue(rawName, out string? cached))
+            return cached;
+
+        string name = rawName;
+        if (PowerRequiredMachinePatches.ModIdPrefix is { Length: > 0 } modIdPrefix && name.StartsWith(modIdPrefix, StringComparison.OrdinalIgnoreCase))
+            name = name.Substring(modIdPrefix.Length);
+
+        string result = BaseMachine.GetDefaultMachineId(name);
+        PowerRequiredMachinePatches.MachineTypeIdCache[rawName] = result;
+        return result;
     }
 }

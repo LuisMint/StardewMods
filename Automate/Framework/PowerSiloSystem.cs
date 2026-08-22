@@ -45,6 +45,9 @@ internal class PowerSiloSystem
     /// <summary>Get the Power Coil capacity available with no Power Silo built at all.</summary>
     private readonly Func<int> GetBaseCapacity;
 
+    /// <summary>MOD: added. Get a fixed value that should replace the normal total-capacity calculation entirely (see <see cref="GetTotalCapacity"/>), or <c>null</c> to use the normal calculation.</summary>
+    private readonly Func<int?> GetCapacityOverride;
+
     /// <summary>Get the item names/IDs that count as a Power Coil for capacity purposes — the same set <see cref="PowerSystem"/> itself uses as its power sources, so a coil isn't tracked as two independent lists that could drift apart.</summary>
     private readonly Func<HashSet<string>> GetSourceNames;
 
@@ -126,15 +129,17 @@ internal class PowerSiloSystem
     /// <param name="getSiloBuildingNames">Get the <c>buildingType</c> ID(s) that count as a Power Silo.</param>
     /// <param name="getTiers">Get the ordered capacity tiers for a specific Power Silo building.</param>
     /// <param name="getBaseCapacity">Get the Power Coil capacity available with no Power Silo built at all.</param>
+    /// <param name="getCapacityOverride">MOD: added. Get a fixed value that should replace the normal total-capacity calculation entirely, or <c>null</c> to use the normal calculation.</param>
     /// <param name="getSourceNames">Get the item names/IDs that count as a Power Coil for capacity purposes.</param>
     /// <param name="getSolarPanelNames">MOD: added. Get the item names/IDs that count as a Solar Panel for the solar tier's connected-panel bonus.</param>
     /// <param name="getPoweredTilesForLocation">MOD: added. Get a location's currently-powered tiles, or <c>null</c> if the power system itself is disabled.</param>
-    public PowerSiloSystem(Func<bool> getEnabled, Func<HashSet<string>> getSiloBuildingNames, Func<Building, List<PowerSiloTierConfig>> getTiers, Func<int> getBaseCapacity, Func<HashSet<string>> getSourceNames, Func<HashSet<string>> getSolarPanelNames, Func<GameLocation, IReadOnlySet<Vector2>?> getPoweredTilesForLocation)
+    public PowerSiloSystem(Func<bool> getEnabled, Func<HashSet<string>> getSiloBuildingNames, Func<Building, List<PowerSiloTierConfig>> getTiers, Func<int> getBaseCapacity, Func<int?> getCapacityOverride, Func<HashSet<string>> getSourceNames, Func<HashSet<string>> getSolarPanelNames, Func<GameLocation, IReadOnlySet<Vector2>?> getPoweredTilesForLocation)
     {
         this.GetEnabledFromConfig = getEnabled;
         this.GetSiloBuildingNames = getSiloBuildingNames;
         this.GetTiers = getTiers;
         this.GetBaseCapacity = getBaseCapacity;
+        this.GetCapacityOverride = getCapacityOverride;
         this.GetSourceNames = getSourceNames;
         this.GetSolarPanelNames = getSolarPanelNames;
         this.GetPoweredTilesForLocation = getPoweredTilesForLocation;
@@ -200,8 +205,9 @@ internal class PowerSiloSystem
     /// <summary>
     /// Get the total Power Coil capacity available across the save — <see cref="GetBaseCapacity"/>
     /// (available even with no Power Silo at all) plus every Power Silo's own contribution at its
-    /// current tier. Cheap — only scans buildings, never coils — so it's safe to call every tick purely
-    /// to detect a change (see <see cref="MachineManager"/>), reserving the expensive
+    /// current tier, unless <see cref="GetCapacityOverride"/> is set, which replaces this whole
+    /// calculation with a fixed value. Cheap — only scans buildings, never coils — so it's safe to call
+    /// every tick purely to detect a change (see <see cref="MachineManager"/>), reserving the expensive
     /// <see cref="RefreshCoilAllowance"/> scan for when that number (or a coil placement/destruction)
     /// actually changes something.
     /// </summary>
@@ -209,6 +215,19 @@ internal class PowerSiloSystem
     {
         if (!this.IsEnabled)
             return int.MaxValue;
+
+        // MOD: added — a fixed override takes priority over the real calculation entirely, so it isn't
+        // still limited by (or added on top of) whatever the starting allowance and each Silo's own
+        // tier would otherwise contribute. The GMCM slider's top value doubles as an "infinite capacity"
+        // sentinel (see ModConfig.PowerGridCapacityOverrideInfiniteValue's own remarks) — this is the
+        // ONLY place that special-cases it; the normal calculation below never does, even if it happens
+        // to sum to the same number.
+        if (this.GetCapacityOverride() is int capacityOverride)
+        {
+            return capacityOverride == ModConfig.PowerGridCapacityOverrideInfiniteValue
+                ? int.MaxValue
+                : capacityOverride;
+        }
 
         int total = Math.Max(0, this.GetBaseCapacity());
 

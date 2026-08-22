@@ -225,6 +225,7 @@ internal class MachineManager
             getSiloBuildingNames: () => this.Config().PowerSiloBuildingNames,
             getTiers: silo => powerSiloTierRoller.GetEffectiveTiers(silo),
             getBaseCapacity: () => this.Config().PowerSiloBaseCapacity,
+            getCapacityOverride: () => this.Config().OverwritePowerGridCapacity ? this.Config().PowerGridCapacityOverride : null, // MOD: added
             getSourceNames: () => this.Config().PowerSourceNames,
             getSolarPanelNames: () => this.Config().PowerSiloSolarPanelNames, // MOD: added
             // MOD: added — fixed (twice over). First fix: `GetMachineDataFor` only has an entry for a

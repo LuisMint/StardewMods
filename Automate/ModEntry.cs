@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using HarmonyLib;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -237,6 +238,44 @@ internal class ModEntry : Mod
     private readonly HashSet<IMachineGroup> ArmedGroupBatches = new(new ObjectReferenceComparer<IMachineGroup>());
 
     /// <summary>
+    /// MOD: added. How many times in a row a given <see cref="IChestLikeMachine"/> was actually attempted
+    /// (see <see cref="AutomateMachine"/>) and moved nothing, plus when that last attempt happened — used
+    /// by <see cref="ScheduleGroupCheck"/> to stop re-enqueueing one on EVERY confirmed signal for its group
+    /// once it's proven itself unproductive several times in a row (see <see cref="ChestLikeFruitlessStreakThreshold"/>/
+    /// <see cref="ChestLikeBackoffWindowsCooldown"/>). A <see cref="IChestLikeMachine"/>'s own
+    /// <see cref="IMachine.GetState"/> is hardcoded to always report Empty (see <see cref="QueuedMachines"/>'s
+    /// own remarks), so — unlike a normal machine — nothing about its state alone ever says "skip me, I have
+    /// nothing to do"; without this, a Powered Chest whose piped connections genuinely never have anything
+    /// for it still gets a real <see cref="Framework.Machines.Objects.PoweredChestMachine.TryMoveOne"/> scan
+    /// (a real per-container, per-item-stack loop, not a free check) on every single confirmed signal for its
+    /// group, forever, crowding out the group's limited <see cref="ModConfig.ActionsPerDelayWindow"/> budget
+    /// from machines that actually have something to do.
+    ///
+    /// Keyed via <see cref="ConditionalWeakTable{TKey,TValue}"/> rather than a plain <see cref="Dictionary{TKey,TValue}"/>
+    /// specifically so it never needs wiring into <see cref="PurgeRemovedGroupsPacingState"/>/<see cref="ResetDelayQueueState"/>
+    /// — an <see cref="IMachine"/> wrapper discarded by a rebuild simply becomes unreachable and its entry is
+    /// reclaimed by the GC on its own, the same "fresh start after a rebuild" behavior every other per-machine
+    /// tracker here already gets via explicit purging, for free.
+    /// </summary>
+    private readonly ConditionalWeakTable<IMachine, ChestLikeAttemptState> ChestLikeAttemptStreaks = new();
+
+    /// <summary>MOD: added. How many consecutive fruitless attempts (see <see cref="ChestLikeAttemptStreaks"/>) before a <see cref="IChestLikeMachine"/> starts being backed off from confirmed-signal re-checks.</summary>
+    private const int ChestLikeFruitlessStreakThreshold = 3;
+
+    /// <summary>MOD: added. Once backed off (see <see cref="ChestLikeFruitlessStreakThreshold"/>), how many real-time seconds (scaled by <see cref="GetEffectiveActionDelaySeconds"/> — see <see cref="ScheduleGroupCheck"/>) a <see cref="IChestLikeMachine"/> is skipped for on a confirmed signal before it's given another chance.</summary>
+    private const double ChestLikeBackoffWindowsCooldown = 2;
+
+    /// <summary>MOD: added. Per-<see cref="IChestLikeMachine"/> mutable state tracked by <see cref="ChestLikeAttemptStreaks"/>.</summary>
+    private sealed class ChestLikeAttemptState
+    {
+        /// <summary>How many attempts in a row (see <see cref="AutomateMachine"/>) moved nothing.</summary>
+        public int ConsecutiveFruitless;
+
+        /// <summary>The <see cref="UnpausedElapsedMs"/> value as of the last attempt, fruitless or not.</summary>
+        public double LastAttemptAtMs;
+    }
+
+    /// <summary>
     /// MOD: added. Container changes reported by <see cref="ThrottledContainer"/> via
     /// its <c>notifyContainerChanged</c> delegate, queued here instead of being acted on immediately — see
     /// <see cref="ProcessPendingContainerChangeNotifications"/> for why this indirection is required.
@@ -280,6 +319,9 @@ internal class ModEntry : Mod
 
     /// <summary>MOD: added. The SMAPI multiplayer message type used to tell every other connected player about an automated shipment changing the shipping bin's "last shipped" display — see <see cref="BroadcastLastItemShipped"/>/<see cref="OnModMessageReceived"/>.</summary>
     private const string BroadcastLastItemShippedMessageType = "luisMint.PoweredAutomation_BroadcastLastItemShipped";
+
+    /// <summary>MOD: added. The SMAPI multiplayer message type a farmhand sends to the host to say one of their own menus just closed — see <see cref="OnMenuChanged"/>/<see cref="OnModMessageReceived"/> for why the host can't just detect this itself.</summary>
+    private const string NotifyHostMenuClosedMessageType = "luisMint.PoweredAutomation_NotifyHostMenuClosed";
 
     /// <summary>MOD: added. How long the most recent delayed group batch actually waited (in milliseconds) before firing, for the perf overlay to show — lets <see cref="ModConfig.ActionDelaySeconds"/> be verified against real measured timing instead of going on feel alone.</summary>
     private double? LastActualDelayMs;
@@ -396,7 +438,13 @@ internal class ModEntry : Mod
             getRelayBuildingNames: () => this.Config.PowerRelayBuildingNames,
             getActionDelayReductionPerShard: () => this.Config.PowerRelayActionDelayReductionPerShardSeconds,
             getActionsPerDelayWindowBonusPerBar: () => this.Config.PowerRelayActionsPerDelayWindowBonusPerBar,
-            getBaseActionDelaySeconds: () => this.Config.ActionDelaySeconds,
+            // MOD: fixed — used to read Config.ActionDelaySeconds unconditionally, which only equals the
+            // true "not overwriting" default (ModConfig.DefaultActionDelaySeconds) right after a config
+            // file load; GMCM edits it live without resetting it back, so disabling "Overwrite automation
+            // delay" live left this (and PowerRelayMenu's own display, which reads through the same
+            // method) still computing off whatever custom number was last dialed in, until the slider was
+            // touched again.
+            getBaseActionDelaySeconds: () => this.Config.OverwriteAutomationDelay ? this.Config.ActionDelaySeconds : ModConfig.DefaultActionDelaySeconds,
             getMinimumActionDelaySeconds: () => this.Config.PowerRelayMinimumActionDelaySeconds
         );
 
@@ -461,7 +509,8 @@ internal class ModEntry : Mod
 
         PowerRequiredMachinePatches.Initialize(
             getSystem: () => this.MachineManager.Factory.PowerRequiredMachineSystem,
-            getPoweredTiles: location => this.MachineManager.GetMachineDataFor(location)?.PoweredTiles
+            getPoweredTiles: location => this.MachineManager.GetMachineDataFor(location)?.PoweredTiles,
+            modId: "luisMint.PoweredAutomation" // MOD: fixed — was this.ModManifest.UniqueID (this C# mod's OWN id, "Pathoschild.Automate"), which never matched the content pack's actual Name prefix at all; see PowerRequiredMachinePatches.ModIdPrefix's own remarks. This is the PoweredAutomation content pack's own separate mod ID, already hardcoded the same way elsewhere in this codebase (e.g. MirrorPowerSiloAudioFiles above).
         );
         PowerRequiredMachinePatches.Apply(harmony);
 
@@ -539,7 +588,8 @@ internal class ModEntry : Mod
         new PowerSiloInteraction(
             powerSiloSystem: this.MachineManager.Factory.PowerSiloSystem,
             getTiers: silo => this.PowerSiloTierRoller.GetEffectiveTiers(silo),
-            broadcastHudMessage: this.BroadcastHudMessage // MOD: added — Power Silo capacity is save-wide, so every player should see a tier-up
+            broadcastHudMessage: this.BroadcastHudMessage, // MOD: added — Power Silo capacity is save-wide, so every player should see a tier-up
+            queueReload: this.BroadcastReloadLocations // MOD: fixed — was this.MachineManager.QueueReload, which only ever reloaded the HOST's own local machine data. A farmhand's own MachineManager needed the exact same fix BroadcastReloadLocations already exists for (see its own remarks) — otherwise a farmhand's own no-power icons/conduit textures stayed stale after a tier-up even once the host's own view correctly refreshed. See PowerSiloInteraction's own remarks for why a tier-up needs to requeue affected locations at all, not just refresh each coil's own modData.
         ).Register();
 
         // MOD: added — registers the Power Relay's click interaction the same way (see
@@ -550,7 +600,8 @@ internal class ModEntry : Mod
             getFirstShardItemId: () => this.Config.PowerRelayFirstShardItemId,
             getBarItemId: () => this.Config.PowerRelayBarItemId,
             getFirstBarItemId: () => this.Config.PowerRelayFirstBarItemId,
-            getBaseActionsPerDelayWindow: () => this.Config.ActionsPerDelayWindow,
+            // MOD: fixed — same reasoning as getBaseActionDelaySeconds above, for the actions side.
+            getBaseActionsPerDelayWindow: () => this.Config.OverwriteAutomationActions ? this.Config.ActionsPerDelayWindow : ModConfig.DefaultActionsPerDelayWindow,
             broadcastHudMessage: this.BroadcastHudMessage // MOD: added — the Relay's pacing bonus is save-wide, so every player should see it improve
         ).Register();
 
@@ -825,6 +876,14 @@ internal class ModEntry : Mod
             // count refreshes first since coil allowance depends on total capacity, which now depends
             // on it too.
             this.MachineManager.Factory.PowerSiloSystem.RefreshConnectedSolarPanelCount();
+
+            // MOD: this call's own return value (which locations had a coil actually flip — see
+            // PowerSiloSystem.RefreshCoilAllowance's own remarks) is deliberately discarded here, unlike
+            // PowerSiloPatches'/PowerSiloInteraction's own calls to the same method, which requeue exactly
+            // those locations. Not an oversight: this whole block sits just after this.MachineManager.Reset()
+            // a few lines up, which unconditionally rebuilds EVERY location's machine groups/poweredTiles
+            // regardless of what changed — so whatever this call reports is already moot by the time it
+            // returns. Requeuing it too would just be a same-day repeat of a scan that already just ran.
             this.MachineManager.Factory.PowerSiloSystem.RefreshCoilAllowance();
 
             // MOD: added — clears the Power Silo cap's cached animation state, mirroring MachineManager.Reset() above.
@@ -1335,10 +1394,59 @@ internal class ModEntry : Mod
     /// isn't even in the player's current location — the real location was already captured correctly
     /// back when <see cref="OnChestInventoryChanged"/> queued it, so this doesn't need to re-derive it
     /// from the closing menu at all.
+    ///
+    /// MOD: fixed — <see cref="IDisplayEvents.MenuChanged"/> is inherently LOCAL to whichever client's own
+    /// screen the menu closed on; it never fires on any OTHER client, including the host. Since
+    /// <see cref="LocationsPendingLockedRetry"/> is only ever populated by the HOST's own
+    /// <see cref="OnChestInventoryChanged"/> (gated behind <see cref="EnableAutomation"/>, i.e.
+    /// <see cref="Context.IsMainPlayer"/>), a FARMHAND closing the exact chest menu that caused a location
+    /// to be queued there produced a <see cref="IDisplayEvents.MenuChanged"/> the host could never see —
+    /// so if that container was STILL locked the one time the host's own (delay-paced) automation attempt
+    /// happened to run, nothing would EVER retry it again, until some unrelated later event happened to
+    /// touch that location. Confirmed directly via user report: a farmhand manually adding items to a
+    /// Powered Chest sometimes wasn't picked up after closing it. Now every non-host client that closes a
+    /// menu tells the host directly (a cheap, occasional per-menu-close message — nothing like the
+    /// per-transfer frequency that made a similar message-based approach too expensive elsewhere, see
+    /// <see cref="ContainerVisualEffects"/>'s own remarks), and the host retries from either trigger.
     /// </remarks>
     private void OnMenuChanged(object? sender, MenuChangedEventArgs e)
     {
-        if (e.NewMenu != null || !Context.IsWorldReady || !this.EnableAutomation || !this.Config.UseEventBasedAutomation || this.LocationsPendingLockedRetry.Count == 0)
+        if (e.NewMenu != null || !Context.IsWorldReady || !this.Config.UseEventBasedAutomation)
+            return;
+
+        if (!Context.IsMainPlayer)
+        {
+            // MOD: added — see this method's own remarks. Sent unconditionally on any menu closing,
+            // even if nothing is actually pending on the host right now — cheap either way, and this
+            // client has no way to know the host's own LocationsPendingLockedRetry state.
+            if (Context.IsMultiplayer)
+            {
+                this.Helper.Multiplayer.SendMessage(
+                    message: true,
+                    messageType: ModEntry.NotifyHostMenuClosedMessageType,
+                    modIDs: [this.ModManifest.UniqueID],
+                    playerIDs: [Game1.MasterPlayer.UniqueMultiplayerID]
+                );
+            }
+            return;
+        }
+
+        if (!this.EnableAutomation)
+            return;
+
+        this.RetryLocationsPendingLockedRetry();
+    }
+
+    /// <summary>
+    /// MOD: added. Retry every location <see cref="LocationsPendingLockedRetry"/> is holding — shared by
+    /// <see cref="OnMenuChanged"/> (the host's own menu closing) and <see cref="OnModMessageReceived"/>
+    /// (a farmhand's own menu closing, reported via <see cref="NotifyHostMenuClosedMessageType"/>) so the
+    /// two triggers can't drift apart. Host-only to call — every caller already checks
+    /// <see cref="EnableAutomation"/> first.
+    /// </summary>
+    private void RetryLocationsPendingLockedRetry()
+    {
+        if (this.LocationsPendingLockedRetry.Count == 0)
             return;
 
         try
@@ -1395,14 +1503,23 @@ internal class ModEntry : Mod
     /// </summary>
     private int GetEffectiveActionsPerDelayWindow()
     {
-        // MOD: added — same reasoning as GetEffectiveActionDelaySeconds above: an
+        // MOD: fixed — this checked OverwriteAutomationDelay (the DELAY flag) instead of
+        // OverwriteAutomationActions, a copy-paste mistake — meaning enabling/disabling "Overwrite
+        // automation actions" never actually did anything as long as the DELAY overwrite happened to be
+        // on (this branch would still fire) or off (it would still skip to the branch below regardless of
+        // what the ACTIONS checkbox said). Same reasoning as GetEffectiveActionDelaySeconds above: an
         // overwrite should mean exactly that, with no Power Relay bonus layered on top.
-        if (this.Config.OverwriteAutomationDelay)
+        if (this.Config.OverwriteAutomationActions)
             return this.Config.ActionsPerDelayWindow;
 
-        return this.Config.ActionsPerDelayWindow <= 0
-            ? this.Config.ActionsPerDelayWindow
-            : this.Config.ActionsPerDelayWindow + this.PowerRelaySystem.GetActionsPerDelayWindowBonus();
+        // MOD: fixed — used to read Config.ActionsPerDelayWindow directly here too, which has the exact
+        // same staleness problem as ActionDelaySeconds (see getBaseActionDelaySeconds's own remarks) —
+        // only reliably equal to the true default right after a config file load, not after a live GMCM
+        // edit. Reading the constant directly means this is correct the instant the checkbox is
+        // unchecked, with no dependency on the raw config value having been reset first.
+        return ModConfig.DefaultActionsPerDelayWindow <= 0
+            ? ModConfig.DefaultActionsPerDelayWindow
+            : ModConfig.DefaultActionsPerDelayWindow + this.PowerRelaySystem.GetActionsPerDelayWindowBonus();
     }
 
     private void TryRunAutomationPass()
@@ -1558,6 +1675,16 @@ internal class ModEntry : Mod
 
         if (stopwatch != null)
             AutomationPerfTracker.RecordFlaggedBatch(stopwatch.Elapsed.TotalMilliseconds);
+
+        // MOD: added — see ChestLikeAttemptStreaks's own remarks. Only tracked for a IChestLikeMachine:
+        // an ordinary machine's own GetState() already prevents a genuinely idle one from being re-attempted
+        // at all, so a streak would never accumulate for one in the first place.
+        if (MachineGroup.IsChestLikeMachine(machine))
+        {
+            ChestLikeAttemptState state = this.ChestLikeAttemptStreaks.GetOrCreateValue(machine);
+            state.ConsecutiveFruitless = didSomething ? 0 : state.ConsecutiveFruitless + 1;
+            state.LastAttemptAtMs = this.UnpausedElapsedMs;
+        }
 
         return didSomething;
     }
@@ -1869,11 +1996,34 @@ internal class ModEntry : Mod
     /// </param>
     private void ScheduleGroupCheck(IMachineGroup group, bool isConfirmedSignal = true)
     {
+        // MOD: added — lazily computed (and cached) the FIRST time the backoff check below actually needs
+        // it, not unconditionally at the top of the loop. GetEffectiveActionDelaySeconds ultimately sums
+        // Power Relay shard levels across every relay in the save (PowerRelaySystem.SumAcrossRelays) —
+        // real work, not a cheap read — so this avoids paying it at all for the common case (no chest-like
+        // machine in this group is even eligible for backoff), while still reusing the same value instead
+        // of re-deriving it for every additional candidate later in the same loop.
+        float? effectiveActionDelaySeconds = null;
+
         foreach (IMachine machine in group.Machines)
         {
             MachineState state = machine.GetState();
             if (state is not (MachineState.Done or MachineState.Empty))
                 continue;
+
+            // MOD: added — see ChestLikeAttemptStreaks's own remarks. A IChestLikeMachine that's struck out
+            // several times in a row doesn't get an automatic re-check on EVERY confirmed signal for its
+            // whole group anymore; it waits out a short cooldown instead, so it stops crowding the group's
+            // limited ActionsPerDelayWindow budget with attempts that keep finding nothing. A blind signal
+            // (isConfirmedSignal: false — the group itself was just built/rebuilt) always bypasses this, so
+            // a genuinely new connection is still checked immediately regardless of any prior streak.
+            if (isConfirmedSignal
+                && MachineGroup.IsChestLikeMachine(machine)
+                && this.ChestLikeAttemptStreaks.TryGetValue(machine, out ChestLikeAttemptState? attemptState)
+                && attemptState.ConsecutiveFruitless >= ModEntry.ChestLikeFruitlessStreakThreshold
+                && this.UnpausedElapsedMs - attemptState.LastAttemptAtMs < ModEntry.ChestLikeBackoffWindowsCooldown * (effectiveActionDelaySeconds ??= this.GetEffectiveActionDelaySeconds()) * 1000)
+            {
+                continue; // still backed off — skip this one, but keep checking the rest of the group
+            }
 
             this.EnqueueForAutomation(group, machine, isConfirmedSignal);
             this.TryScheduleGroupBatch(group);
@@ -2215,6 +2365,14 @@ internal class ModEntry : Mod
 
             if (match != null)
                 farm.lastItemShipped = match;
+        }
+
+        // MOD: added — the receiving half of NotifyHostMenuClosedMessageType: a farmhand's own menu just
+        // closed on THEIR client, which the host has no other way to observe — see OnMenuChanged's own
+        // remarks for why this is needed at all.
+        else if (Context.IsMainPlayer && e.FromModID == this.ModManifest.UniqueID && e.Type == ModEntry.NotifyHostMenuClosedMessageType && this.EnableAutomation)
+        {
+            this.RetryLocationsPendingLockedRetry();
         }
     }
 

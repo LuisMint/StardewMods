@@ -15,11 +15,21 @@ internal class ModConfig
     /*********
     ** Fields
     *********/
-    /// <summary>MOD: added. The fixed value <see cref="ActionDelaySeconds"/> is reset to on load unless <see cref="OverwriteAutomationSettings"/> is <c>true</c>.</summary>
-    private const float DefaultActionDelaySeconds = 7f;
+    /// <summary>
+    /// MOD: added. The fixed value <see cref="ActionDelaySeconds"/> is reset to on load unless
+    /// <see cref="OverwriteAutomationDelay"/> is <c>true</c>. Also read directly by <see cref="ModEntry"/>'s
+    /// Power Relay wiring as the "not overwriting" base, so the Relay's own bonus is never computed on top
+    /// of a stale leftover overwritten value once the player disables the checkbox live — internal (not
+    /// private) so <see cref="ModEntry"/> can reference it there.
+    /// </summary>
+    internal const float DefaultActionDelaySeconds = 7f;
 
-    /// <summary>MOD: added. The fixed value <see cref="ActionsPerDelayWindow"/> is reset to on load unless <see cref="OverwriteAutomationSettings"/> is <c>true</c>.</summary>
-    private const int DefaultActionsPerDelayWindow = 1;
+    /// <summary>
+    /// MOD: added. The fixed value <see cref="ActionsPerDelayWindow"/> is reset to on load unless
+    /// <see cref="OverwriteAutomationActions"/> is <c>true</c> — see <see cref="DefaultActionDelaySeconds"/>'s
+    /// own remarks for why this is internal, not private.
+    /// </summary>
+    internal const int DefaultActionsPerDelayWindow = 1;
 
 
     /*********
@@ -227,6 +237,33 @@ internal class ModConfig
     /// Power Silo adds on top of this (see <see cref="PowerSiloTiers"/>).
     /// </summary>
     public int PowerSiloBaseCapacity { get; set; } = 4;
+
+    /// <summary>
+    /// MOD: added. Whether <see cref="PowerGridCapacityOverride"/> replaces the normal Power Grid
+    /// capacity calculation (<see cref="PowerSiloBaseCapacity"/> plus every Power Silo's own
+    /// contribution — see <see cref="PowerSiloSystem.GetTotalCapacity"/>) with a fixed value, e.g. for
+    /// testing a specific capacity without re-tiering every Silo.
+    /// </summary>
+    public bool OverwritePowerGridCapacity { get; set; }
+
+    /// <summary>
+    /// MOD: added. The fixed total Power Coil capacity to use when <see cref="OverwritePowerGridCapacity"/>
+    /// is enabled — see that field's own remarks. A value of
+    /// <see cref="PowerGridCapacityOverrideInfiniteValue"/> means infinite capacity instead of a literal
+    /// number — see <see cref="PowerSiloSystem.GetTotalCapacity"/>, the only place this is actually
+    /// interpreted specially. This ONLY applies to this override value itself; the normal calculation
+    /// (<see cref="PowerSiloBaseCapacity"/> plus every Silo's own tier) is never treated as infinite even
+    /// if it happens to sum to the same number.
+    /// </summary>
+    public int PowerGridCapacityOverride { get; set; }
+
+    /// <summary>
+    /// MOD: added. The <see cref="PowerGridCapacityOverride"/> value that means infinite capacity instead
+    /// of a literal number — one past the real 0-100 range, so the GMCM slider's own max (see
+    /// <see cref="GenericModConfigMenuIntegrationForAutomate"/>) doubles as this sentinel with no separate
+    /// toggle needed.
+    /// </summary>
+    public const int PowerGridCapacityOverrideInfiniteValue = 101;
 
     /// <summary>
     /// MOD: added. The in-game objects that count as a Solar Panel for the power silo's solar tier
@@ -449,11 +486,11 @@ internal class ModConfig
                 {
                     Options =
                     [
-                        new() { ItemId = "(O)336", MinCount = 10, MaxCount = 10 },   // Gold Bar
+                        new() { ItemId = "(O)336", MinCount = 8, MaxCount = 10 },   // Gold Bar
                         new() { ItemId = "(O)382", MinCount = 20, MaxCount = 30 }, // Coal
                         new() { ItemIds = ["(O)60", "(O)62", "(O)64", "(O)66", "(O)68", "(O)70", "(O)72"], MinCount = 5, MaxCount = 8 }, // any gem including Diamond, except Prismatic Shard
-                        new() { ItemId = "(O)386", MinCount = 25, MaxCount = 50 },   // Iridium Ore
-                        new() { ItemId = "(O)337", MinCount = 1, MaxCount = 3 }  // Iridium Bar 
+                        new() { ItemId = "(O)386", MinCount = 10, MaxCount = 15 },   // Iridium Ore
+                        new() { ItemId = "(O)337", MinCount = 1, MaxCount = 2 }  // Iridium Bar 
 
                     ]
                 },
@@ -488,11 +525,11 @@ internal class ModConfig
                 {
                     Options =
                     [
-                        new() { ItemId = "(O)380", MinCount = 50, MaxCount = 75 }, // Iron Ore
-                        new() { ItemId = "(O)384", MinCount = 50, MaxCount = 75 }, // Gold Ore
-                        new() { ItemId = "(O)768", MinCount = 50, MaxCount = 50 }, // Solar Essence
-                        new() { ItemId = "(O)386", MinCount = 20, MaxCount = 40 }, // Iridium Ore
-                        new() { ItemId = "(O)337", MinCount = 5, MaxCount = 8 }  // Iridium Bar
+                        new() { ItemId = "(O)380", MinCount = 30, MaxCount = 45 }, // Iron Ore
+                        new() { ItemId = "(O)384", MinCount = 20, MaxCount = 40 }, // Gold Ore
+                        new() { ItemId = "(O)768", MinCount = 20, MaxCount = 30 }, // Solar Essence
+                        new() { ItemId = "(O)386", MinCount = 15, MaxCount = 20 }, // Iridium Ore
+                        new() { ItemId = "(O)337", MinCount = 3, MaxCount = 5 }  // Iridium Bar
                     ]
                 },
                 new() // cave carrot family
@@ -500,7 +537,7 @@ internal class ModConfig
                     Options =
                     [
                         new() { ItemId = "(O)78", MinCount = 10, MaxCount = 15 },                                              // Cave Carrot
-                        new() { ItemId = "(O)CaveJelly", MinCount = 5, MaxCount = 10 },                                       // Cave Jelly
+                        new() { ItemId = "(O)CaveJelly", MinCount = 3, MaxCount = 4 },                                       // Cave Jelly
                         new() { ItemId = "(O)749", MinCount = 15, MaxCount = 20 }                                              // Omni Geode
                     ]
                 },
@@ -783,6 +820,7 @@ internal class ModConfig
         this.PowerSiloBuildingNames.RemoveWhere(string.IsNullOrWhiteSpace);
         if (this.PowerSiloBaseCapacity < 0)
             this.PowerSiloBaseCapacity = 0;
+        this.PowerGridCapacityOverride = Math.Clamp(this.PowerGridCapacityOverride, 0, ModConfig.PowerGridCapacityOverrideInfiniteValue);
         this.PowerSiloSolarPanelNames = this.PowerSiloSolarPanelNames.ToNonNullCaseInsensitive();
         this.PowerSiloSolarPanelNames.RemoveWhere(string.IsNullOrWhiteSpace);
         this.PowerSiloTiers ??= [];

@@ -26,6 +26,18 @@ namespace Pathoschild.Stardew.Automate.Framework;
 /// MOD: added — this effect only runs in areas loaded by the players: <see cref="PlayEffect"/>
 /// is a no-op for any location no player is currently standing in, since automation itself runs
 /// location-agnostically in the background but nobody could see or hear this effect there anyway.
+///
+/// MOD: tried, then reverted — routing the lid + sprite through a custom SMAPI mod message
+/// (<c>Helper.Multiplayer.SendMessage</c>, once per transfer) so every player would apply both locally
+/// from a single delivery, instead of the lid's networked <see cref="Chest.modData"/> timestamp and
+/// <see cref="StardewValley.Multiplayer.broadcastSprites"/>'s own separate delivery for the sprite
+/// racing each other under real latency. That genuinely fixed the drift, but caused severe lag in
+/// practice — confirmed directly via user report ("lags like crazy") — because a generic SMAPI mod
+/// message is JSON-serialized and isn't built for the frequency this fires at (every single automated
+/// item transfer, which can be many times a second in a busy factory), unlike
+/// <see cref="StardewValley.Multiplayer.broadcastSprites"/>, which is vanilla's own purpose-built,
+/// much cheaper mechanism for exactly this kind of frequent transient-effect sync. Reverted back to
+/// the original approach below — the occasional multiplayer desync is the better tradeoff.
 /// </summary>
 internal static class ContainerVisualEffects
 {

@@ -36,22 +36,26 @@ internal class AutoCrafterMachine : GenericObjectMachine<SObject>
 
     /// <summary>
     /// The real-world Unix epoch milliseconds (<see cref="DateTimeOffset.UtcNow"/>, NOT <see cref="Game1.currentGameTime"/>)
-    /// at which the last prime/unprime animation transition started, for <see cref="Patches.AutoCrafterPatches"/>'s
-    /// draw patch to interpolate from. Stored in modData, which syncs to every player — <c>Game1.currentGameTime</c>
-    /// is each client's own elapsed-time-since-launch clock, with no relationship to any other client's value, so a
-    /// timestamp written by whichever player started the transition read back against another player's own
-    /// clock would compute a meaningless (usually deeply negative, clamped-to-zero) elapsed time — this is
-    /// exactly why the animation only ever plays correctly for whoever wrote the timestamp. Unix epoch
-    /// milliseconds are real wall-clock time, consistent across networked machines (the same approach
-    /// <see cref="ContainerVisualEffects.TriggerLidAnimation"/> already uses for the same reason).
+    /// at which the last prime/unprime animation transition started, synced to every player via modData.
+    ///
+    /// MOD: fixed — this used to be read back by <see cref="Patches.AutoCrafterPatches"/> as a literal
+    /// timestamp to diff against the READING client's own <see cref="DateTimeOffset.UtcNow"/> — correct
+    /// only for whoever actually wrote it (host for processing, whichever player physically clicked the
+    /// machine for this one), wrong on every other connected player by however much that machine's system
+    /// clock differs, independent of network latency (the same mistake found and fixed for
+    /// <see cref="ContainerVisualEffects.TriggerLidAnimation"/>'s lid timing). This value is now treated as
+    /// an opaque CHANGE MARKER only — <see cref="Patches.AutoCrafterPatches"/> anchors its OWN local clock
+    /// the moment it notices this change, never comparing against a value some other machine wrote (see
+    /// that class's own remarks). Still real wall-clock time rather than <see cref="Game1.currentGameTime"/>
+    /// for the reason originally noted here: <c>Game1.currentGameTime</c> is each client's own
+    /// elapsed-time-since-launch clock, meaningless once synced and read by ANY client (including the one
+    /// that wrote it, after a restart) — Unix epoch milliseconds at least mean the same thing across a
+    /// single client's own launches.
     /// </summary>
     internal const string AnimStartModDataKey = "luisMint.PoweredAutomation/AutoCrafterAnimStartMs";
 
-    /// <summary>The real-world Unix epoch milliseconds (<see cref="DateTimeOffset.UtcNow"/>) at which the current craft's processing began, for <see cref="Patches.AutoCrafterPatches"/> to anchor its press-cycle animation against — see <see cref="GetProcessingStartMs"/> and <see cref="AnimStartModDataKey"/>'s own remarks for why this can't be <see cref="Game1.currentGameTime"/>.</summary>
+    /// <summary>The real-world Unix epoch milliseconds (<see cref="DateTimeOffset.UtcNow"/>) at which the current craft's processing began — see <see cref="GetProcessingStartMs"/> and <see cref="AnimStartModDataKey"/>'s own remarks for why this is a change marker for <see cref="Patches.AutoCrafterPatches"/> to anchor its own local clock against, not a literal cross-machine timestamp.</summary>
     internal const string ProcessingStartMsModDataKey = "luisMint.PoweredAutomation/AutoCrafterProcessingStartMs";
-
-    /// <summary>The index of the last press cycle (see <see cref="ProcessingStartMsModDataKey"/>) <see cref="Patches.AutoCrafterPatches"/> has already played the strike particle/sound for — see <see cref="GetLastHandledStrikeCycle"/>.</summary>
-    internal const string LastHandledStrikeCycleModDataKey = "luisMint.PoweredAutomation/AutoCrafterLastHandledStrikeCycle";
 
     /// <summary>MOD: changed — every craft now takes a flat 20 in-game minutes, regardless of how many ingredients the recipe needs.</summary>
     internal const int ProcessingMinutes = 20;
@@ -87,7 +91,10 @@ internal class AutoCrafterMachine : GenericObjectMachine<SObject>
         this.Machine.heldObject.Value = (SObject)recipe.createItem();
         this.Machine.MinutesUntilReady = AutoCrafterMachine.ProcessingMinutes;
         this.Machine.modData[AutoCrafterMachine.ProcessingStartMsModDataKey] = ((double)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()).ToString(CultureInfo.InvariantCulture);
-        this.Machine.modData.Remove(AutoCrafterMachine.LastHandledStrikeCycleModDataKey); // reset so the first strike of the new craft is detected fresh
+        // MOD: removed — used to also modData.Remove(LastHandledStrikeCycleModDataKey) here, to reset the
+        // strike-cycle dedup for the new craft. That's now purely local, per-client state in
+        // Patches.AutoCrafterPatches (see its own remarks), reset automatically the moment each client
+        // notices ProcessingStartMsModDataKey just changed — no separate reset needed here at all.
 
         return true;
     }
@@ -178,23 +185,6 @@ internal class AutoCrafterMachine : GenericObjectMachine<SObject>
         return machine.modData.TryGetValue(AutoCrafterMachine.ProcessingStartMsModDataKey, out string? raw) && double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out double ms)
             ? ms
             : 0;
-    }
-
-    /// <summary>Get the index of the last press cycle the strike particle/sound has already been played for, or -1 if none yet.</summary>
-    /// <param name="machine">The machine to check.</param>
-    internal static int GetLastHandledStrikeCycle(SObject machine)
-    {
-        return machine.modData.TryGetValue(AutoCrafterMachine.LastHandledStrikeCycleModDataKey, out string? raw) && int.TryParse(raw, out int cycle)
-            ? cycle
-            : -1;
-    }
-
-    /// <summary>Record that the strike particle/sound has been played for the given press-cycle index.</summary>
-    /// <param name="machine">The machine to update.</param>
-    /// <param name="cycleIndex">The cycle index just handled — see <see cref="GetLastHandledStrikeCycle"/>.</param>
-    internal static void SetLastHandledStrikeCycle(SObject machine, int cycleIndex)
-    {
-        machine.modData[AutoCrafterMachine.LastHandledStrikeCycleModDataKey] = cycleIndex.ToString(CultureInfo.InvariantCulture);
     }
 
     /// <summary>Get the known recipe (if any) that produces the given item, searching only the given player's own learned crafting/cooking recipes.</summary>

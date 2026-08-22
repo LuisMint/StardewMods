@@ -35,6 +35,13 @@ internal class PowerSiloInteraction
     /// <summary>MOD: added. Show a HUD toast locally and broadcast it to every other connected player — see <see cref="ModEntry.BroadcastHudMessage"/>. Power Silo capacity is a save-wide stat, not per-player, so every player should see a tier-up.</summary>
     private readonly Action<string> BroadcastHudMessage;
 
+    /// <summary>
+    /// MOD: added. Queue the given locations for <see cref="MachineManager"/> to reload — see this class's
+    /// own remarks on <see cref="Handle"/> for why a tier-up needs this, not just
+    /// <see cref="PowerSiloSystem.RefreshCoilAllowance"/> on its own.
+    /// </summary>
+    private readonly Action<IEnumerable<GameLocation>> QueueReload;
+
 
     /*********
     ** Public methods
@@ -43,10 +50,12 @@ internal class PowerSiloInteraction
     /// <param name="powerSiloSystem">The power silo capacity system, used to read/write a Silo's current tier and total capacity.</param>
     /// <param name="getTiers">Get the ordered capacity tiers for a specific Power Silo building.</param>
     /// <param name="broadcastHudMessage">MOD: added. Show a HUD toast locally and broadcast it to every other connected player — see <see cref="BroadcastHudMessage"/>.</param>
-    public PowerSiloInteraction(PowerSiloSystem powerSiloSystem, Func<Building, List<PowerSiloTierConfig>> getTiers, Action<string> broadcastHudMessage)
+    /// <param name="queueReload">MOD: added. Queue the given locations for <see cref="MachineManager"/> to reload — see <see cref="QueueReload"/>.</param>
+    public PowerSiloInteraction(PowerSiloSystem powerSiloSystem, Func<Building, List<PowerSiloTierConfig>> getTiers, Action<string> broadcastHudMessage, Action<IEnumerable<GameLocation>> queueReload)
     {
         this.PowerSiloSystem = powerSiloSystem;
         this.GetTiers = getTiers;
+        this.QueueReload = queueReload;
         this.BroadcastHudMessage = broadcastHudMessage;
     }
 
@@ -138,7 +147,28 @@ internal class PowerSiloInteraction
                     if (unlockingSolarTier)
                         this.PowerSiloSystem.RefreshConnectedSolarPanelCount(); // MOD: added — this Silo's capacity depends on this count for the first time as of this exact tier change, so make sure it's current before measuring "after"
 
-                    this.PowerSiloSystem.RefreshCoilAllowance(); // MOD: added — refresh immediately rather than waiting for the next tick's capacity check to notice the tier changed
+                    // MOD: fixed — RefreshCoilAllowance only ever re-stamps each Power Coil's OWN
+                    // CoilPoweredModDataKey, which is why a coil itself always looked right immediately.
+                    // It says nothing about a CONDUCTOR (piped connector) or power-required machine newly
+                    // in range of a coil that just flipped — those are gated by MachineManager's own
+                    // poweredTiles snapshot instead (see PowerSystem.GetPoweredTiles/PoweredFloorSync/
+                    // PowerRequiredMachineSystem.IsPowerStarved), which is only ever recomputed inside
+                    // MachineManager.ReloadMachinesIn's own per-location loop. Nothing here used to queue
+                    // any location for that reload at all — the ONLY thing that eventually caught it was
+                    // ReloadMachinesIn noticing, purely as a side effect of running for some UNRELATED
+                    // reason, that GetTotalCapacity() no longer matched its own last-seen value. With no
+                    // other location change happening nearby, that could take a long time (or never, until
+                    // something else nudges a rescan), leaving a conduit/machine visibly stuck unpowered
+                    // long after the coil that should now reach it already shows powered. Queuing exactly
+                    // the locations RefreshCoilAllowance reports as actually flipped (its own return value,
+                    // otherwise unused everywhere else it's called) closes that gap immediately, at the
+                    // precise scope that could possibly be affected — a conduit/machine can only be newly
+                    // in range of a coil that's in the SAME location as it, so this can't miss one while
+                    // still avoiding a needless whole-save rescan.
+                    IReadOnlySet<GameLocation> flippedCoilLocations = this.PowerSiloSystem.RefreshCoilAllowance();
+                    if (flippedCoilLocations.Count > 0)
+                        this.QueueReload(flippedCoilLocations);
+
                     int after = this.PowerSiloSystem.GetTotalCapacity();
 
                     if (unlockingSolarTier && before != after)
