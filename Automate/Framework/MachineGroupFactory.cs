@@ -706,7 +706,21 @@ internal class MachineGroupFactory
             // any other world change, so this stays in sync without needing a live per-tick check) —
             // MachineGroup.Automate() skips starved machines and shows a reminder message instead of
             // processing them, the same way vanilla shows a message when a Furnace is missing coal.
-            bool isPowerStarved = this.PowerRequiredMachineSystem.IsPowerStarved(machine.MachineTypeID, machine.TileArea.GetTiles(), poweredTiles);
+            //
+            // MOD: fixed — if Utility Grid Redux itself tracks this object-backed machine as a
+            // power/water consumer, ITS own answer is authoritative and sufficient on its own — the
+            // Power-Coil-range check below is skipped entirely rather than ANDed with it (an earlier
+            // version only consulted Utility Grid Redux when Automate's OWN check had already failed,
+            // which is the same wrong "need both" combination PowerRequiredMachinePatches.IsPowerStarved
+            // had — see that method's own remarks and UtilityGridReduxSystem.IsTrackedAsConsumer's,
+            // confirmed via user report). Only reachable for an object-backed machine
+            // (IHasUnderlyingObject); a building- or terrain-feature-backed machine is never
+            // Utility-Grid-Redux-tracked at all, so it always falls through to Automate's own check.
+            bool isPowerStarved;
+            if (machine is IHasUnderlyingObject { UnderlyingObject: { } obj } && UtilityGridReduxSystem.IsEnabled && UtilityGridReduxSystem.IsTrackedAsConsumer(obj))
+                isPowerStarved = UtilityGridReduxSystem.IsStarved(obj, machine.Location);
+            else
+                isPowerStarved = this.PowerRequiredMachineSystem.IsPowerStarved(machine.MachineTypeID, machine.TileArea.GetTiles(), poweredTiles);
 
             builder.Add(machine, isPowerStarved);
         }

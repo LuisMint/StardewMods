@@ -159,6 +159,25 @@ internal class ModConfig
     public int PowerRangeDistance { get; set; } = 2;
 
     /// <summary>
+    /// MOD: added. How much power a Power Coil produces for the separately-installed "Utility Grid
+    /// Redux" mod's own independent power grid, while that specific coil is itself powered by
+    /// Automate's own grid — see <see cref="UtilityGridReduxSystem"/>'s own remarks for the full
+    /// mechanism. Has no effect at all if Utility Grid Redux isn't installed.
+    /// </summary>
+    public int PowerCoilUtilityGridReduxPower { get; set; } = 10;
+
+    /// <summary>
+    /// MOD: added. How much power a Powered Chest produces for the separately-installed "Utility Grid
+    /// Redux" mod's own independent power grid — unlike <see cref="PowerCoilUtilityGridReduxPower"/>,
+    /// this is unconditional (a Powered Chest has no "is this specific instance currently powered"
+    /// concept in Automate at all — it's always a local power source the moment it's placed, the same
+    /// way it's always a <see cref="LocalPowerSourceNames"/> entry regardless of anything else). See
+    /// <see cref="UtilityGridReduxSystem"/>'s own remarks for the full mechanism. Has no effect at all
+    /// if Utility Grid Redux isn't installed.
+    /// </summary>
+    public int PoweredChestUtilityGridReduxPower { get; set; } = 2;
+
+    /// <summary>
     /// MOD: added. The in-game objects that act as a "local" power source for the power system (see
     /// <see cref="PowerSystemEnabled"/>) — e.g. the Powered Chest. Unlike <see cref="PowerSourceNames"/>,
     /// a local power source always powers only its own tile plus the 4 orthogonal neighbors,
@@ -186,7 +205,10 @@ internal class ModConfig
     /// Machine or Cheese Press, which keep consuming an ongoing input tied to animals). Only affects
     /// Automate itself — an unpowered machine still works fine if fed/collected by hand. Matched against
     /// the machine's own internal type ID (letters/digits only, e.g. "Auto-Grabber" -> "AutoGrabber"),
-    /// the same identifier used by <see cref="MachineOverrides"/>.
+    /// the same identifier used by <see cref="MachineOverrides"/>. For a THIRD-PARTY mod's own machine,
+    /// that ID has any leading "{ModUniqueID}_" prefix stripped first (see
+    /// <see cref="BaseMachine.GetDefaultMachineId(string)"/>'s own remarks) — run the <c>automate summary</c>
+    /// console command near the machine to see its exact type ID rather than guessing.
     /// </summary>
     [JsonProperty("PowerRequiredMachineNames")]
     public HashSet<string> PowerRequiredMachineNames { get; set; } = new(StringComparer.OrdinalIgnoreCase)
@@ -196,7 +218,19 @@ internal class ModConfig
         "AutoPetter",
         "HeavyFurnace",
         "AutoCrafter",
-        "FishSmoker"
+        "FishSmoker",
+
+        // MOD: added — the "Stardio" mod's 4 conveyor belt types, gated via StardioConveyorBeltPatches
+        // even though a belt isn't a real IMachine. Each type gets its own entry (derived from that
+        // type's own in-game display name, the same way every entry above resolves from a real
+        // machine's own name) rather than one shared ID, so an individual belt tier can be exempted on
+        // its own if wanted. Same on/off mechanism as every entry above: remove any of these to stop
+        // gating that belt type, with zero other changes needed. Also a complete no-op if Stardio isn't
+        // installed at all — see that class's own remarks.
+        "ConveyorBelt",
+        "FastConveyorBelt",
+        "TurboConveyorBelt",
+        "TurboPushingConveyorBelt"
     };
 
     /// <summary>
@@ -805,6 +839,10 @@ internal class ModConfig
         this.PowerSourceNames.RemoveWhere(string.IsNullOrWhiteSpace);
         if (this.PowerRangeDistance < 0)
             this.PowerRangeDistance = 0;
+        if (this.PowerCoilUtilityGridReduxPower < 0)
+            this.PowerCoilUtilityGridReduxPower = 0;
+        if (this.PoweredChestUtilityGridReduxPower < 0)
+            this.PoweredChestUtilityGridReduxPower = 0;
 
         // MOD: added — normalize the local power source set the same way.
         this.LocalPowerSourceNames = this.LocalPowerSourceNames.ToNonNullCaseInsensitive();

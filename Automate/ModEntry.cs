@@ -387,6 +387,12 @@ internal class ModEntry : Mod
             getTierPools: () => this.Config.PowerSiloTierPools
         );
 
+        // MOD: added — must run before any machine is constructed (i.e. before MachineManager below),
+        // since every BaseMachine.GetDefaultMachineId(string) call — including the ones baked into a
+        // machine's own MachineTypeID at construction time — shares this same prefix list. See that
+        // method's own remarks for why.
+        BaseMachine.SetKnownModIdPrefixes(this.Helper.ModRegistry.GetAll().Select(mod => mod.Manifest.UniqueID));
+
         // init
         this.MachineManager = new MachineManager(
             config: () => this.Config,
@@ -509,8 +515,7 @@ internal class ModEntry : Mod
 
         PowerRequiredMachinePatches.Initialize(
             getSystem: () => this.MachineManager.Factory.PowerRequiredMachineSystem,
-            getPoweredTiles: location => this.MachineManager.GetMachineDataFor(location)?.PoweredTiles,
-            modId: "luisMint.PoweredAutomation" // MOD: fixed — was this.ModManifest.UniqueID (this C# mod's OWN id, "Pathoschild.Automate"), which never matched the content pack's actual Name prefix at all; see PowerRequiredMachinePatches.ModIdPrefix's own remarks. This is the PoweredAutomation content pack's own separate mod ID, already hardcoded the same way elsewhere in this codebase (e.g. MirrorPowerSiloAudioFiles above).
+            getPoweredTiles: location => this.MachineManager.GetMachineDataFor(location)?.PoweredTiles
         );
         PowerRequiredMachinePatches.Apply(harmony);
 
@@ -687,6 +692,7 @@ internal class ModEntry : Mod
 
         // hook events
         helper.Events.Content.AssetRequested += this.OnAssetRequested;
+        helper.Events.GameLoop.GameLaunched += this.OnGameLaunched; // MOD: added — see that handler's own remarks for why this needs to wait until every mod's own Entry() has run
         helper.Events.GameLoop.SaveLoaded += this.OnSaveLoaded;
         helper.Events.GameLoop.DayEnding += this.OnDayEnding;
         helper.Events.GameLoop.DayStarted += this.OnDayStarted;
@@ -714,6 +720,52 @@ internal class ModEntry : Mod
             : $"Initialized with automation every {this.Config.AutomationInterval} ticks.");
         if (this.Config.WarnForMissingBridgeMod)
             this.ReportMissingBridgeMods(this.Data.SuggestedIntegrations);
+    }
+
+    /// <summary>
+    /// MOD: added. Applies patches that need to reflect into ANOTHER mod's own already-loaded assembly
+    /// (currently just <see cref="StardioConveyorBeltPatches"/>) — this can't happen in <see cref="Entry"/>
+    /// like every other patch in this class, because SMAPI loads each mod's assembly and calls its own
+    /// <see cref="Entry"/> ONE MOD AT A TIME, in whatever order it resolves them (dependency order, with no
+    /// guaranteed tie-break for two mods with no dependency relationship to each other) — NOT "load every
+    /// mod's assembly first, then call every Entry()". Automate happened to load and run its own Entry()
+    /// before Stardio's assembly was loaded at all (confirmed via the SMAPI log — Automate is discovered
+    /// several lines before Stardio during the "Loading mods..." phase), so
+    /// <c>AppDomain.CurrentDomain.GetAssemblies()</c> genuinely didn't contain Stardio yet at that point,
+    /// and <see cref="IModRegistry.IsLoaded"/> returned false — not because Stardio wasn't installed, but
+    /// because it simply hadn't taken its own turn yet. Confirmed directly via user report: belts kept
+    /// working completely unpowered, and the SMAPI log had NONE of <see cref="StardioConveyorBeltPatches"/>'s
+    /// own warnings either (which only fire once the "Stardio not installed" early-out is already known to
+    /// be false), meaning the patch attempt never got far enough to log anything at all.
+    /// <see cref="IGameLoopEvents.GameLaunched"/> is SMAPI's own documented point at which every mod's
+    /// <see cref="Entry"/> is guaranteed to have already run — the standard place any SMAPI mod checks
+    /// another mod's <see cref="IModRegistry.IsLoaded"/>/fetches its API, for exactly this reason. A fresh
+    /// <see cref="Harmony"/> instance (same ID as <see cref="Entry"/>'s own) is used here rather than
+    /// threading that one through as a field, since patching via a second instance under the same ID is a
+    /// normal, supported pattern and keeps this deferred-patching concern fully self-contained.
+    /// </summary>
+    private void OnGameLaunched(object? sender, GameLaunchedEventArgs e)
+    {
+        Harmony harmony = new(this.ModManifest.UniqueID);
+
+        StardioConveyorBeltPatches.Initialize(
+            getSystem: () => this.MachineManager.Factory.PowerRequiredMachineSystem,
+            getPoweredTiles: location => this.MachineManager.GetMachineDataFor(location)?.PoweredTiles
+        );
+        StardioConveyorBeltPatches.TryApply(harmony, this.Helper.ModRegistry, this.Monitor);
+
+        // MOD: added — same reflect-into-another-mod's-already-loaded-assembly timing requirement as
+        // StardioConveyorBeltPatches above; see UtilityGridReduxSystem's own remarks.
+        UtilityGridReduxSystem.TryInitialize(
+            this.Helper.ModRegistry,
+            this.Monitor,
+            powerCoilQualifiedItemId: PowerCoilPatches.TargetQualifiedItemId,
+            powerCoilGeneratedPower: this.Config.PowerCoilUtilityGridReduxPower,
+            poweredChestQualifiedItemId: PoweredChestMachine.QualifiedItemId,
+            poweredChestGeneratedPower: this.Config.PoweredChestUtilityGridReduxPower,
+            harmony: harmony,
+            queueReload: location => this.MachineManager.QueueReload(location)
+        );
     }
 
     /// <summary>

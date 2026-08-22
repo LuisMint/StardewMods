@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Microsoft.Xna.Framework;
 using StardewValley;
@@ -49,11 +50,63 @@ internal abstract class BaseMachine : IMachine
         return id;
     }
 
+    /// <summary>
+    /// MOD: added. Every currently-installed mod's own UniqueID (content packs included), longest-first
+    /// so a more specific nested ID matches before a shorter one that's also a prefix of it — set once via
+    /// <see cref="SetKnownModIdPrefixes"/> during startup, before any machine is constructed.
+    /// </summary>
+    private static IReadOnlyList<string> KnownModIdPrefixes = [];
+
+    /// <summary>MOD: added. Caches <see cref="StripKnownModIdPrefix"/>'s own result per raw name — cleared whenever <see cref="SetKnownModIdPrefixes"/> is called.</summary>
+    private static readonly Dictionary<string, string> StrippedNameCache = new();
+
+    /// <summary>
+    /// MOD: added. Provide every currently-installed mod's own UniqueID, used to generically strip a
+    /// leading <c>"{UniqueID}_"</c> prefix from a machine's raw internal name before
+    /// <see cref="GetDefaultMachineId(string)"/> deletes its non-alphanumeric characters — so an object
+    /// namespaced the conventional way (e.g. <c>"{ModId}_ElectricFurnace"</c>) resolves to the short type
+    /// ID (<c>"ElectricFurnace"</c>) a config author would intuitively expect and type into
+    /// <see cref="Models.ModConfig.PowerRequiredMachineNames"/>/<see cref="Models.ModConfig.MachineOverrides"/>,
+    /// regardless of which mod added the object — not just this mod's own content pack. Must be called once
+    /// during startup, before any machine is constructed (every <see cref="GetDefaultMachineId(string)"/>
+    /// caller shares this same stripping, so calling it late would leave already-constructed machines with
+    /// a stale, unstripped <see cref="IMachine.MachineTypeID"/>).
+    /// </summary>
+    /// <param name="modIds">Every currently-installed mod's own UniqueID.</param>
+    public static void SetKnownModIdPrefixes(IEnumerable<string> modIds)
+    {
+        BaseMachine.KnownModIdPrefixes = modIds.Where(id => !string.IsNullOrWhiteSpace(id)).OrderByDescending(id => id.Length).ToArray();
+        BaseMachine.StrippedNameCache.Clear();
+    }
+
     /// <summary>Get th default ID for a machine instance's internal name.</summary>
     /// <param name="name">The machine's internal item.</param>
     public static string GetDefaultMachineId(string name)
     {
+        name = BaseMachine.StripKnownModIdPrefix(name);
         return new string(name.Where(char.IsLetterOrDigit).ToArray());
+    }
+
+    /// <summary>MOD: added. Strip a leading <c>"{UniqueID}_"</c> prefix matching a known installed mod's own ID from a machine's raw internal name, if any — see <see cref="SetKnownModIdPrefixes"/>'s own remarks. A safe no-op for a vanilla machine, or one whose name doesn't start with any known mod's own ID.</summary>
+    /// <param name="name">The machine's raw internal name.</param>
+    private static string StripKnownModIdPrefix(string name)
+    {
+        if (BaseMachine.StrippedNameCache.TryGetValue(name, out string? cached))
+            return cached;
+
+        string result = name;
+        foreach (string modId in BaseMachine.KnownModIdPrefixes)
+        {
+            string prefix = modId + "_";
+            if (name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                result = name.Substring(prefix.Length);
+                break;
+            }
+        }
+
+        BaseMachine.StrippedNameCache[name] = result;
+        return result;
     }
 
     /// <summary>Get the default ID for an Automate machine type.</summary>

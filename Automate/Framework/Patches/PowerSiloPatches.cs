@@ -199,6 +199,10 @@ internal static class PowerSiloPatches
         placedCoil.modData[PowerSiloSystem.CoilPoweredModDataKey] = isPowered ? "true" : "false";
         placedCoil.modData[PowerSiloSystem.CoilRankModDataKey] = totalCoils.ToString();
 
+        // MOD: added — see the equivalent stamp in PowerSiloSystem.RefreshCoilAllowance's own remarks;
+        // kept in sync here too since this is the OTHER place a coil's powered state gets stamped.
+        placedCoil.IsOn = isPowered;
+
         // MOD: changed — the sound still broadcasts (a coil actually being placed nearby is something
         // every player in the location should hear, same as any other placement sound), but the popup
         // is local-only now — a plain "Power Grid: X/Y" readout isn't news for anyone but whoever just

@@ -10,8 +10,15 @@ using SObject = StardewValley.Object;
 namespace Pathoschild.Stardew.Automate.Framework;
 
 /// <summary>A generic machine instance for an object.</summary>
-internal abstract class GenericObjectMachine<TMachine> : BaseMachine<TMachine> where TMachine : SObject
+internal abstract class GenericObjectMachine<TMachine> : BaseMachine<TMachine>, IHasUnderlyingObject where TMachine : SObject
 {
+    /*********
+    ** Accessors
+    *********/
+    /// <summary>MOD: added. See <see cref="IHasUnderlyingObject"/>'s own remarks.</summary>
+    SObject? IHasUnderlyingObject.UnderlyingObject => this.Machine;
+
+
     /*********
     ** Fields
     *********/

@@ -60,6 +60,16 @@ internal class AutomationFactory : IAutomationFactory
     /// <returns>Returns an instance or <c>null</c>.</returns>
     public IAutomatable? GetFor(SObject obj, GameLocation location, in Vector2 tile)
     {
+        // MOD: added — the "Stardio" mod's Input Hub / Output Hub objects (placed inside a building so its
+        // own conveyor belts can push items in / pull items out). Neither hub is itself a Chest — confirmed
+        // by decompiling Stardio.dll, each hub is a plain BigCraftable whose own heldObject field (the same
+        // field a vanilla Furnace uses to hold its smelting output) is set to a real StardewValley.Objects.Chest
+        // instance, which is the hub's actual storage. So this checks the HUB's own qualified ID, then hands
+        // its held Chest to the existing ChestContainer wrapper — no bespoke IContainer implementation needed.
+        // Checked before the "chest" case below since the hub object itself is never a Chest.
+        if (obj.QualifiedItemId is "(BC)Jok.Stardio.InputChest" or "(BC)Jok.Stardio.OutputChest" && obj.heldObject.Value is Chest heldChest)
+            return new ChestContainer(heldChest, location, tile);
+
         // chest
         if (obj is Chest chest && chest.playerChest.Value)
         {

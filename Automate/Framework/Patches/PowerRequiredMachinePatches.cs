@@ -99,43 +99,16 @@ internal static class PowerRequiredMachinePatches
     /// <summary>Get the currently-powered tiles for a location (or <c>null</c> if the power system is disabled), set via <see cref="Initialize"/>.</summary>
     private static Func<GameLocation, IReadOnlySet<Vector2>?>? GetPoweredTiles;
 
-    /// <summary>
-    /// MOD: added. The PoweredAutomation CONTENT PACK's own mod ID (<c>"luisMint.PoweredAutomation"</c> —
-    /// a separate mod from this C# code mod, whose own manifest UniqueID is <c>"Pathoschild.Automate"</c>;
-    /// this codebase already hardcodes the content pack's ID elsewhere, e.g. <see cref="NoPowerIconAssetName"/>'s
-    /// own asset path), set via <see cref="Initialize"/> — used by <see cref="IsPowerStarved"/> to strip a
-    /// leading <c>"{ContentPackID}_"</c> prefix from an object's own <see cref="SObject.Name"/> before
-    /// deriving its machine type ID. Every custom object in that content pack deliberately sets its own
-    /// Content Patcher <c>{{ModId}}</c> token — which resolves to the content pack's OWN ID, not this C#
-    /// mod's — as a <c>Name</c> prefix (to avoid colliding with another mod's object sharing the same
-    /// short name — e.g. "AutoCrafter" — the same reason a BigCraftable/Object's own ID key is qualified
-    /// too), which otherwise reduces to something like "luisMintPoweredAutomationAutoCrafter" once
-    /// <see cref="BaseMachine.GetDefaultMachineId(string)"/> strips its non-alphanumeric characters — never
-    /// matching a short entry like "AutoCrafter" in <see cref="Models.ModConfig.PowerRequiredMachineNames"/>.
-    /// MOD: fixed — this was passed <c>ModEntry</c>'s own <c>ModManifest.UniqueID</c> at first, which is
-    /// this C# mod's OWN id ("Pathoschild.Automate") and therefore never matched the content pack's actual
-    /// "luisMint.PoweredAutomation" prefix at all — silently making the whole strip a no-op and leaving the
-    /// no-power icon overlay broken for the Auto Crafter exactly as before, confirmed via direct user
-    /// report (it showed correctly after a save reload — likely via some other, separately-correct path —
-    /// but never right after placing a new one). A vanilla or other-mod machine's own Name never starts
-    /// with the content pack's prefix either way, so stripping is a safe no-op for every machine this bug
-    /// doesn't apply to.
-    /// </summary>
-    private static string? ModIdPrefix;
-
-
     /*********
     ** Public methods
     *********/
     /// <summary>Provide the accessors needed to resolve which machines are power-starved. Must be called before <see cref="Apply"/>.</summary>
     /// <param name="getSystem">Get the shared power-required-machines system.</param>
     /// <param name="getPoweredTiles">Get the currently-powered tiles for a location (or <c>null</c> if the power system is disabled).</param>
-    /// <param name="modId">MOD: added. The PoweredAutomation CONTENT PACK's own mod ID (NOT this C# mod's own <c>ModManifest.UniqueID</c>) — see <see cref="ModIdPrefix"/>'s own remarks.</param>
-    public static void Initialize(Func<PowerRequiredMachineSystem> getSystem, Func<GameLocation, IReadOnlySet<Vector2>?> getPoweredTiles, string modId)
+    public static void Initialize(Func<PowerRequiredMachineSystem> getSystem, Func<GameLocation, IReadOnlySet<Vector2>?> getPoweredTiles)
     {
         PowerRequiredMachinePatches.GetSystem = getSystem;
         PowerRequiredMachinePatches.GetPoweredTiles = getPoweredTiles;
-        PowerRequiredMachinePatches.ModIdPrefix = modId + "_";
     }
 
     /// <summary>MOD: added. Reset the per-night "already queued" flags for the Auto-Grabber/Auto-Petter wake-up failure messages. Must be called once at the start of each night's processing (before the overnight machine/animal updates run), so a failure on a later night can queue the message again.</summary>
@@ -343,7 +316,15 @@ internal static class PowerRequiredMachinePatches
         // require power right now, so toggling PowerRequiredMachinesEnabled off (or removing this
         // machine type from the configured list) takes effect immediately, rather than waiting for the
         // next ~10-minute sync tick in ShouldTimePassForMachine_Postfix to clear a stale tag.
-        if (PowerRequiredMachinePatches.GetSystem == null || !PowerRequiredMachinePatches.GetSystem().RequiresPower(machineTypeId))
+        //
+        // MOD: added — also stays tagged (skips this fast-clear path) whenever Utility Grid Redux
+        // integration is enabled at all, even though RequiresPower alone says no — this modData tag
+        // only stores a machineTypeId string, not the real object/location UtilityGridReduxSystem.IsStarved
+        // needs, so there's no cheap way to re-derive the true UGR-Redux-starved answer right here. Falls
+        // back to the same ~10-minute resync cadence as the comment above for this one edge case (a
+        // chest-backed machine that's Utility-Grid-Redux-tracked but not in PowerRequiredMachineNames) —
+        // no current machine is both, so this is a correctness safeguard for a future one, not an active gap.
+        if (PowerRequiredMachinePatches.GetSystem == null || (!PowerRequiredMachinePatches.GetSystem().RequiresPower(machineTypeId) && !UtilityGridReduxSystem.IsEnabled))
         {
             __instance.modData.Remove(PowerRequiredMachinePatches.PowerStarvedChestModDataKey);
             return true;
@@ -462,6 +443,23 @@ internal static class PowerRequiredMachinePatches
         if (__instance.isTemporarilyInvisible || !PowerRequiredMachinePatches.IsPowerStarved(__instance))
             return;
 
+        PowerRequiredMachinePatches.DrawNoPowerIcon(spriteBatch, x, y, alpha);
+    }
+
+    /// <summary>
+    /// MOD: added. Draw the pulsing "no power" icon over a machine's own tile — extracted out of
+    /// <see cref="Draw_Postfix"/> (now just its starvation check, calling straight through here) so
+    /// <see cref="StardioConveyorBeltPatches"/> can reuse the exact same visual for Stardio's conveyor
+    /// belts, which reach this via their own separate <c>draw</c> patch (a belt isn't an <see cref="SObject"/>
+    /// this class's own patches ever see, since it's from a different mod entirely) rather than duplicating
+    /// this pulsing-icon math a second time.
+    /// </summary>
+    /// <param name="spriteBatch">The sprite batch being drawn to.</param>
+    /// <param name="x">The tile X position being drawn.</param>
+    /// <param name="y">The tile Y position being drawn.</param>
+    /// <param name="alpha">The alpha to draw at, before the pulse is applied on top.</param>
+    internal static void DrawNoPowerIcon(SpriteBatch spriteBatch, int x, int y, float alpha)
+    {
         Texture2D texture = Game1.content.Load<Texture2D>(PowerRequiredMachinePatches.NoPowerIconAssetName);
 
         // MOD: anchored at the CENTER of the standard 2-tile (64x128 at 4x) bounding box, with a
@@ -497,9 +495,21 @@ internal static class PowerRequiredMachinePatches
         if (location == null)
             return false;
 
+        // MOD: added — if Utility Grid Redux itself tracks this object as a power/water consumer, ITS
+        // own answer is authoritative and sufficient on its own — connecting it to Utility Grid Redux's
+        // grid counts as powered the same way connecting it to an Automate Power Coil already does for a
+        // machine Utility Grid Redux doesn't track. Automate's own Power-Coil-range check below is
+        // skipped entirely in that case, rather than being ANDed with it — see
+        // UtilityGridReduxSystem.IsTrackedAsConsumer's own remarks for why an earlier version of this
+        // check (a plain OR-of-starved) was actually the wrong combination, confirmed via user report.
+        // Both halves require UtilityGridReduxSystem.IsEnabled too, not just IsTrackedAsConsumer — if the
+        // read side itself failed to resolve, deferring to it would silently treat every tracked machine
+        // as powered, which is worse than just falling through to Automate's own check below.
+        if (UtilityGridReduxSystem.IsEnabled && UtilityGridReduxSystem.IsTrackedAsConsumer(obj))
+            return UtilityGridReduxSystem.IsStarved(obj, location);
+
         string machineTypeId = PowerRequiredMachinePatches.GetMachineTypeId(obj);
         IReadOnlySet<Vector2>? poweredTiles = PowerRequiredMachinePatches.GetPoweredTiles!(location);
-
         return PowerRequiredMachinePatches.GetSystem!().IsPowerStarved(machineTypeId, [obj.TileLocation], poweredTiles);
     }
 
@@ -521,17 +531,23 @@ internal static class PowerRequiredMachinePatches
     /// <summary>
     /// MOD: added. Resolve an object's own machine type ID from its vanilla <see cref="SObject.Name"/> —
     /// shared by <see cref="IsPowerStarved"/> and <see cref="SyncHeldChestTag"/> so the two can't drift
-    /// apart. See <see cref="ModIdPrefix"/>'s own remarks for why a leading match against THIS mod's own ID
-    /// is stripped first: every custom object in this mod's own content pack deliberately sets <c>Name</c>
-    /// to a qualified <c>"{ModID}_ShortName"</c> form, which <see cref="BaseMachine.GetDefaultMachineId(string)"/>
-    /// alone would otherwise mangle into something that can never match a short configured entry like
-    /// "AutoCrafter". A vanilla or other-mod machine's own Name never starts with this mod's own prefix, so
-    /// this is a safe no-op for every machine that isn't affected.
+    /// apart.
+    ///
+    /// MOD: fixed — this used to strip a hardcoded leading prefix for ONLY this mod's own content pack
+    /// before calling <see cref="BaseMachine.GetDefaultMachineId(string)"/>, since every custom object
+    /// there deliberately sets <c>Name</c> to a qualified <c>"{ModID}_ShortName"</c> form (to avoid
+    /// colliding with another mod's object sharing the same short name), which
+    /// <see cref="BaseMachine.GetDefaultMachineId(string)"/> alone would otherwise mangle into something
+    /// that can never match a short configured entry like "AutoCrafter". That stripping is now built into
+    /// <see cref="BaseMachine.GetDefaultMachineId(string)"/> itself, generalized to ANY installed mod's own
+    /// UniqueID (see that method's own remarks) — this method no longer needs to do anything beyond calling
+    /// it directly. Left as a thin cached wrapper (rather than inlining the call at every use) purely for
+    /// the per-frame draw-call cache below, which still matters regardless of where the stripping happens.
     ///
     /// NOTE: <see cref="Patches.AutoCrafterPatches.IsStarved"/> fixes this exact same root cause for the
     /// Auto Crafter specifically, but via a hardcoded <see cref="BaseMachine.GetDefaultMachineId{TMachine}"/>
     /// instead — that class only ever needs ONE well-known type ID, so hardcoding it there is simpler and
-    /// avoids re-deriving one. If this generic stripping logic ever changes, check that call site too.
+    /// avoids re-deriving one.
     /// </summary>
     /// <param name="obj">The object to resolve.</param>
     private static string GetMachineTypeId(SObject obj)
@@ -540,11 +556,7 @@ internal static class PowerRequiredMachinePatches
         if (PowerRequiredMachinePatches.MachineTypeIdCache.TryGetValue(rawName, out string? cached))
             return cached;
 
-        string name = rawName;
-        if (PowerRequiredMachinePatches.ModIdPrefix is { Length: > 0 } modIdPrefix && name.StartsWith(modIdPrefix, StringComparison.OrdinalIgnoreCase))
-            name = name.Substring(modIdPrefix.Length);
-
-        string result = BaseMachine.GetDefaultMachineId(name);
+        string result = BaseMachine.GetDefaultMachineId(rawName);
         PowerRequiredMachinePatches.MachineTypeIdCache[rawName] = result;
         return result;
     }

@@ -349,6 +349,12 @@ internal class PowerSiloSystem
             coils[i].Coil.modData[PowerSiloSystem.CoilPoweredModDataKey] = newValue;
             coils[i].Coil.modData[PowerSiloSystem.CoilRankModDataKey] = (i + 1).ToString();
 
+            // MOD: added — mirrors the same powered/unpowered state onto the coil's own real vanilla
+            // IsOn field (never used by Automate itself otherwise), purely so UtilityGridReduxSystem's
+            // registered Power Coil generator rule (MustBeOn) can read an ordinary, already-synced game
+            // field instead of needing any direct coupling to this class.
+            coils[i].Coil.IsOn = isPowered;
+
             if (wasPowered != isPowered)
                 changedLocations.Add(coils[i].Location);
         }
