@@ -1006,7 +1006,7 @@ internal class ModEntry : Mod
         }
         catch (Exception ex)
         {
-            this.HandleError(ex, "updating locations");
+            this.HandleError(ex, "updating locations", I18n.Message_GenericError_Verb_UpdatingLocations());
         }
     }
 
@@ -1041,7 +1041,7 @@ internal class ModEntry : Mod
             }
             catch (Exception ex)
             {
-                this.HandleError(ex, "updating Power Silo solar panel connectivity");
+                this.HandleError(ex, "updating Power Silo solar panel connectivity", I18n.Message_GenericError_Verb_UpdatingSolarConnectivity());
             }
         }
 
@@ -1217,7 +1217,7 @@ internal class ModEntry : Mod
             }
             catch (Exception ex)
             {
-                this.HandleError(ex, "processing machines");
+                this.HandleError(ex, "processing machines", I18n.Message_GenericError_Verb_ProcessingMachines());
             }
         }
 
@@ -1252,7 +1252,7 @@ internal class ModEntry : Mod
             }
             catch (Exception ex)
             {
-                this.HandleError(ex, "refreshing machine visuals");
+                this.HandleError(ex, "refreshing machine visuals", I18n.Message_GenericError_Verb_RefreshingMachineVisuals());
             }
         }
 
@@ -1274,7 +1274,7 @@ internal class ModEntry : Mod
             }
             catch (Exception ex)
             {
-                this.HandleError(ex, "animating Power Coil ambient effect");
+                this.HandleError(ex, "animating Power Coil ambient effect", I18n.Message_GenericError_Verb_AnimatingPowerCoilAmbientEffect());
             }
         }
 
@@ -1287,7 +1287,7 @@ internal class ModEntry : Mod
             }
             catch (Exception ex)
             {
-                this.HandleError(ex, "animating Power Relay ambient effect");
+                this.HandleError(ex, "animating Power Relay ambient effect", I18n.Message_GenericError_Verb_AnimatingPowerRelayAmbientEffect());
             }
         }
 
@@ -1300,7 +1300,7 @@ internal class ModEntry : Mod
             }
             catch (Exception ex)
             {
-                this.HandleError(ex, "animating Power Silo cap");
+                this.HandleError(ex, "animating Power Silo cap", I18n.Message_GenericError_Verb_AnimatingPowerSiloCap());
             }
         }
 
@@ -1313,7 +1313,7 @@ internal class ModEntry : Mod
             }
             catch (Exception ex)
             {
-                this.HandleError(ex, "animating Power Relay light/shake effects");
+                this.HandleError(ex, "animating Power Relay light/shake effects", I18n.Message_GenericError_Verb_AnimatingPowerRelayLightShakeEffects());
             }
         }
     }
@@ -1365,7 +1365,7 @@ internal class ModEntry : Mod
         }
         catch (Exception ex)
         {
-            this.HandleError(ex, "processing machines");
+            this.HandleError(ex, "processing machines", I18n.Message_GenericError_Verb_ProcessingMachines());
         }
     }
 
@@ -1432,7 +1432,7 @@ internal class ModEntry : Mod
         }
         catch (Exception ex)
         {
-            this.HandleError(ex, "processing machines");
+            this.HandleError(ex, "processing machines", I18n.Message_GenericError_Verb_ProcessingMachines());
         }
     }
 
@@ -1511,7 +1511,7 @@ internal class ModEntry : Mod
         }
         catch (Exception ex)
         {
-            this.HandleError(ex, "processing machines");
+            this.HandleError(ex, "processing machines", I18n.Message_GenericError_Verb_ProcessingMachines());
         }
     }
 
@@ -2164,7 +2164,7 @@ internal class ModEntry : Mod
             }
             catch (Exception ex)
             {
-                this.HandleError(ex, "processing a delayed automation pass");
+                this.HandleError(ex, "processing a delayed automation pass", I18n.Message_GenericError_Verb_ProcessingDelayedAutomationPass());
             }
         }
     }
@@ -2185,7 +2185,7 @@ internal class ModEntry : Mod
         }
         catch (Exception ex)
         {
-            this.HandleError(ex, "drawing Power Coil compass arrows");
+            this.HandleError(ex, "drawing Power Coil compass arrows", I18n.Message_GenericError_Verb_DrawingPowerCoilCompassArrows());
         }
     }
 
@@ -2274,7 +2274,7 @@ internal class ModEntry : Mod
             }
             catch (Exception ex)
             {
-                this.HandleError(ex, "drawing automation performance overlay");
+                this.HandleError(ex, "drawing automation performance overlay", I18n.Message_GenericError_Verb_DrawingAutomationPerformanceOverlay());
             }
         }
 
@@ -2324,7 +2324,7 @@ internal class ModEntry : Mod
             }
             catch (Exception ex)
             {
-                this.HandleError(ex, "drawing automation overlay info panel");
+                this.HandleError(ex, "drawing automation overlay info panel", I18n.Message_GenericError_Verb_DrawingAutomationOverlayInfoPanel());
             }
         }
     }
@@ -2349,7 +2349,7 @@ internal class ModEntry : Mod
         }
         catch (Exception ex)
         {
-            this.HandleError(ex, "handling key input");
+            this.HandleError(ex, "handling key input", I18n.Message_GenericError_Verb_HandlingKeyInput());
         }
     }
 
@@ -2560,7 +2560,7 @@ internal class ModEntry : Mod
             onSaved?.Invoke();
         }
 
-        IManifest displayManifest = new DisplayNameManifest(this.ModManifest, "Powered Automation");
+        IManifest displayManifest = new DisplayNameManifest(this.ModManifest, I18n.Config_DisplayName());
         GenericModConfigMenuIntegration<TConfig> api = new(this.Helper.ModRegistry, this.Monitor, displayManifest, get, Reset, SaveAndApply);
         if (api.IsLoaded)
         {
@@ -2606,11 +2606,12 @@ internal class ModEntry : Mod
 
     /// <summary>Log an error and warn the user.</summary>
     /// <param name="ex">The exception to handle.</param>
-    /// <param name="verb">The verb describing where the error occurred (e.g. "looking that up").</param>
-    private void HandleError(Exception ex, string verb)
+    /// <param name="verb">The verb describing where the error occurred (e.g. "looking that up"), always in English — used only for the SMAPI log, which should stay in English for troubleshooting/bug reports regardless of the player's language.</param>
+    /// <param name="translatedVerb">MOD: added. The same verb, translated for the on-screen message shown to the player — kept as a separate argument from <paramref name="verb"/> specifically so the log and the on-screen text can use different languages.</param>
+    private void HandleError(Exception ex, string verb, string translatedVerb)
     {
         this.Monitor.Log($"Something went wrong {verb}:\n{ex}", LogLevel.Error);
-        CommonHelper.ShowErrorMessage($"Something went wrong {verb}.");
+        CommonHelper.ShowErrorMessage(I18n.Message_GenericError(verb: translatedVerb));
     }
 
     /// <summary>

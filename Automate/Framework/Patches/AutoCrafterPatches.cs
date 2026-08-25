@@ -218,10 +218,27 @@ internal static class AutoCrafterPatches
         // (stripping the content pack's own ID prefix) for every OTHER power-required machine, since that
         // class can't hardcode one specific type. If this Auto Crafter's own MachineTypeID resolution ever
         // changes, or another custom machine needs this same treatment, check both places.
-        string machineTypeId = BaseMachine.GetDefaultMachineId<AutoCrafterMachine>();
         IReadOnlySet<Vector2>? poweredTiles = AutoCrafterPatches.GetPoweredTiles!(location);
+        return AutoCrafterPatches.GetSystem!().IsPowerStarved(AutoCrafterPatches.GetCandidateIds(obj), [obj.TileLocation], poweredTiles);
+    }
 
-        return AutoCrafterPatches.GetSystem!().IsPowerStarved(machineTypeId, [obj.TileLocation], poweredTiles);
+    /// <summary>
+    /// MOD: added. Caches every identifier this machine could reasonably be configured under in
+    /// <see cref="Models.ModConfig.PowerRequiredMachineNames"/> — "AutoCrafter" plus its own raw
+    /// qualified/unqualified item ID, so a player can configure by whichever one's easier to find (see
+    /// <see cref="PowerRequiredMachineSystem.RequiresPower(IEnumerable{string})"/>'s own remarks). Every
+    /// Auto Crafter instance is the exact same underlying item, so this only ever needs computing once —
+    /// <see cref="IsStarved"/> (via <see cref="Draw_Prefix"/>) calls it every frame per visible Auto
+    /// Crafter, and without caching that would allocate a fresh array from scratch on every draw call for
+    /// a result that never changes.
+    /// </summary>
+    private static string[]? CandidateIdsCache;
+
+    /// <summary>Get every identifier this machine could reasonably be configured under — see <see cref="CandidateIdsCache"/>'s own remarks.</summary>
+    /// <param name="obj">The object to resolve.</param>
+    private static string[] GetCandidateIds(SObject obj)
+    {
+        return AutoCrafterPatches.CandidateIdsCache ??= [BaseMachine.GetDefaultMachineId<AutoCrafterMachine>(), obj.QualifiedItemId, obj.ItemId];
     }
 
     /// <summary>Freeze the processing countdown while starved, by pretending no time passed for this tick.</summary>
@@ -299,7 +316,7 @@ internal static class AutoCrafterPatches
         if (!AutoCrafterMachine.TryResolveAnyRecipeForItem(held, out CraftingRecipe? _))
         {
             __instance.shakeTimer = 50;
-            Game1.showRedMessage($"Don't know how to craft {held.DisplayName}.");
+            Game1.showRedMessage(I18n.Message_CraftUnknownRecipe(itemName: held.DisplayName));
         }
         else if (AutoCrafterMachine.TryResolveKnownRecipeForItem(held, who, out CraftingRecipe? recipe))
         {
@@ -316,7 +333,7 @@ internal static class AutoCrafterPatches
         else
         {
             __instance.shakeTimer = 50;
-            Game1.showRedMessage($"Don't know how to craft {held.DisplayName}.");
+            Game1.showRedMessage(I18n.Message_CraftUnknownRecipe(itemName: held.DisplayName));
         }
 
         __result = true;

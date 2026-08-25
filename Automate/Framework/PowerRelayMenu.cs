@@ -66,12 +66,6 @@ internal class PowerRelayMenu : IClickableMenu
     /// <summary>The height of one bottom-zone row (a "Bring:" prompt or a "reached max" status line) — matches <see cref="PowerSiloMenu.BringRowHeight"/>, dictated by the item icon (a 16x16 sprite at 4x zoom).</summary>
     private const int BringRowHeight = 64;
 
-    /// <summary>The flavor text shown below the icon rows for as long as at least one track isn't maxed.</summary>
-    private const string DefaultFlavorText = "Convinent slots are lined along the relay.\nIt seems to need precious materials to\nimprove automation efficency.";
-
-    /// <summary>The flavor text shown once both tracks are maxed.</summary>
-    private const string FullyPoweredFlavorText = "The stones glow and shake with energy,\nthe relay hums at peak efficiency.";
-
     /// <summary>The Power Relay this menu displays.</summary>
     private readonly Building Relay;
 
@@ -220,7 +214,7 @@ internal class PowerRelayMenu : IClickableMenu
         Game1.drawDialogueBox(this.xPositionOnScreen, boxTop, this.width, boxHeight, speaker: false, drawOnlyBox: true);
 
         // title tag — overlaps the box's own top border, same as PowerSiloMenu.
-        string nameText = "Automation Relay";
+        string nameText = I18n.Menu_PowerRelay_Title();
         Vector2 nameSize = Game1.smallFont.MeasureString(nameText);
         Game1.DrawBox((int)(this.xPositionOnScreen + this.width / 2 - (nameSize.X + 64f) * 0.5f), boxTop - 4, (int)(nameSize.X + 64f), 64);
         Utility.drawTextWithShadow(b, nameText, Game1.smallFont, new Vector2(this.xPositionOnScreen + this.width / 2 - nameSize.X * 0.5f, boxTop - 4 + 32 - nameSize.Y * 0.5f), Color.Black);
@@ -242,17 +236,18 @@ internal class PowerRelayMenu : IClickableMenu
 
         float thisRelayDelayReduction = PowerRelayMenu.GetThisRelayDelayReduction(this.Relay, this.PowerRelaySystem);
         int thisRelayActionsBonus = PowerRelayMenu.GetThisRelayActionsBonus(this.Relay, this.PowerRelaySystem);
-        string thisRelayText = $"Automation Relay: (-{thisRelayDelayReduction:0.0}s delay/+{thisRelayActionsBonus} actions)";
+        string thisRelayText = I18n.Menu_PowerRelay_ThisRelayContribution(delayReduction: $"{thisRelayDelayReduction:0.0}", actionsBonus: thisRelayActionsBonus);
         Vector2 thisRelayTextSize = Game1.smallFont.MeasureString(thisRelayText);
         Utility.drawTextWithShadow(b, thisRelayText, Game1.smallFont, new Vector2(this.xPositionOnScreen + this.width / 2 - thisRelayTextSize.X * 0.5f, cursorY), Game1.textColor);
         cursorY += PowerRelayMenu.LineHeight + PowerRelayMenu.ElementGap;
 
-        string gridDelayText = $"Power Grid automation delay: {effectiveDelay:0.0}s";
+        string gridDelayText = I18n.Menu_PowerRelay_GridDelay(delay: $"{effectiveDelay:0.0}");
         Vector2 gridDelayTextSize = Game1.smallFont.MeasureString(gridDelayText);
         Utility.drawTextWithShadow(b, gridDelayText, Game1.smallFont, new Vector2(this.xPositionOnScreen + this.width / 2 - gridDelayTextSize.X * 0.5f, cursorY), Game1.textColor);
         cursorY += PowerRelayMenu.LineHeight;
 
-        string gridActionsText = $"Power Grid automation actions: {(effectiveActionsPerDelayWindow <= 0 ? "Unlimited" : effectiveActionsPerDelayWindow.ToString())}";
+        string gridActionsValue = effectiveActionsPerDelayWindow <= 0 ? I18n.Menu_Unlimited() : effectiveActionsPerDelayWindow.ToString();
+        string gridActionsText = I18n.Menu_PowerRelay_GridActions(actions: gridActionsValue);
         Vector2 gridActionsTextSize = Game1.smallFont.MeasureString(gridActionsText);
         Utility.drawTextWithShadow(b, gridActionsText, Game1.smallFont, new Vector2(this.xPositionOnScreen + this.width / 2 - gridActionsTextSize.X * 0.5f, cursorY), Game1.textColor);
         cursorY += PowerRelayMenu.LineHeight;
@@ -265,7 +260,7 @@ internal class PowerRelayMenu : IClickableMenu
         this.DrawIconRow(b, this.BarIcon, this.FirstBarIcon, barLevel, PowerRelaySystem.MaxBars, cursorY);
         cursorY += PowerRelayMenu.IconSlotSpacing * 4f + PowerRelayMenu.ElementGap;
 
-        string flavorText = bothMaxed ? PowerRelayMenu.FullyPoweredFlavorText : PowerRelayMenu.DefaultFlavorText;
+        string flavorText = bothMaxed ? I18n.Menu_PowerRelay_FlavorTextFullyPowered() : I18n.Menu_PowerRelay_FlavorTextDefault();
         string wrappedFlavorText = Game1.parseText(flavorText, Game1.smallFont, this.width - IClickableMenu.spaceToClearSideBorder * 2);
         Vector2 flavorTextSize = Game1.smallFont.MeasureString(wrappedFlavorText);
         Utility.drawTextWithShadow(b, wrappedFlavorText, Game1.smallFont, new Vector2(this.xPositionOnScreen + this.width / 2 - flavorTextSize.X * 0.5f, cursorY), Game1.textColor);
@@ -283,7 +278,7 @@ internal class PowerRelayMenu : IClickableMenu
         this.HoveredBringRowItemId = null;
 
         int leftX = this.xPositionOnScreen + 88;
-        string bringText = "Bring:";
+        string bringText = I18n.Menu_BringLabel();
         Vector2 bringTextSize = Game1.smallFont.MeasureString(bringText);
         float iconX = leftX + bringTextSize.X + 12f;
 
@@ -294,15 +289,15 @@ internal class PowerRelayMenu : IClickableMenu
         // EVERY Relay's shard row shows this instead of either its own bring-prompt or its own
         // per-Relay-maxed message, since neither would be true/useful anymore at that point.
         if (this.PowerRelaySystem.IsGlobalSpeedCapped())
-            this.DrawCenteredStatusLine(b, "[Reached global max Power Grid speed]", rowCenterY);
+            this.DrawCenteredStatusLine(b, I18n.Menu_PowerRelay_GlobalSpeedCapped(), rowCenterY);
         else if (!shardsMaxed)
         {
             int shardsNeeded = this.PowerRelaySystem.GetShardsNeededForNextLevel(this.Relay);
             string currentShardItemId = shardLevel == 0 ? this.GetFirstShardItemId() : this.GetShardItemId();
-            this.DrawBringRow(b, currentShardItemId, shardsNeeded, "(-0.4s automation delay)", leftX, iconX, bringText, bringTextSize, rowCenterY);
+            this.DrawBringRow(b, currentShardItemId, shardsNeeded, I18n.Menu_PowerRelay_ShardRowBonus(), leftX, iconX, bringText, bringTextSize, rowCenterY);
         }
         else
-            this.DrawCenteredStatusLine(b, "[Reached max speed on Automation Relay]", rowCenterY);
+            this.DrawCenteredStatusLine(b, I18n.Menu_PowerRelay_ShardsMaxed(), rowCenterY);
 
         rowTop += PowerRelayMenu.BringRowHeight;
         rowCenterY = rowTop + PowerRelayMenu.BringRowHeight / 2f;
@@ -311,10 +306,10 @@ internal class PowerRelayMenu : IClickableMenu
         {
             int barsNeeded = this.PowerRelaySystem.GetBarsNeededForNextLevel(this.Relay);
             string currentBarItemId = barLevel == 0 ? this.GetFirstBarItemId() : this.GetBarItemId();
-            this.DrawBringRow(b, currentBarItemId, barsNeeded, "(+2 automation actions)", leftX, iconX, bringText, bringTextSize, rowCenterY);
+            this.DrawBringRow(b, currentBarItemId, barsNeeded, I18n.Menu_PowerRelay_BarRowBonus(), leftX, iconX, bringText, bringTextSize, rowCenterY);
         }
         else
-            this.DrawCenteredStatusLine(b, "[Reached max actions on Automation Relay]", rowCenterY);
+            this.DrawCenteredStatusLine(b, I18n.Menu_PowerRelay_BarsMaxed(), rowCenterY);
 
         this.OkButton.draw(b);
 
@@ -479,7 +474,7 @@ internal class PowerRelayMenu : IClickableMenu
     private static int GetMainZoneHeight()
     {
         int gridHeight = (int)(PowerRelayMenu.IconSlotSpacing * 4f * 2 + PowerRelayMenu.IconRowGap);
-        int flavorTextHeight = (int)Game1.smallFont.MeasureString(Game1.parseText(PowerRelayMenu.DefaultFlavorText, Game1.smallFont, PowerRelayMenu.MenuWidth - IClickableMenu.spaceToClearSideBorder * 2)).Y;
+        int flavorTextHeight = (int)Game1.smallFont.MeasureString(Game1.parseText(I18n.Menu_PowerRelay_FlavorTextDefault(), Game1.smallFont, PowerRelayMenu.MenuWidth - IClickableMenu.spaceToClearSideBorder * 2)).Y;
         int contentHeight = PowerRelayMenu.LineHeight * 3 + PowerRelayMenu.ElementGap + gridHeight + PowerRelayMenu.ElementGap + flavorTextHeight;
         return contentHeight + PowerRelayMenu.BodyTopMargin + PowerRelayMenu.BodyBottomMargin;
     }

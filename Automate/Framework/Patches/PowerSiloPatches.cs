@@ -382,11 +382,11 @@ internal static class PowerSiloPatches
         {
             int delta = after - before;
             string sign = delta > 0 ? "+" : "";
-            PowerSiloPatches.BroadcastHudMessage?.Invoke($"Expanded Power Grid {sign}{delta} : {totalCoils}/{capacity}");
+            PowerSiloPatches.BroadcastHudMessage?.Invoke(I18n.Message_PowerGridExpanded(delta: $"{sign}{delta}", totalCoils: totalCoils, capacity: capacity));
             return;
         }
 
-        string text = $"Power Grid: {totalCoils}/{capacity}";
+        string text = I18n.Message_PowerGridStatus(totalCoils: totalCoils, capacity: capacity);
         if (localOnly)
             Game1.addHUDMessage(new HUDMessage(text, HUDMessage.newQuest_type));
         else

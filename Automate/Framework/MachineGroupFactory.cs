@@ -717,10 +717,19 @@ internal class MachineGroupFactory
             // (IHasUnderlyingObject); a building- or terrain-feature-backed machine is never
             // Utility-Grid-Redux-tracked at all, so it always falls through to Automate's own check.
             bool isPowerStarved;
-            if (machine is IHasUnderlyingObject { UnderlyingObject: { } obj } && UtilityGridReduxSystem.IsEnabled && UtilityGridReduxSystem.IsTrackedAsConsumer(obj))
-                isPowerStarved = UtilityGridReduxSystem.IsStarved(obj, machine.Location);
+            SObject? underlyingObj = (machine as IHasUnderlyingObject)?.UnderlyingObject;
+            if (underlyingObj != null && UtilityGridReduxSystem.IsEnabled && UtilityGridReduxSystem.IsTrackedAsConsumer(underlyingObj))
+                isPowerStarved = UtilityGridReduxSystem.IsStarved(underlyingObj, machine.Location);
             else
-                isPowerStarved = this.PowerRequiredMachineSystem.IsPowerStarved(machine.MachineTypeID, machine.TileArea.GetTiles(), poweredTiles);
+            {
+                // MOD: added — also accepts the underlying object's own qualified/unqualified item ID as
+                // a valid PowerRequiredMachineNames entry, not just the resolved friendly MachineTypeID —
+                // see PowerRequiredMachineSystem.RequiresPower(IEnumerable<string>)'s own remarks.
+                IEnumerable<string> candidateIds = underlyingObj != null
+                    ? [machine.MachineTypeID, underlyingObj.QualifiedItemId, underlyingObj.ItemId]
+                    : [machine.MachineTypeID];
+                isPowerStarved = this.PowerRequiredMachineSystem.IsPowerStarved(candidateIds, machine.TileArea.GetTiles(), poweredTiles);
+            }
 
             builder.Add(machine, isPowerStarved);
         }

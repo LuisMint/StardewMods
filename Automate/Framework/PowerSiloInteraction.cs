@@ -174,12 +174,12 @@ internal class PowerSiloInteraction
                     if (unlockingSolarTier && before != after)
                         PowerSiloPatches.ShowCapacityPopup(this.PowerSiloSystem, before, after);
                     else
-                        this.BroadcastHudMessage("Power Silo capacity increased!");
+                        this.BroadcastHudMessage(I18n.Message_SiloCapacityIncreased());
                 }
                 else
                 {
                     string itemName = requirement.GetDisplayName();
-                    Game1.addHUDMessage(new HUDMessage($"Delivered {delivering}x {itemName} ({newDelivered}/{requirement.Count})", HUDMessage.newQuest_type));
+                    Game1.addHUDMessage(new HUDMessage(I18n.Message_DeliveredProgress(count: delivering, itemName: itemName, progress: newDelivered, total: requirement.Count), HUDMessage.newQuest_type));
                 }
                 return true;
             }

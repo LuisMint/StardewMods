@@ -6,8 +6,8 @@
             "Entries": {
                 "{{ModId}}_PowerCoil": {
                     "Name": "{{ModId}}_PowerCoil",
-                    "DisplayName": "Power Coil",
-                    "Description": "Provides power to nearby conduits and machines. Has a limited radius.",
+                    "DisplayName": "{{i18n:big-craftable.power-coil.name}}",
+                    "Description": "{{i18n:big-craftable.power-coil.description}}",
                     "Price": 50,
                     "Fragility": 0,
                     "CanBePlacedOutdoors": true,
@@ -21,8 +21,8 @@
 
                 "{{ModId}}_WhitelistSign": {
                     "Name": "{{ModId}}_WhitelistSign",
-                    "DisplayName": "Whitelist Sign",
-                    "Description": "Use an item on this sign to let only that item pass through a touching conduit group. The item won't be consumed.",
+                    "DisplayName": "{{i18n:big-craftable.whitelist-sign.name}}",
+                    "Description": "{{i18n:big-craftable.whitelist-sign.description}}",
                     "Price": 25,
                     "Fragility": 0,
                     "CanBePlacedOutdoors": true,
@@ -36,8 +36,8 @@
 
                 "{{ModId}}_BlacklistSign": {
                     "Name": "{{ModId}}_BlacklistSign",
-                    "DisplayName": "Blacklist Sign",
-                    "Description": "Use an item on this sign to block that item from passing through a touching conduit group. The item won't be consumed.",
+                    "DisplayName": "{{i18n:big-craftable.blacklist-sign.name}}",
+                    "Description": "{{i18n:big-craftable.blacklist-sign.description}}",
                     "Price": 25,
                     "Fragility": 0,
                     "CanBePlacedOutdoors": true,
@@ -51,8 +51,8 @@
 
                 "{{ModId}}_WhitelistCategorySign": {
                     "Name": "{{ModId}}_WhitelistCategorySign",
-                    "DisplayName": "Whitelist Category Sign",
-                    "Description": "Use an item on this sign to let only that item's CATEGORY pass through a touching conduit group. The item won't be consumed.",
+                    "DisplayName": "{{i18n:big-craftable.whitelist-category-sign.name}}",
+                    "Description": "{{i18n:big-craftable.whitelist-category-sign.description}}",
                     "Price": 25,
                     "Fragility": 0,
                     "CanBePlacedOutdoors": true,
@@ -66,8 +66,8 @@
 
                 "{{ModId}}_BlacklistCategorySign": {
                     "Name": "{{ModId}}_BlacklistCategorySign",
-                    "DisplayName": "Blacklist Category Sign",
-                    "Description": "Use an item on this sign to block that item's CATEGORY from passing through a touching conduit group. The item won't be consumed.",
+                    "DisplayName": "{{i18n:big-craftable.blacklist-category-sign.name}}",
+                    "Description": "{{i18n:big-craftable.blacklist-category-sign.description}}",
                     "Price": 25,
                     "Fragility": 0,
                     "CanBePlacedOutdoors": true,
@@ -81,8 +81,8 @@
 
                 "{{ModId}}_PoweredChest": {
                     "Name": "{{ModId}}_PoweredChest",
-                    "DisplayName": "Powered Chest",
-                    "Description": "A chest that can automate items via powered conduits. Passively powers itself and adjacent tiles.",
+                    "DisplayName": "{{i18n:big-craftable.powered-chest.name}}",
+                    "Description": "{{i18n:big-craftable.powered-chest.description}}",
                     "Price": 100,
                     "Fragility": 0,
                     "CanBePlacedOutdoors": true,
@@ -96,8 +96,8 @@
 
                 "{{ModId}}_AutoCrafter": {
                     "Name": "{{ModId}}_AutoCrafter",
-                    "DisplayName": "Auto Crafter",
-                    "Description": "Use an item on this machine to assign and craft any known recipes via automation. The item won't be consumed.",
+                    "DisplayName": "{{i18n:big-craftable.auto-crafter.name}}",
+                    "Description": "{{i18n:big-craftable.auto-crafter.description}}",
                     "Price": 200,
                     "Fragility": 0,
                     "CanBePlacedOutdoors": true,

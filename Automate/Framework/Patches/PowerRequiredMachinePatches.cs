@@ -324,6 +324,19 @@ internal static class PowerRequiredMachinePatches
         // back to the same ~10-minute resync cadence as the comment above for this one edge case (a
         // chest-backed machine that's Utility-Grid-Redux-tracked but not in PowerRequiredMachineNames) —
         // no current machine is both, so this is a correctness safeguard for a future one, not an active gap.
+        //
+        // KNOWN LIMITATION: RequiresPower is only checked against the tag's own stored machineTypeId here
+        // (the resolved friendly name), NOT the owning machine's qualified/unqualified item ID — unlike
+        // every other RequiresPower/IsPowerStarved call site in this codebase, which now also accept an
+        // item ID (see PowerRequiredMachineSystem.RequiresPower(IEnumerable<string>)'s own remarks). This
+        // method only ever receives the CHEST, not the machine that owns it, so there's no item ID to
+        // check here without a reverse lookup (this runs on every Chest.addItem call in the whole game —
+        // far too hot a path for that). Practical impact: a chest-backed machine (currently only
+        // Auto-Grabber) configured PURELY by item ID rather than its friendly name would have this one
+        // fast-clear safeguard wrongly fire once, letting a single item through before the next
+        // ShouldTimePassForMachine_Postfix/DayUpdate_Prefix sync (up to ~10 minutes, or next night) tags
+        // it correctly again — self-correcting, not a permanent bypass. Configuring by friendly name
+        // (e.g. "AutoGrabber") avoids this gap entirely.
         if (PowerRequiredMachinePatches.GetSystem == null || (!PowerRequiredMachinePatches.GetSystem().RequiresPower(machineTypeId) && !UtilityGridReduxSystem.IsEnabled))
         {
             __instance.modData.Remove(PowerRequiredMachinePatches.PowerStarvedChestModDataKey);
@@ -331,7 +344,7 @@ internal static class PowerRequiredMachinePatches
         }
 
         if (machineTypeId == PowerRequiredMachinePatches.AutoGrabberMachineTypeId)
-            PowerRequiredMachinePatches.QueueFailureMessage(ref PowerRequiredMachinePatches.HasQueuedAutoGrabberFailureMessage, "Auto-Grabber failed to gather animal products due to lack of power");
+            PowerRequiredMachinePatches.QueueFailureMessage(ref PowerRequiredMachinePatches.HasQueuedAutoGrabberFailureMessage, I18n.Message_AutoGrabberFailedNoPower());
 
         __result = item;
         return false;
@@ -375,7 +388,7 @@ internal static class PowerRequiredMachinePatches
         if (!is_auto_pet || !PowerRequiredMachinePatches.IsInsideStarvedAutoPetterDayUpdate)
             return true;
 
-        PowerRequiredMachinePatches.QueueFailureMessage(ref PowerRequiredMachinePatches.HasQueuedAutoPetterFailureMessage, "Auto-Petter failed to pet animals due to lack of power");
+        PowerRequiredMachinePatches.QueueFailureMessage(ref PowerRequiredMachinePatches.HasQueuedAutoPetterFailureMessage, I18n.Message_AutoPetterFailedNoPower());
         return false;
     }
 
@@ -518,9 +531,8 @@ internal static class PowerRequiredMachinePatches
         if (UtilityGridReduxSystem.IsEnabled && UtilityGridReduxSystem.IsTrackedAsConsumer(obj))
             return UtilityGridReduxSystem.IsStarved(obj, location);
 
-        string machineTypeId = PowerRequiredMachinePatches.GetMachineTypeId(obj);
         IReadOnlySet<Vector2>? poweredTiles = PowerRequiredMachinePatches.GetPoweredTiles!(location);
-        return PowerRequiredMachinePatches.GetSystem!().IsPowerStarved(machineTypeId, [obj.TileLocation], poweredTiles);
+        return PowerRequiredMachinePatches.GetSystem!().IsPowerStarved(PowerRequiredMachinePatches.GetCandidateIds(obj), [obj.TileLocation], poweredTiles);
     }
 
     /// <summary>
@@ -537,6 +549,37 @@ internal static class PowerRequiredMachinePatches
     /// exist in the save (a handful to a few dozen at most), never per-instance, so this never needs eviction.
     /// </summary>
     private static readonly Dictionary<string, string> MachineTypeIdCache = new();
+
+    /// <summary>
+    /// MOD: added. Caches <see cref="GetCandidateIds"/>'s own result, keyed by an object's raw Name for
+    /// the exact same reason and with the exact same per-frame-hot-path justification as
+    /// <see cref="MachineTypeIdCache"/> right above — <see cref="SObject.QualifiedItemId"/>/<see cref="SObject.ItemId"/>
+    /// are cheap property reads on their own, but building a fresh 3-element array to hold them (plus the
+    /// resolved type ID) on every single <see cref="IsPowerStarved"/> call — itself called every frame per
+    /// visible power-required machine via <see cref="Draw_Postfix"/> — would otherwise allocate garbage
+    /// for a result that's always identical for a given Name, same as the cache above.
+    /// </summary>
+    private static readonly Dictionary<string, string[]> CandidateIdsCache = new();
+
+    /// <summary>
+    /// MOD: added. Get every identifier a given object could reasonably be configured under in
+    /// <see cref="Models.ModConfig.PowerRequiredMachineNames"/> — its resolved friendly type ID (see
+    /// <see cref="GetMachineTypeId"/>) plus its own raw qualified and unqualified item ID, so a player can
+    /// configure a machine by whichever one they actually have on hand (see
+    /// <see cref="PowerRequiredMachineSystem.RequiresPower(IEnumerable{string})"/>'s own remarks for why).
+    /// Cached per <see cref="CandidateIdsCache"/>'s own remarks.
+    /// </summary>
+    /// <param name="obj">The object to resolve.</param>
+    private static string[] GetCandidateIds(SObject obj)
+    {
+        string rawName = obj.Name;
+        if (PowerRequiredMachinePatches.CandidateIdsCache.TryGetValue(rawName, out string[]? cached))
+            return cached;
+
+        string[] result = [PowerRequiredMachinePatches.GetMachineTypeId(obj), obj.QualifiedItemId, obj.ItemId];
+        PowerRequiredMachinePatches.CandidateIdsCache[rawName] = result;
+        return result;
+    }
 
     /// <summary>
     /// MOD: added. Raw <see cref="SObject.Name"/> values whose own internal codename doesn't match the

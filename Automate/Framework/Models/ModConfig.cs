@@ -199,16 +199,26 @@ internal class ModConfig
 
     /// <summary>
     /// MOD: added. The machine types that require their OWN tile to be within power range in order to
-    /// be automated at all (see <see cref="PowerRequiredMachinesEnabled"/>) — a deliberate balance gate
-    /// for machines that generate a lot of value passively, with little ongoing resource cost, so
-    /// automating them removes real gameplay tension rather than just tedium (unlike e.g. the Mayonnaise
-    /// Machine or Cheese Press, which keep consuming an ongoing input tied to animals). Only affects
-    /// Automate itself — an unpowered machine still works fine if fed/collected by hand. Matched against
-    /// the machine's own internal type ID (letters/digits only, e.g. "Auto-Grabber" -> "AutoGrabber"),
-    /// the same identifier used by <see cref="MachineOverrides"/>. For a THIRD-PARTY mod's own machine,
-    /// that ID has any leading "{ModUniqueID}_" prefix stripped first (see
-    /// <see cref="BaseMachine.GetDefaultMachineId(string)"/>'s own remarks) — run the <c>automate summary</c>
-    /// console command near the machine to see its exact type ID rather than guessing.
+    /// be automated OR interacted with at all (see <see cref="PowerRequiredMachinesEnabled"/>) — a
+    /// deliberate balance gate for machines that generate a lot of value passively, with little ongoing
+    /// resource cost, so automating them removes real gameplay tension rather than just tedium (unlike
+    /// e.g. the Mayonnaise Machine or Cheese Press, which keep consuming an ongoing input tied to
+    /// animals). Blocks BOTH Automate's own automation and manual player interaction while starved (see
+    /// <see cref="Patches.PowerRequiredMachinePatches"/>) — an unpowered machine on this list can't be
+    /// fed/collected by hand either, only viewed/emptied.
+    ///
+    /// Each entry can be EITHER the machine's own resolved internal type ID (letters/digits only, e.g.
+    /// "Auto-Grabber" -> "AutoGrabber", the same identifier used by <see cref="MachineOverrides"/> — for
+    /// a THIRD-PARTY mod's own machine, that ID has any leading "{ModUniqueID}_" prefix stripped first,
+    /// see <see cref="BaseMachine.GetDefaultMachineId(string)"/>'s own remarks) OR the machine's raw
+    /// qualified/unqualified item ID (e.g. "(BC)Cornucopia_Extruder" or "Cornucopia_Extruder") — both are
+    /// checked, so whichever one's easier to find works. The resolved type ID isn't always intuitive for
+    /// a third-party mod whose own internal naming doesn't cleanly reduce to its display name (confirmed
+    /// via user report — Cornucopia's own objects use a shorter prefix than their manifest UniqueID, so
+    /// stripping doesn't produce "Extruder" the way a player would expect); the raw item ID is a reliable
+    /// fallback in that case, since it can be copied directly from any item-ID-showing tool (Lookup
+    /// Anything, Chests Anywhere, a debug spawner, etc.). Run the <c>automate summary</c> console command
+    /// near the machine to see its resolved type ID rather than guessing either way.
     /// </summary>
     [JsonProperty("PowerRequiredMachineNames")]
     public HashSet<string> PowerRequiredMachineNames { get; set; } = new(StringComparer.OrdinalIgnoreCase)

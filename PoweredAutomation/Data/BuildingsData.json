@@ -5,8 +5,8 @@
             "Target": "Data/Buildings",
             "Entries": {
                 "{{ModId}}_CaveHole": {
-                    "Name": "Cave Hole",
-                    "Description": "A hole leading down into a small Dwarf-dug cavern. It's dug deep into an ore rich vein.",
+                    "Name": "{{i18n:building.cave-hole.name}}",
+                    "Description": "{{i18n:building.cave-hole.description}}",
                     "Texture": "Mods/{{ModId}}/CaveHole",
                     "Skins": [],
                     "DrawShadow": false,
@@ -63,8 +63,8 @@
                     "CustomFields": null
                 },
                 "{{ModId}}_CaveHole2": {
-                    "Name": "Big Cave Hole",
-                    "Description": "An expanded Dwarf-dug cavern. It's dug deep into an ore rich vein.",
+                    "Name": "{{i18n:building.big-cave-hole.name}}",
+                    "Description": "{{i18n:building.big-cave-hole.description}}",
                     "Texture": "Mods/{{ModId}}/BigCaveHole",
                     "Skins": [],
                     "DrawShadow": false,
@@ -121,8 +121,8 @@
                     "CustomFields": null
                 },
                 "{{ModId}}_PowerSilo": {
-                    "Name": "Power Silo",
-                    "Description": "Increases how many Power Coils can be active at once.",
+                    "Name": "{{i18n:building.power-silo.name}}",
+                    "Description": "{{i18n:building.power-silo.description}}",
                     "Texture": "Mods/{{ModId}}/PowerSiloBody",
                     "Skins": [],
                     "DrawShadow": true,
@@ -177,8 +177,8 @@
                     "CustomFields": null
                 },
                 "{{ModId}}_PowerRelay": {
-                    "Name": "Automation Relay",
-                    "Description": "Boosts automation efficiency.",
+                    "Name": "{{i18n:building.power-relay.name}}",
+                    "Description": "{{i18n:building.power-relay.description}}",
                     "Texture": "Mods/{{ModId}}/PowerRelay",
                     "Skins": [],
                     "DrawShadow": true,

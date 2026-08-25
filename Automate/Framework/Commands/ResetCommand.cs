@@ -28,12 +28,7 @@ internal class ResetCommand : BaseCommand
     /// <inheritdoc />
     public override string GetDescription()
     {
-        return
-            """
-            automate reset
-               Usage: automate reset
-               Resets all cached data and rescans the world for machines.
-            """;
+        return I18n.Command_Reset_Description();
     }
 
     /// <inheritdoc />

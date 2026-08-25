@@ -1,0 +1,75 @@
+{
+    // A translated value must not contain a literal / or unescaped ", since those are Content Patcher
+    // event-command syntax delimiters (used by the event.dwarf-friendship-1.* keys below).
+
+    /*********
+    ** Data/Objects
+    *********/
+    "object.pull-push-pipe.name": "Omni Conduit",
+    "object.pull-push-pipe.description": "Lets automation both push and pull items from machines, as long as it's within power range.",
+    "object.input-pipe.name": "Input Conduit",
+    "object.input-pipe.description": "Lets automation pull items from machines and containers, as long as it's within power range.",
+    "object.output-pipe.name": "Output Conduit",
+    "object.output-pipe.description": "Lets automation push items into machines and containers, as long as it's within power range.",
+
+    /*********
+    ** Data/BigCraftables
+    *********/
+    "big-craftable.power-coil.name": "Power Coil",
+    "big-craftable.power-coil.description": "Provides power to nearby conduits and machines. Has a limited radius.",
+    "big-craftable.whitelist-sign.name": "Whitelist Sign",
+    "big-craftable.whitelist-sign.description": "Use an item on this sign to let only that item pass through a touching conduit group. The item won't be consumed.",
+    "big-craftable.blacklist-sign.name": "Blacklist Sign",
+    "big-craftable.blacklist-sign.description": "Use an item on this sign to block that item from passing through a touching conduit group. The item won't be consumed.",
+    "big-craftable.whitelist-category-sign.name": "Whitelist Category Sign",
+    "big-craftable.whitelist-category-sign.description": "Use an item on this sign to let only that item's CATEGORY pass through a touching conduit group. The item won't be consumed.",
+    "big-craftable.blacklist-category-sign.name": "Blacklist Category Sign",
+    "big-craftable.blacklist-category-sign.description": "Use an item on this sign to block that item's CATEGORY from passing through a touching conduit group. The item won't be consumed.",
+    "big-craftable.powered-chest.name": "Powered Chest",
+    "big-craftable.powered-chest.description": "A chest that can automate items via powered conduits. Passively powers itself and adjacent tiles.",
+    "big-craftable.auto-crafter.name": "Auto Crafter",
+    "big-craftable.auto-crafter.description": "Use an item on this machine to assign and craft any known recipes via automation. The item won't be consumed.",
+
+    /*********
+    ** Data/Buildings
+    *********/
+    "building.cave-hole.name": "Cave Hole",
+    "building.cave-hole.description": "A hole leading down into a small Dwarf-dug cavern. It's dug deep into an ore rich vein.",
+    "building.big-cave-hole.name": "Big Cave Hole",
+    "building.big-cave-hole.description": "An expanded Dwarf-dug cavern. It's dug deep into an ore rich vein.",
+    "building.power-silo.name": "Power Silo",
+    "building.power-silo.description": "Increases how many Power Coils can be active at once.",
+    "building.power-relay.name": "Automation Relay",
+    "building.power-relay.description": "Boosts automation efficiency.",
+
+    /*********
+    ** Dwarf Research Notes (Data/Objects entry + Secret Note Framework titles)
+    *********/
+    "dwarf-note.research-note.name": "Dwarf Research Note",
+    "dwarf-note.research-note.description": "A loose page of research on Dwarf technology. The notation is illegible, but at least the drawings are neat.",
+    "dwarf-note.title.input-conduit": "Dwarf Research Note #1: Input Conduit",
+    "dwarf-note.title.output-conduit": "Dwarf Research Note #2: Output Conduit",
+    "dwarf-note.title.omni-conduit": "Dwarf Research Note #3: Omni Conduit",
+    "dwarf-note.title.powered-systems": "Dwarf Research Note #4: Powered Chest - Power Coil",
+    "dwarf-note.title.filter-signs-output": "Dwarf Research Note #5: White/Black List Sign on Output Conduit",
+    "dwarf-note.title.filter-signs-input": "Dwarf Research Note #6: White/Black List Sign on Input Conduit",
+    "dwarf-note.title.category-sign": "Dwarf Research Note #7: White/Black List Category Sign",
+
+    /*********
+    ** Data/Events/Mine — "Kree_CM_UOHGR4IM/Friendship Dwarf 1"
+    *********/
+    "event.dwarf-friendship-1.text-above-head": "Oh, It's you...",
+    "event.dwarf-friendship-1.speak-1": "Farm human...",
+    "event.dwarf-friendship-1.speak-2": "There has been a lot of sensation underground lately. Others of my kind have made new advances reclaiming old dwarf technology.",
+    "event.dwarf-friendship-1.speak-3": "Truthfully, it does not interest me in the slightest. ",
+    "event.dwarf-friendship-1.speak-4": "...I was thinking someone like you could get more use of it than I ever could.",
+    "event.dwarf-friendship-1.speak-5": "Go on, give it a closer look.",
+    "event.dwarf-friendship-1.speak-6": "It's a Powered Chest...",
+    "event.dwarf-friendship-1.message-warm-to-touch": "It's warm to the touch.",
+    "event.dwarf-friendship-1.question-option-1": "How does this work?",
+    "event.dwarf-friendship-1.question-option-2": "I'll take it off your hands",
+    "event.dwarf-friendship-1.split-speak-1": "It's the main component to powered automation. It can move items to and from machines and chests connected by conduit.",
+    "event.dwarf-friendship-1.split-speak-2": "Also it in itself is a power source!",
+    // gender-split line (~) — both halves happen to say the same thing (the original had a typo in the second half, now fixed), so this one key is used on both sides
+    "event.dwarf-friendship-1.shop-intro": "I sell all the things that could help you get started. I even got my hands on some research notes that might prove useful.~I sell all the things that could help you get started. I even got my hands on some research notes that might prove useful."
+}

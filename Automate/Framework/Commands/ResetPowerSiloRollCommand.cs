@@ -33,14 +33,7 @@ internal class ResetPowerSiloRollCommand : BaseCommand
     /// <inheritdoc />
     public override string GetDescription()
     {
-        return
-            """
-            automate reset_silo_tiers
-               Usage: automate reset_silo_tiers
-               Discards this save's already-rolled Power Silo tier requirements, so they're rolled fresh
-               from the current config the next time they're read (e.g. next time you interact with a
-               Power Silo). Useful when testing changes to PowerSiloTierPools in the config file.
-            """;
+        return I18n.Command_ResetSiloTiers_Description();
     }
 
     /// <inheritdoc />

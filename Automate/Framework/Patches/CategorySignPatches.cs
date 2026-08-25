@@ -108,7 +108,7 @@ internal static class CategorySignPatches
         string? categoryText = SignFilter.GetCategoryDisplayText(newItem.QualifiedItemId, customCategories);
         Color backdropColor = kind == SignKind.Blacklist ? CategorySignPatches.BlacklistBackdropColor : CategorySignPatches.WhitelistBackdropColor;
 
-        ColoredHudMessage message = new(categoryText ?? "...", backdropColor);
+        ColoredHudMessage message = new(categoryText ?? I18n.Message_CategorySignUnresolved(), backdropColor);
         if (categoryText != null)
             message.messageSubject = newItem;
         else

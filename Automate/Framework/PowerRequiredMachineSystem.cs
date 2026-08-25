@@ -103,6 +103,29 @@ internal class PowerRequiredMachineSystem
         return this.IsEnabled && this.GetMachineTypeNames().Contains(machineTypeId);
     }
 
+    /// <summary>
+    /// MOD: added. Get whether a machine is configured to require power, checking every candidate
+    /// identifier for it rather than just one — <see cref="Models.ModConfig.PowerRequiredMachineNames"/>
+    /// accepts EITHER a machine's resolved friendly type ID (e.g. "Extruder") OR its raw qualified/
+    /// unqualified item ID (e.g. "(BC)Cornucopia_Extruder" / "Cornucopia_Extruder") — the friendly ID is
+    /// what <c>automate summary</c> shows and is what most players naturally think to type, but a
+    /// third-party mod's own internal naming doesn't always strip down to something intuitive (confirmed
+    /// via user report — Cornucopia's own "Cornucopia_Extruder" doesn't reduce to "Extruder" since its
+    /// object Name uses a different, shorter prefix than its manifest UniqueID). Accepting the raw item ID
+    /// too means a player can always just copy it from any item-ID-showing tool (Lookup Anything, Chests
+    /// Anywhere, a debug spawner, etc.) as a reliable fallback, without needing to understand Automate's
+    /// own ID-resolution rules at all.
+    /// </summary>
+    /// <param name="candidateIds">Every identifier this specific machine could reasonably be configured under.</param>
+    public bool RequiresPower(IEnumerable<string> candidateIds)
+    {
+        if (!this.IsEnabled)
+            return false;
+
+        HashSet<string> configured = this.GetMachineTypeNames();
+        return candidateIds.Any(configured.Contains);
+    }
+
     /// <summary>Get whether a machine is currently power-starved — i.e. its type requires power, but none of its tiles are within range of a source.</summary>
     /// <param name="machineTypeId">The machine's resolved type ID.</param>
     /// <param name="tiles">The tiles the machine occupies.</param>
@@ -112,10 +135,19 @@ internal class PowerRequiredMachineSystem
         return this.RequiresPower(machineTypeId) && poweredTiles != null && !tiles.Any(poweredTiles.Contains);
     }
 
+    /// <summary>MOD: added. The <see cref="IEnumerable{String}"/> counterpart to <see cref="IsPowerStarved(string,System.Collections.Generic.IEnumerable{Microsoft.Xna.Framework.Vector2},System.Collections.Generic.IReadOnlySet{Microsoft.Xna.Framework.Vector2}?)"/> — see <see cref="RequiresPower(IEnumerable{string})"/>'s own remarks for why a machine may need to be checked under more than one candidate identifier.</summary>
+    /// <param name="candidateIds">Every identifier this specific machine could reasonably be configured under.</param>
+    /// <param name="tiles">The tiles the machine occupies.</param>
+    /// <param name="poweredTiles">The location's currently-powered tiles (see <see cref="PowerSystem.GetPoweredTiles"/>), or <c>null</c> if the power system itself is disabled (everything unrestricted).</param>
+    public bool IsPowerStarved(IEnumerable<string> candidateIds, IEnumerable<Vector2> tiles, IReadOnlySet<Vector2>? poweredTiles)
+    {
+        return this.RequiresPower(candidateIds) && poweredTiles != null && !tiles.Any(poweredTiles.Contains);
+    }
+
     /// <summary>Show the standard "needs power" reminder message to the player, matching vanilla's own style for a machine missing a required ingredient (e.g. a Furnace with no coal).</summary>
     public static void ShowNeedsPowerMessage()
     {
-        Game1.showRedMessage("Machine needs power");
+        Game1.showRedMessage(I18n.Message_MachineNeedsPower());
     }
 
     /// <summary>
@@ -224,9 +256,10 @@ internal class PowerRequiredMachineSystem
                 // for why), but every power-required machine type in practice occupies exactly one
                 // tile, so tile count and machine count are the same number here.
                 int count = currentStarvedTiles.Count;
-                string machineWord = count == 1 ? "connected machine" : "connected machines";
-                string needWord = count == 1 ? "needs" : "need";
-                Game1.showRedMessage($"{count} {machineWord} {needWord} power in {locationName}");
+                string message = count == 1
+                    ? I18n.Message_MachinesNeedPowerInLocation_Singular(count: count, locationName: locationName)
+                    : I18n.Message_MachinesNeedPowerInLocation_Plural(count: count, locationName: locationName);
+                Game1.showRedMessage(message);
 
                 this.NextCalloutTimeByLocation[locationKey] = curTime + calloutIntervalMilliseconds;
             }

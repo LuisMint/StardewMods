@@ -9,8 +9,8 @@
             "Entries": {
                 "{{ModId}}_DwarfResearchNote": {
                     "Name": "{{ModId}}_DwarfResearchNote",
-                    "DisplayName": "Dwarf Research Note",
-                    "Description": "A loose page of research on Dwarf technology. The notation is illegible, but at least the drawings are neat.",
+                    "DisplayName": "{{i18n:dwarf-note.research-note.name}}",
+                    "Description": "{{i18n:dwarf-note.research-note.description}}",
                     "Type": "asdf",
                     "Category": 0,
                     "Price": 1,
@@ -85,49 +85,49 @@
             },
             "Entries": {
                 "{{ModId}}_DwarfNote_InputConduit": {
-                    "Title": "Dwarf Research Note #1: Input Conduit",
+                    "Title": "{{i18n:dwarf-note.title.input-conduit}}",
                     "Contents": " ",
                     "ObjectId": "{{ModId}}_DwarfResearchNote",
                     "NoteTexture": "Mods/{{ModId}}/DwarfResearchNotesSheet",
                     "NoteTextureIndex": 0
                 },
                 "{{ModId}}_DwarfNote_OutputConduit": {
-                    "Title": "Dwarf Research Note #2: Output Conduit",
+                    "Title": "{{i18n:dwarf-note.title.output-conduit}}",
                     "Contents": " ",
                     "ObjectId": "{{ModId}}_DwarfResearchNote",
                     "NoteTexture": "Mods/{{ModId}}/DwarfResearchNotesSheet",
                     "NoteTextureIndex": 1
                 },
                 "{{ModId}}_DwarfNote_OmniConduit": {
-                    "Title": "Dwarf Research Note #3: Omni Conduit",
+                    "Title": "{{i18n:dwarf-note.title.omni-conduit}}",
                     "Contents": " ",
                     "ObjectId": "{{ModId}}_DwarfResearchNote",
                     "NoteTexture": "Mods/{{ModId}}/DwarfResearchNotesSheet",
                     "NoteTextureIndex": 2
                 },
                 "{{ModId}}_DwarfNote_PoweredSystems": {
-                    "Title": "Dwarf Research Note #4: Powered Chest - Power Coil",
+                    "Title": "{{i18n:dwarf-note.title.powered-systems}}",
                     "Contents": " ",
                     "ObjectId": "{{ModId}}_DwarfResearchNote",
                     "NoteTexture": "Mods/{{ModId}}/DwarfResearchNotesSheet",
                     "NoteTextureIndex": 3
                 },
                 "{{ModId}}_DwarfNote_FilterSignsOutput": {
-                    "Title": "Dwarf Research Note #5: White/Black List Sign on Output Conduit",
+                    "Title": "{{i18n:dwarf-note.title.filter-signs-output}}",
                     "Contents": " ",
                     "ObjectId": "{{ModId}}_DwarfResearchNote",
                     "NoteTexture": "Mods/{{ModId}}/DwarfResearchNotesSheet",
                     "NoteTextureIndex": 4
                 },
                 "{{ModId}}_DwarfNote_FilterSignsInput": {
-                    "Title": "Dwarf Research Note #6: White/Black List Sign on Input Conduit",
+                    "Title": "{{i18n:dwarf-note.title.filter-signs-input}}",
                     "Contents": " ",
                     "ObjectId": "{{ModId}}_DwarfResearchNote",
                     "NoteTexture": "Mods/{{ModId}}/DwarfResearchNotesSheet",
                     "NoteTextureIndex": 5
                 },
                 "{{ModId}}_DwarfNote_CategorySign": {
-                    "Title": "Dwarf Research Note #7: White/Black List Category Sign",
+                    "Title": "{{i18n:dwarf-note.title.category-sign}}",
                     "Contents": " ",
                     "ObjectId": "{{ModId}}_DwarfResearchNote",
                     "NoteTexture": "Mods/{{ModId}}/DwarfResearchNotesSheet",

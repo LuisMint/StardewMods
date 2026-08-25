@@ -67,5 +67,79 @@
 
     // special settings for individual machines
     "config.machines.wild-tree.collect-moss.name": "Collect Moss",
-    "config.machines.wild-tree.collect-moss.desc": "Whether to collect moss on trees. For example, keeping moss on trees will boost the quality of mushrooms from nearby mushroom logs."
+    "config.machines.wild-tree.collect-moss.desc": "Whether to collect moss on trees. For example, keeping moss on trees will boost the quality of mushrooms from nearby mushroom logs.",
+
+    // GMCM page title
+    "config.display-name": "Powered Automation",
+
+    /*********
+    ** In-game messages (HUD/red/global messages, not GMCM)
+    *********/
+    "message.craft-unknown-recipe": "Don't know how to craft {{itemName}}.",
+    "message.category-sign-unresolved": "...",
+    "message.machine-needs-power": "Machine needs power",
+    "message.machines-need-power-in-location.singular": "{{count}} connected machine needs power in {{locationName}}",
+    "message.machines-need-power-in-location.plural": "{{count}} connected machines need power in {{locationName}}",
+    "message.auto-grabber-failed-no-power": "Auto-Grabber failed to gather animal products due to lack of power",
+    "message.auto-petter-failed-no-power": "Auto-Petter failed to pet animals due to lack of power",
+    "message.relay-level-up": "Automation Relay increased Power Grid's automation {{effectName}}!",
+    "message.delivered-progress": "Delivered {{count}}x {{itemName}} ({{progress}}/{{total}})",
+    "message.silo-capacity-increased": "Power Silo capacity increased!",
+    "message.power-grid-expanded": "Expanded Power Grid {{delta}} : {{totalCoils}}/{{capacity}}",
+    "message.power-grid-status": "Power Grid: {{totalCoils}}/{{capacity}}",
+
+    // generic error shown for an unexpected exception — {{verb}} is one of the verb phrases below, describing where the error occurred
+    "message.generic-error": "Something went wrong {{verb}}.",
+    "message.generic-error.verb.updating-locations": "updating locations",
+    "message.generic-error.verb.updating-solar-connectivity": "updating Power Silo solar panel connectivity",
+    "message.generic-error.verb.processing-machines": "processing machines",
+    "message.generic-error.verb.refreshing-machine-visuals": "refreshing machine visuals",
+    "message.generic-error.verb.animating-power-coil-ambient-effect": "animating Power Coil ambient effect",
+    "message.generic-error.verb.animating-power-relay-ambient-effect": "animating Power Relay ambient effect",
+    "message.generic-error.verb.animating-power-silo-cap": "animating Power Silo cap",
+    "message.generic-error.verb.animating-power-relay-light-shake-effects": "animating Power Relay light/shake effects",
+    "message.generic-error.verb.processing-delayed-automation-pass": "processing a delayed automation pass",
+    "message.generic-error.verb.drawing-power-coil-compass-arrows": "drawing Power Coil compass arrows",
+    "message.generic-error.verb.drawing-automation-performance-overlay": "drawing automation performance overlay",
+    "message.generic-error.verb.drawing-automation-overlay-info-panel": "drawing automation overlay info panel",
+    "message.generic-error.verb.handling-key-input": "handling key input",
+
+    /*********
+    ** Power Relay / Power Silo status menus
+    *********/
+    "menu.bring-label": "Bring:",
+    "menu.unlimited": "Unlimited",
+
+    "menu.power-relay.title": "Automation Relay",
+    "menu.power-relay.this-relay-contribution": "Automation Relay: (-{{delayReduction}}s delay/+{{actionsBonus}} actions)",
+    "menu.power-relay.grid-delay": "Power Grid automation delay: {{delay}}s",
+    "menu.power-relay.grid-actions": "Power Grid automation actions: {{actions}}",
+    "menu.power-relay.flavor-text-default": "Convinent slots are lined along the relay.\nIt seems to need precious materials to\nimprove automation efficency.",
+    "menu.power-relay.flavor-text-fully-powered": "The stones glow and shake with energy,\nthe relay hums at peak efficiency.",
+    "menu.power-relay.global-speed-capped": "[Reached global max Power Grid speed]",
+    "menu.power-relay.shard-row-bonus": "(-0.4s automation delay)",
+    "menu.power-relay.shards-maxed": "[Reached max speed on Automation Relay]",
+    "menu.power-relay.bar-row-bonus": "(+2 automation actions)",
+    "menu.power-relay.bars-maxed": "[Reached max actions on Automation Relay]",
+
+    "menu.power-silo.title": "Power Silo",
+    "menu.power-silo.flavor-text-default": "A Dwarf left cryptic\ninstructions for expanding\nthe Power Grid",
+    "menu.power-silo.flavor-text-solar": "A Dwarf left a crude\nsketch of what appears\nto be the sun",
+    "menu.power-silo.hide-coil-markers": "Hide Power Coil markers",
+    "menu.power-silo.show-coil-markers": "Show Power Coil markers",
+    "menu.power-silo.hide-coils-on-map": "Hide Power Coils on map",
+    "menu.power-silo.show-coils-on-map": "Show Power Coils on map",
+    "menu.power-silo.silo-capacity": "Silo Capacity: {{capacity}}",
+    "menu.power-silo.grid-status": "Power Grid: {{totalCoils}}/{{capacity}}",
+    "menu.power-silo.completed-sets-count": "x{{count}}",
+    "menu.power-silo.connect-solar-panels": "Connect Solar Panels to expand Power Grid",
+    "menu.power-silo.fully-upgraded": "Fully upgraded!",
+
+    /*********
+    ** Console command help text (shown via 'help <command>')
+    *********/
+    "command.reset.description": "automate reset\n   Usage: automate reset\n   Resets all cached data and rescans the world for machines.",
+    "command.summary.description": "automate summary\n   Usage: automate summary\n   Prints a summary of automated machines.",
+    "command.reset-silo-tiers.description": "automate reset_silo_tiers\n   Usage: automate reset_silo_tiers\n   Discards this save's already-rolled Power Silo tier requirements, so they're rolled fresh\n   from the current config the next time they're read (e.g. next time you interact with a\n   Power Silo). Useful when testing changes to PowerSiloTierPools in the config file.",
+    "command.perf.description": "automate perf\n   Usage: automate perf\n   Toggles the automation performance overlay on or off. While on, it shows on the HUD and\n   dumps a summary to the log when turned back off."
 }

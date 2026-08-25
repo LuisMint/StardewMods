@@ -40,12 +40,7 @@ internal class SummaryCommand : BaseCommand
     /// <inheritdoc />
     public override string GetDescription()
     {
-        return
-            """
-            automate summary
-               Usage: automate summary
-               Prints a summary of automated machines.
-            """;
+        return I18n.Command_Summary_Description();
     }
 
     /// <inheritdoc />

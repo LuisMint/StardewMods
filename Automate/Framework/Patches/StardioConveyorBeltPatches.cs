@@ -390,7 +390,37 @@ internal static class StardioConveyorBeltPatches
             return false;
 
         IReadOnlySet<Vector2>? poweredTiles = StardioConveyorBeltPatches.GetPoweredTiles!(location);
-        return StardioConveyorBeltPatches.GetSystem!().IsPowerStarved(machineTypeId, [obj.TileLocation], poweredTiles);
+        return StardioConveyorBeltPatches.GetSystem!().IsPowerStarved(StardioConveyorBeltPatches.GetCandidateIds(obj, machineTypeId), [obj.TileLocation], poweredTiles);
+    }
+
+    /// <summary>
+    /// MOD: added. Caches every identifier a given belt-family instance could reasonably be configured
+    /// under in <see cref="Models.ModConfig.PowerRequiredMachineNames"/> — its resolved type ID (already
+    /// known per-CLR-type via <see cref="MachineTypeIdsByType"/>) plus its own raw qualified/unqualified
+    /// item ID, so a player can configure by whichever one's easier to find (see
+    /// <see cref="PowerRequiredMachineSystem.RequiresPower(IEnumerable{string})"/>'s own remarks). Keyed
+    /// by CLR <see cref="Type"/>, same as <see cref="MachineTypeIdsByType"/> — every instance of a given
+    /// Stardio belt-family type is always the exact same underlying item (confirmed by decompiling
+    /// Stardio.dll: each type maps 1:1 to one <c>Jok.Stardio/FactoryItems</c> entry), so this is safe to
+    /// cache per-type rather than per-instance. <see cref="IsStarved"/> (via <see cref="Draw_Postfix"/>)
+    /// calls this once per visible starved-eligible belt/filter/etc. EVERY FRAME — without this cache,
+    /// that allocated a fresh 3-element array from scratch every single draw call for a result that's
+    /// always identical for a given type.
+    /// </summary>
+    private static readonly Dictionary<Type, string[]> CandidateIdsByType = new();
+
+    /// <summary>Get every identifier a given belt-family instance could reasonably be configured under — see <see cref="CandidateIdsByType"/>'s own remarks.</summary>
+    /// <param name="obj">The object to resolve.</param>
+    /// <param name="machineTypeId">The object's own already-resolved type ID (from <see cref="MachineTypeIdsByType"/>), to avoid a second dictionary lookup.</param>
+    private static string[] GetCandidateIds(SObject obj, string machineTypeId)
+    {
+        Type type = obj.GetType();
+        if (StardioConveyorBeltPatches.CandidateIdsByType.TryGetValue(type, out string[]? cached))
+            return cached;
+
+        string[] result = [machineTypeId, obj.QualifiedItemId, obj.ItemId];
+        StardioConveyorBeltPatches.CandidateIdsByType[type] = result;
+        return result;
     }
 
     /// <summary>Skip a starved belt's own movement for this tick — it simply doesn't advance, and resumes cleanly once repowered.</summary>

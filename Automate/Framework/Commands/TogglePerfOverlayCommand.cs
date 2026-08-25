@@ -34,13 +34,7 @@ internal class TogglePerfOverlayCommand : BaseCommand
     /// <inheritdoc />
     public override string GetDescription()
     {
-        return
-            """
-            automate perf
-               Usage: automate perf
-               Toggles the automation performance overlay on or off. While on, it shows on the HUD and
-               dumps a summary to the log when turned back off.
-            """;
+        return I18n.Command_Perf_Description();
     }
 
     /// <inheritdoc />

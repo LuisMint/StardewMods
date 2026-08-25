@@ -185,7 +185,7 @@ internal class PowerRelayInteraction
             // "give_gift" every delivery already plays above, unlike PowerSiloInteraction's own
             // tier-complete cue.
             PowerRelayEffectPatches.TriggerLevelUpShake(relay); // MOD: added — the same whole-building shake a Power Silo gets.
-            this.BroadcastHudMessage($"Automation Relay increased Power Grid's automation {effectName}!");
+            this.BroadcastHudMessage(I18n.Message_RelayLevelUp(effectName: effectName));
         }
         else
         {
@@ -195,7 +195,7 @@ internal class PowerRelayInteraction
             string itemName = ItemRegistry.GetDataOrErrorItem(requiredItemId).DisplayName;
             int levelCost = PowerRelaySystem.GetLevelCost(oldLevel + 1);
             int progressWithinLevel = levelCost - getNeededForNextLevel(relay);
-            Game1.addHUDMessage(new HUDMessage($"Delivered {delivering}x {itemName} ({progressWithinLevel}/{levelCost})", HUDMessage.newQuest_type));
+            Game1.addHUDMessage(new HUDMessage(I18n.Message_DeliveredProgress(count: delivering, itemName: itemName, progress: progressWithinLevel, total: levelCost), HUDMessage.newQuest_type));
         }
 
         return true;

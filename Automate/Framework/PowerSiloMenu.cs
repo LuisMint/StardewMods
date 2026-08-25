@@ -123,12 +123,6 @@ internal class PowerSiloMenu : IClickableMenu
     /// <summary>MOD: added. How fast the "next tier" slots pulse between a full black tint and no tint at all, in radians per second.</summary>
     private const float NextTierPulseSpeed = 3f;
 
-    /// <summary>MOD: added. The flavor text shown below the icon grid for every tier before the terminal solar tier.</summary>
-    private const string DefaultFlavorText = "A Dwarf left cryptic\ninstructions for expanding\nthe Power Grid";
-
-    /// <summary>MOD: added. The flavor text shown below the solar-tier icon cluster once a Silo reaches the terminal solar tier.</summary>
-    private const string SolarFlavorText = "A Dwarf left a crude\nsketch of what appears\nto be the sun";
-
     /// <summary>MOD: added. The asset name of <see cref="MarkAllCoilsButton"/>'s own icon (loaded by the PoweredAutomation content pack), replacing the placeholder vanilla mouseCursors icon it used before this button became a real toggle.</summary>
     private const string MarkPowerCoilsIconAssetName = "Mods/luisMint.PoweredAutomation/MarkPowerCoilsIcon";
 
@@ -269,9 +263,9 @@ internal class PowerSiloMenu : IClickableMenu
         }
 
         if (this.MarkAllCoilsButton.containsPoint(x, y))
-            this.HoverText = PowerCoilCompass.ShowCompass ? "Hide Power Coil markers" : "Show Power Coil markers";
+            this.HoverText = PowerCoilCompass.ShowCompass ? I18n.Menu_PowerSilo_HideCoilMarkers() : I18n.Menu_PowerSilo_ShowCoilMarkers();
         else if (this.ChangeAppearanceButton.containsPoint(x, y))
-            this.HoverText = PowerCoilMapMarkerPatches.ShowMapMarkers ? "Hide Power Coils on map" : "Show Power Coils on map";
+            this.HoverText = PowerCoilMapMarkerPatches.ShowMapMarkers ? I18n.Menu_PowerSilo_HideCoilsOnMap() : I18n.Menu_PowerSilo_ShowCoilsOnMap();
     }
 
     /// <inheritdoc />
@@ -308,7 +302,7 @@ internal class PowerSiloMenu : IClickableMenu
 
         // title tag — overlaps the box's own top border (drawn last, on top), the same way
         // PondQueryMenu positions its own name tag relative to its box rather than the menu's origin.
-        string nameText = "Power Silo";
+        string nameText = I18n.Menu_PowerSilo_Title();
         Vector2 nameSize = Game1.smallFont.MeasureString(nameText);
         Game1.DrawBox((int)(this.xPositionOnScreen + this.width / 2 - (nameSize.X + 64f) * 0.5f), boxTop - 4, (int)(nameSize.X + 64f), 64);
         Utility.drawTextWithShadow(b, nameText, Game1.smallFont, new Vector2(this.xPositionOnScreen + this.width / 2 - nameSize.X * 0.5f, boxTop - 4 + 32 - nameSize.Y * 0.5f), Color.Black);
@@ -317,14 +311,12 @@ internal class PowerSiloMenu : IClickableMenu
         // top/bottom margins default to different sizes.
         float cursorY = boxTop + PowerSiloMenu.BodyTopMargin;
 
-        string siloCapacityText = $"Silo Capacity: {thisSiloCapacity}";
+        string siloCapacityText = I18n.Menu_PowerSilo_SiloCapacity(capacity: thisSiloCapacity);
         Vector2 siloCapacityTextSize = Game1.smallFont.MeasureString(siloCapacityText);
         Utility.drawTextWithShadow(b, siloCapacityText, Game1.smallFont, new Vector2(this.xPositionOnScreen + this.width / 2 - siloCapacityTextSize.X * 0.5f, cursorY), Game1.textColor);
         cursorY += PowerSiloMenu.LineHeight;
 
-        string totalCapacityText = isUnlimited
-            ? $"Power Grid: {totalCoils}/Unlimited"
-            : $"Power Grid: {totalCoils}/{totalCapacity}";
+        string totalCapacityText = I18n.Menu_PowerSilo_GridStatus(totalCoils: totalCoils, capacity: isUnlimited ? I18n.Menu_Unlimited() : totalCapacity.ToString());
         Vector2 totalCapacityTextSize = Game1.smallFont.MeasureString(totalCapacityText);
         Utility.drawTextWithShadow(b, totalCapacityText, Game1.smallFont, new Vector2(this.xPositionOnScreen + this.width / 2 - totalCapacityTextSize.X * 0.5f, cursorY), Game1.textColor);
         cursorY += PowerSiloMenu.LineHeight + PowerSiloMenu.ElementGap;
@@ -362,7 +354,7 @@ internal class PowerSiloMenu : IClickableMenu
 
                 if (i == PowerSiloMenu.SolarClusterIconCount - 1)
                 {
-                    string countText = $"x{completedSets}";
+                    string countText = I18n.Menu_PowerSilo_CompletedSetsCount(count: completedSets);
                     Vector2 badgePosition = new(iconPosition.X + iconPixelSize + PowerSiloMenu.SolarClusterIconGap, iconPosition.Y + iconPixelSize * 0.5f - Game1.smallFont.MeasureString(countText).Y * 0.5f);
                     Utility.drawTextWithShadow(b, countText, Game1.smallFont, badgePosition, Game1.textColor);
                 }
@@ -439,7 +431,7 @@ internal class PowerSiloMenu : IClickableMenu
         if (hasOutstandingItems)
         {
             int leftX = this.xPositionOnScreen + 88;
-            string bringText = "Bring:";
+            string bringText = I18n.Menu_BringLabel();
             Vector2 bringTextSize = Game1.smallFont.MeasureString(bringText);
             float iconX = leftX + bringTextSize.X + 12f;
 
@@ -631,7 +623,7 @@ internal class PowerSiloMenu : IClickableMenu
     /// <param name="menuWidth">The menu's width, used to compute the wrap width.</param>
     private static string GetWrappedFlavorText(bool isSolarTier, int menuWidth)
     {
-        string flavorText = isSolarTier ? PowerSiloMenu.SolarFlavorText : PowerSiloMenu.DefaultFlavorText;
+        string flavorText = isSolarTier ? I18n.Menu_PowerSilo_FlavorTextSolar() : I18n.Menu_PowerSilo_FlavorTextDefault();
         return Game1.parseText(flavorText, Game1.smallFont, menuWidth - IClickableMenu.spaceToClearSideBorder * 2);
     }
 
@@ -644,8 +636,8 @@ internal class PowerSiloMenu : IClickableMenu
         string statusText = hasOutstandingItems
             ? ""
             : isSolarTier
-                ? "Connect Solar Panels to expand Power Grid"
-                : "Fully upgraded!";
+                ? I18n.Menu_PowerSilo_ConnectSolarPanels()
+                : I18n.Menu_PowerSilo_FullyUpgraded();
         return Game1.parseText(statusText, Game1.smallFont, menuWidth - IClickableMenu.spaceToClearSideBorder * 2);
     }
 

@@ -6,8 +6,8 @@
             "Entries": {
                 "{{ModId}}_PullPushPipe": {
                     "Name": "{{ModId}}_PullPushPipe",
-                    "DisplayName": "Omni Conduit",
-                    "Description": "Lets automation both push and pull items from machines, as long as it's within power range.",
+                    "DisplayName": "{{i18n:object.pull-push-pipe.name}}",
+                    "Description": "{{i18n:object.pull-push-pipe.description}}",
                     "Type": "Crafting",
                     "Category": -24,
                     "Price": 1,
@@ -28,8 +28,8 @@
 
                 "{{ModId}}_InputPipe": {
                     "Name": "{{ModId}}_InputPipe",
-                    "DisplayName": "Input Conduit",
-                    "Description": "Lets automation pull items from machines and containers, as long as it's within power range.",
+                    "DisplayName": "{{i18n:object.input-pipe.name}}",
+                    "Description": "{{i18n:object.input-pipe.description}}",
                     "Type": "Crafting",
                     "Category": -24,
                     "Price": 1,
@@ -50,8 +50,8 @@
 
                 "{{ModId}}_OutputPipe": {
                     "Name": "{{ModId}}_OutputPipe",
-                    "DisplayName": "Output Conduit",
-                    "Description": "Lets automation push items into machines and containers, as long as it's within power range.",
+                    "DisplayName": "{{i18n:object.output-pipe.name}}",
+                    "Description": "{{i18n:object.output-pipe.description}}",
                     "Type": "Crafting",
                     "Category": -24,
                     "Price": 1,
