@@ -1,7 +1,4 @@
 {
-    // A translated value must not contain a literal / or unescaped ", since those are Content Patcher
-    // event-command syntax delimiters (used by the event.dwarf-friendship-1.* keys below).
-
     /*********
     ** Data/Objects
     *********/
@@ -17,6 +14,8 @@
     *********/
     "big-craftable.power-coil.name": "Power Coil",
     "big-craftable.power-coil.description": "Provides power to nearby conduits and machines. Has a limited radius.",
+    "big-craftable.cranked-power-coil.name": "Cranked Power Coil",
+    "big-craftable.cranked-power-coil.description": "A simple hand-cranked power source. Grants power in a limited radius once cranked, but must be re-cranked atleast once a day.",
     "big-craftable.whitelist-sign.name": "Whitelist Sign",
     "big-craftable.whitelist-sign.description": "Use an item on this sign to let only that item pass through a touching conduit group. The item won't be consumed.",
     "big-craftable.blacklist-sign.name": "Blacklist Sign",
@@ -70,6 +69,6 @@
     "event.dwarf-friendship-1.question-option-2": "I'll take it off your hands",
     "event.dwarf-friendship-1.split-speak-1": "It's the main component to powered automation. It can move items to and from machines and chests connected by conduit.",
     "event.dwarf-friendship-1.split-speak-2": "Also it in itself is a power source!",
-    // gender-split line (~) — both halves happen to say the same thing (the original had a typo in the second half, now fixed), so this one key is used on both sides
+    // used the wrong format for this message in the cutscene, just have the same text on both sides of the '~'
     "event.dwarf-friendship-1.shop-intro": "I sell all the things that could help you get started. I even got my hands on some research notes that might prove useful.~I sell all the things that could help you get started. I even got my hands on some research notes that might prove useful."
 }

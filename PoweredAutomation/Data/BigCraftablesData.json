@@ -19,6 +19,21 @@
                     "CustomFields": null
                 },
 
+                "{{ModId}}_CrankedPowerCoil": {
+                    "Name": "{{ModId}}_CrankedPowerCoil",
+                    "DisplayName": "{{i18n:big-craftable.cranked-power-coil.name}}",
+                    "Description": "{{i18n:big-craftable.cranked-power-coil.description}}",
+                    "Price": 10,
+                    "Fragility": 0,
+                    "CanBePlacedOutdoors": true,
+                    "CanBePlacedIndoors": false,
+                    "IsLamp": false,
+                    "Texture": "Mods/{{ModId}}/CrankedPowerCoil",
+                    "SpriteIndex": 0,
+                    "ContextTags": null,
+                    "CustomFields": null
+                },
+
                 "{{ModId}}_WhitelistSign": {
                     "Name": "{{ModId}}_WhitelistSign",
                     "DisplayName": "{{i18n:big-craftable.whitelist-sign.name}}",

@@ -67,6 +67,31 @@
         },
         {
             "Action": "Load",
+            "Target": "Mods/{{ModId}}/CrankedPowerCoil",
+            "FromFile": "Pipes/CrankedPowerCoil.png"
+        },
+        {
+            "Action": "Load",
+            "Target": "Mods/{{ModId}}/CrankedPowerCoil_UnPowered",
+            "FromFile": "Pipes/CrankedPowerCoil_Unpowered.png"
+        },
+        {
+            "Action": "Load",
+            "Target": "Mods/{{ModId}}/CrankedPowerCoil_Cranking",
+            "FromFile": "Pipes/CrankedPowerCoil_Cranking.png"
+        },
+        {
+            "Action": "Load",
+            "Target": "Mods/{{ModId}}/CrankingUi",
+            "FromFile": "Pipes/CrankingUi.png"
+        },
+        {
+            "Action": "Load",
+            "Target": "Mods/{{ModId}}/CrankingTarget",
+            "FromFile": "Pipes/CrankingTarget.png"
+        },
+        {
+            "Action": "Load",
             "Target": "Mods/{{ModId}}/PowerCoilCraftIcon",
             "FromFile": "Pipes/PowerCoil_CraftIcon.png"
         },

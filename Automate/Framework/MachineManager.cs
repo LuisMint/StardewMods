@@ -205,7 +205,8 @@ internal class MachineManager
             getEnabled: () => this.Config().PowerSystemEnabled,
             getSourceNames: () => this.Config().PowerSourceNames,
             getRangeDistance: () => this.Config().PowerRangeDistance,
-            getLocalSourceNames: () => this.Config().LocalPowerSourceNames // MOD: added
+            getLocalSourceNames: () => this.Config().LocalPowerSourceNames, // MOD: added
+            getCrankedSourceNames: () => this.Config().CrankedPowerSourceNames // MOD: added
         );
 
         // MOD: added — same self-contained-class pattern as PowerSystem above, but for the
@@ -243,7 +244,18 @@ internal class MachineManager
             // already does for its own poweredTiles — sidesteps the cache (and its timing) entirely; it's
             // only ever called from PowerSiloSystem's own event-driven refreshes, never per-tick, so the
             // extra scan cost is fine.
-            getPoweredTilesForLocation: location => powerSystem.GetPoweredTiles(location, new LocationFloodFillIndex(location, this.Monitor))
+            //
+            // MOD: added — includeCrankedSources: false. A Cranked Power Coil is deliberately never
+            // meant to connect a Solar Panel to the Power Grid's solar tier bonus — only a regular
+            // Power Coil or a "local" source (e.g. the Powered Chest) does that, matching
+            // PowerSiloPatches.OnObjectListChanged's own trigger set (IsPowerCoil/IsLocalPowerSource/
+            // IsSolarPanel), which likewise never treats a Cranked Power Coil as relevant. Without this,
+            // a Solar Panel sitting within a Cranked Power Coil's own range would count as "connected"
+            // the moment ANY unrelated trigger (e.g. a nearby regular Power Coil being placed) caused
+            // this method to be recomputed — even though placing/removing the Cranked Power Coil itself
+            // never triggers a recompute at all, so the two behaviors were inconsistent with each other
+            // on top of being wrong.
+            getPoweredTilesForLocation: location => powerSystem.GetPoweredTiles(location, new LocationFloodFillIndex(location, this.Monitor), includeCrankedSources: false)
         );
 
         // MOD: added — swaps a connector's displayed appearance between its unpowered, "powered", and

@@ -103,6 +103,8 @@
     "message.generic-error.verb.drawing-automation-performance-overlay": "drawing automation performance overlay",
     "message.generic-error.verb.drawing-automation-overlay-info-panel": "drawing automation overlay info panel",
     "message.generic-error.verb.handling-key-input": "handling key input",
+    "message.generic-error.verb.checking-cranked-power-coil-minigame": "checking the Cranked Power Coil minigame",
+    "message.generic-error.verb.releasing-cranked-power-coil-lock": "releasing a disconnected player's Cranked Power Coil crank lock",
 
     /*********
     ** Power Relay / Power Silo status menus

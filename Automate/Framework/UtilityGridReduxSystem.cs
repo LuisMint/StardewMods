@@ -138,10 +138,12 @@ internal static class UtilityGridReduxSystem
     /// <param name="powerCoilGeneratedPower">How much power a powered Power Coil should produce for Utility Grid Redux's own grid — see <see cref="Models.ModConfig.PowerCoilUtilityGridReduxPower"/>.</param>
     /// <param name="poweredChestQualifiedItemId">Automate's own Powered Chest's qualified item ID — same reasoning as <paramref name="powerCoilQualifiedItemId"/>.</param>
     /// <param name="poweredChestGeneratedPower">How much power a Powered Chest should produce for Utility Grid Redux's own grid, unconditionally — see <see cref="Models.ModConfig.PoweredChestUtilityGridReduxPower"/>.</param>
+    /// <param name="crankedPowerCoilQualifiedItemId">MOD: added. Automate's own Cranked Power Coil's qualified item ID — same reasoning as <paramref name="powerCoilQualifiedItemId"/>.</param>
+    /// <param name="crankedPowerCoilGeneratedPower">MOD: added. How much power a cranked Cranked Power Coil should produce for Utility Grid Redux's own grid — see <see cref="Models.ModConfig.CrankedPowerCoilUtilityGridReduxPower"/>.</param>
     /// <param name="harmony">Used to patch Utility Grid Redux's own "power state changed" notifications — see <see cref="TryHookPowerChangeNotifications"/>.</param>
     /// <param name="queueReload">Queue a location for Automate to reload its own machine groups in soon (i.e. <c>MachineManager.QueueReload</c>) — called whenever Utility Grid Redux itself notices a location's power state may have changed, so a machine that just gained Utility Grid Redux power is recognized by its automation group promptly, instead of waiting for the next periodic rescan.</param>
     /// <returns>Returns whether the read-side power check was successfully enabled (independent of whether either write-side registration, or the power-change hook, also succeeded).</returns>
-    public static bool TryInitialize(IModRegistry modRegistry, IMonitor monitor, string powerCoilQualifiedItemId, int powerCoilGeneratedPower, string poweredChestQualifiedItemId, int poweredChestGeneratedPower, Harmony harmony, Action<GameLocation> queueReload)
+    public static bool TryInitialize(IModRegistry modRegistry, IMonitor monitor, string powerCoilQualifiedItemId, int powerCoilGeneratedPower, string poweredChestQualifiedItemId, int poweredChestGeneratedPower, string crankedPowerCoilQualifiedItemId, int crankedPowerCoilGeneratedPower, Harmony harmony, Action<GameLocation> queueReload)
     {
         UtilityGridReduxSystem.Monitor = monitor;
         UtilityGridReduxSystem.QueueReload = queueReload;
@@ -174,6 +176,11 @@ internal static class UtilityGridReduxSystem
         // registered unconditionally instead.
         UtilityGridReduxSystem.TryRegisterGenerator(assembly, modEntryType, powerCoilQualifiedItemId, powerCoilGeneratedPower, mustBeOn: true, label: "Power Coil", monitor);
         UtilityGridReduxSystem.TryRegisterGenerator(assembly, modEntryType, poweredChestQualifiedItemId, poweredChestGeneratedPower, mustBeOn: false, label: "Powered Chest", monitor);
+
+        // MOD: added — same MustBeOn reasoning as the Power Coil above: a Cranked Power Coil only
+        // counts while it's actually cranked/powered, mirrored onto its own real IsOn field the same
+        // way (see CrankedPowerCoilPatches.OnCrankSucceeded/ResetDaily).
+        UtilityGridReduxSystem.TryRegisterGenerator(assembly, modEntryType, crankedPowerCoilQualifiedItemId, crankedPowerCoilGeneratedPower, mustBeOn: true, label: "Cranked Power Coil", monitor);
 
         return readSideEnabled;
     }

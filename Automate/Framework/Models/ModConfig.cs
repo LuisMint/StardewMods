@@ -178,6 +178,16 @@ internal class ModConfig
     public int PoweredChestUtilityGridReduxPower { get; set; } = 2;
 
     /// <summary>
+    /// MOD: added. How much power a Cranked Power Coil produces for the separately-installed "Utility
+    /// Grid Redux" mod's own independent power grid, while that specific coil is currently cranked —
+    /// same <c>MustBeOn</c>-mirrored mechanism as <see cref="PowerCoilUtilityGridReduxPower"/>, not the
+    /// unconditional one <see cref="PoweredChestUtilityGridReduxPower"/> uses. See
+    /// <see cref="UtilityGridReduxSystem"/>'s own remarks for the full mechanism. Has no effect at all
+    /// if Utility Grid Redux isn't installed.
+    /// </summary>
+    public int CrankedPowerCoilUtilityGridReduxPower { get; set; } = 2;
+
+    /// <summary>
     /// MOD: added. The in-game objects that act as a "local" power source for the power system (see
     /// <see cref="PowerSystemEnabled"/>) — e.g. the Powered Chest. Unlike <see cref="PowerSourceNames"/>,
     /// a local power source always powers only its own tile plus the 4 orthogonal neighbors,
@@ -186,6 +196,21 @@ internal class ModConfig
     /// </summary>
     [JsonProperty("LocalPowerSourceNames")]
     public HashSet<string> LocalPowerSourceNames { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// MOD: added. The in-game objects that act as a "cranked" power source — e.g. the Cranked Power
+    /// Coil. Unlike <see cref="LocalPowerSourceNames"/>, a cranked source covers the SAME square area a
+    /// regular <see cref="PowerSourceNames"/> entry does (sized by <see cref="PowerRangeDistance"/>) —
+    /// but unlike <see cref="PowerSourceNames"/>, it's never counted toward the Power Grid's capacity
+    /// (see <see cref="PowerSiloSystem"/>), since this set is never passed into that system at all. A
+    /// cranked source is also only ever "on" while the underlying object reports itself powered (see
+    /// <see cref="Patches.CrankedPowerCoilPatches.IsPowered"/>) — e.g. the Cranked Power Coil must be
+    /// manually cranked each day, unlike a regular Power Coil which is powered automatically whenever
+    /// it's within capacity. This can be the internal name or qualified item ID, same format as
+    /// <see cref="Connectors"/>.
+    /// </summary>
+    [JsonProperty("CrankedPowerSourceNames")]
+    public HashSet<string> CrankedPowerSourceNames { get; set; } = new(StringComparer.OrdinalIgnoreCase) { "luisMint.PoweredAutomation_CrankedPowerCoil" };
 
     /// <summary>
     /// MOD: added. Whether the "power-required machines" balance mechanic is enabled — when true, the
@@ -868,10 +893,16 @@ internal class ModConfig
             this.PowerCoilUtilityGridReduxPower = 0;
         if (this.PoweredChestUtilityGridReduxPower < 0)
             this.PoweredChestUtilityGridReduxPower = 0;
+        if (this.CrankedPowerCoilUtilityGridReduxPower < 0)
+            this.CrankedPowerCoilUtilityGridReduxPower = 0;
 
         // MOD: added — normalize the local power source set the same way.
         this.LocalPowerSourceNames = this.LocalPowerSourceNames.ToNonNullCaseInsensitive();
         this.LocalPowerSourceNames.RemoveWhere(string.IsNullOrWhiteSpace);
+
+        // MOD: added — normalize the cranked power source set the same way.
+        this.CrankedPowerSourceNames = this.CrankedPowerSourceNames.ToNonNullCaseInsensitive();
+        this.CrankedPowerSourceNames.RemoveWhere(string.IsNullOrWhiteSpace);
 
         // MOD: added — normalize the power-required machine set the same way.
         this.PowerRequiredMachineNames = this.PowerRequiredMachineNames.ToNonNullCaseInsensitive();

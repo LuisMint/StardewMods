@@ -34,6 +34,9 @@ internal class PowerSystem
     /// <summary>MOD: added. Get the item names/IDs that currently act as a "local" power source — e.g. the Powered Chest — which powers only its own tile plus the 4 orthogonal neighbors, regardless of <see cref="GetRangeDistance"/>.</summary>
     private readonly Func<HashSet<string>> GetLocalSourceNames;
 
+    /// <summary>MOD: added. Get the item names/IDs that currently act as a "cranked" power source — e.g. the Cranked Power Coil — which covers the same square area a regular power source does (see <see cref="GetRangeDistance"/>), but only while the object itself reports as cranked/powered (see <see cref="Patches.CrankedPowerCoilPatches.IsPowered"/>), and is never counted toward the Power Grid's capacity.</summary>
+    private readonly Func<HashSet<string>> GetCrankedSourceNames;
+
 
     /*********
     ** Accessors
@@ -50,12 +53,14 @@ internal class PowerSystem
     /// <param name="getSourceNames">Get the item names/IDs that currently act as a power source.</param>
     /// <param name="getRangeDistance">MOD: changed. Get how many tiles out from a power source, in each cardinal direction, its power extends.</param>
     /// <param name="getLocalSourceNames">MOD: added. Get the item names/IDs that currently act as a "local" power source, which always powers only its own tile plus the 4 orthogonal neighbors regardless of <paramref name="getRangeDistance"/>.</param>
-    public PowerSystem(Func<bool> getEnabled, Func<HashSet<string>> getSourceNames, Func<int> getRangeDistance, Func<HashSet<string>> getLocalSourceNames)
+    /// <param name="getCrankedSourceNames">MOD: added. Get the item names/IDs that currently act as a "cranked" power source, which covers the same square area <paramref name="getRangeDistance"/> drives, but only while cranked/powered.</param>
+    public PowerSystem(Func<bool> getEnabled, Func<HashSet<string>> getSourceNames, Func<int> getRangeDistance, Func<HashSet<string>> getLocalSourceNames, Func<HashSet<string>> getCrankedSourceNames)
     {
         this.GetEnabledFromConfig = getEnabled;
         this.GetSourceNames = getSourceNames;
         this.GetRangeDistance = getRangeDistance;
         this.GetLocalSourceNames = getLocalSourceNames;
+        this.GetCrankedSourceNames = getCrankedSourceNames;
     }
 
     /// <summary>
@@ -68,14 +73,24 @@ internal class PowerSystem
     /// </summary>
     /// <param name="location">The location to scan for power sources.</param>
     /// <param name="locationIndex">An indexed view of the location.</param>
-    public HashSet<Vector2>? GetPoweredTiles(GameLocation location, LocationFloodFillIndex locationIndex)
+    /// <param name="includeCrankedSources">
+    /// MOD: added. Whether to include a cranked power source's own coverage (see
+    /// <see cref="GetCrankedSourceNames"/>) in the result at all. Defaults to <c>true</c> for normal
+    /// automation-gating callers (a Cranked Power Coil SHOULD power nearby machines/conduits) — but
+    /// <see cref="MachineManager"/> passes <c>false</c> for the specific instance of this method wired
+    /// into <see cref="PowerSiloSystem"/>'s own Solar Panel connectivity check, since a Cranked Power
+    /// Coil is deliberately never meant to connect a Solar Panel to the Power Grid's solar tier bonus —
+    /// only a regular Power Coil (or a "local" source like the Powered Chest) does that.
+    /// </param>
+    public HashSet<Vector2>? GetPoweredTiles(GameLocation location, LocationFloodFillIndex locationIndex, bool includeCrankedSources = true)
     {
         if (!this.IsEnabled)
             return null;
 
         HashSet<string> sourceNames = this.GetSourceNames();
         HashSet<string> localSourceNames = this.GetLocalSourceNames();
-        if (sourceNames.Count == 0 && localSourceNames.Count == 0)
+        HashSet<string> crankedSourceNames = includeCrankedSources ? this.GetCrankedSourceNames() : [];
+        if (sourceNames.Count == 0 && localSourceNames.Count == 0 && crankedSourceNames.Count == 0)
             return []; // power system is on, but nothing is configured as a source — nothing is powered
 
         int rangeDistance = Math.Max(0, this.GetRangeDistance());
@@ -99,6 +114,13 @@ internal class PowerSystem
 
                 if (localSourceNames.Contains(sourceObj.QualifiedItemId) || localSourceNames.Contains(sourceObj.Name))
                     this.AddLocalPoweredArea(powered, tile);
+
+                // MOD: added — a Cranked Power Coil only covers its square area while cranked/powered
+                // (see Patches.CrankedPowerCoilPatches.IsPowered), and is deliberately never counted
+                // toward Power Silo capacity — it never reaches PowerSiloSystem's own source-names set
+                // at all, so there's no separate gate needed here for that.
+                if ((crankedSourceNames.Contains(sourceObj.QualifiedItemId) || crankedSourceNames.Contains(sourceObj.Name)) && Patches.CrankedPowerCoilPatches.IsPowered(sourceObj))
+                    this.AddPoweredArea(powered, tile, rangeDistance);
             }
         }
 

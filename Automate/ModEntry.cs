@@ -463,6 +463,14 @@ internal class ModEntry : Mod
         Harmony harmony = new(this.ModManifest.UniqueID);
         PowerCoilPatches.Apply(harmony);
 
+        // MOD: added — the cheap, early-game, manually-cranked alternative to the Power Coil. Doesn't
+        // need a Power Silo system reference (unlike PowerSiloPatches.Initialize below) since this
+        // object deliberately never touches Power Grid capacity or solar-connectivity at all.
+        CrankedPowerCoilPatches.Initialize(
+            requeueLocations: this.BroadcastReloadLocations
+        );
+        CrankedPowerCoilPatches.Apply(harmony);
+
         SignFilterPatches.Initialize(
             getWhitelistSignNames: () => this.Config.WhitelistSignNames,
             getBlacklistSignNames: () => this.Config.BlacklistSignNames
@@ -700,6 +708,7 @@ internal class ModEntry : Mod
         helper.Events.GameLoop.TimeChanged += this.OnTimeChanged; // MOD: added — event-based automation trigger
         helper.Events.Input.ButtonsChanged += this.OnButtonsChanged;
         helper.Events.Multiplayer.ModMessageReceived += this.OnModMessageReceived;
+        helper.Events.Multiplayer.PeerDisconnected += this.OnPeerDisconnected; // MOD: added — releases a Cranked Power Coil's crank lock if the player holding it disconnects mid-crank, see CrankedPowerCoilPatches.ReleaseLocksHeldBy's own remarks
         helper.Events.Player.Warped += this.OnWarped;
         helper.Events.World.BuildingListChanged += this.OnBuildingListChanged;
         helper.Events.World.LocationListChanged += this.OnLocationListChanged;
@@ -763,6 +772,8 @@ internal class ModEntry : Mod
             powerCoilGeneratedPower: this.Config.PowerCoilUtilityGridReduxPower,
             poweredChestQualifiedItemId: PoweredChestMachine.QualifiedItemId,
             poweredChestGeneratedPower: this.Config.PoweredChestUtilityGridReduxPower,
+            crankedPowerCoilQualifiedItemId: CrankedPowerCoilPatches.TargetQualifiedItemId,
+            crankedPowerCoilGeneratedPower: this.Config.CrankedPowerCoilUtilityGridReduxPower,
             harmony: harmony,
             queueReload: location => this.MachineManager.QueueReload(location)
         );
@@ -917,6 +928,17 @@ internal class ModEntry : Mod
             this.RunAutomationPassOnNextTick = true; // MOD: added — event-based mode's equivalent instant pass, since it doesn't use AutomateCountdown
             this.TicksSinceFullBackstopScan = 0; // MOD: added — avoid an almost-immediate redundant backstop scan right after the pass above already covered everything
             this.ResetDelayQueueState(); // MOD: added — MachineManager.Reset() just discarded every group/machine instance, so any of this mod's own delay/queue bookkeeping for them is now stale
+
+            // MOD: added — resets every Cranked Power Coil back to unpowered for the new day, run
+            // BEFORE the solar/coil refreshes just below so neither one could ever observe a coil still
+            // in yesterday's cranked state. In practice this ordering doesn't currently change either
+            // refresh's result — RefreshConnectedSolarPanelCount's own poweredTiles lookup deliberately
+            // excludes Cranked Power Coils entirely (see MachineManager's own PowerSiloSystem
+            // construction), and RefreshCoilAllowance only ever looks at regular Power Coils — but
+            // settling this coil's own state first is the more defensively correct order regardless. No
+            // explicit requeue needed here — MachineManager.Reset() above already unconditionally
+            // queues every location for reload as part of this same day-start handling.
+            CrankedPowerCoilPatches.ResetDaily(CommonHelper.GetLocations());
 
             // MOD: added — an unconditional refresh every new day, on top of the usual triggers (a
             // coil placed/destroyed, a Solar Panel placed/destroyed, or a Silo built/destroyed/fed a new
@@ -1314,6 +1336,22 @@ internal class ModEntry : Mod
             catch (Exception ex)
             {
                 this.HandleError(ex, "animating Power Relay light/shake effects", I18n.Message_GenericError_Verb_AnimatingPowerRelayLightShakeEffects());
+            }
+        }
+
+        // MOD: added — polls for the Cranked Power Coil's crank minigame closing. Runs for every
+        // client (not just the host, unlike the automation pass above) since the minigame itself is
+        // entirely local to whichever player opened it — see CrankedPowerCoilPatches.CheckMinigameCompletion's
+        // own remarks.
+        if (Context.IsWorldReady)
+        {
+            try
+            {
+                CrankedPowerCoilPatches.CheckMinigameCompletion();
+            }
+            catch (Exception ex)
+            {
+                this.HandleError(ex, "checking the Cranked Power Coil minigame", I18n.Message_GenericError_Verb_CheckingCrankedPowerCoilMinigame());
             }
         }
     }
@@ -2353,6 +2391,27 @@ internal class ModEntry : Mod
         }
     }
 
+    /// <summary>
+    /// MOD: added. Release any Cranked Power Coil crank lock the disconnecting player was still
+    /// holding — see <see cref="CrankedPowerCoilPatches.ReleaseLocksHeldBy"/>'s own remarks for why this
+    /// safety net is needed at all. Deliberately unconditional (no <see cref="Context.IsMainPlayer"/>
+    /// gate) — every remaining client independently clearing the same already-networked modData key is
+    /// harmless (a no-op past the first), matching this codebase's own "safe for whichever client" modData
+    /// precedent elsewhere, and means the cleanup doesn't depend on the host specifically still being
+    /// connected to notice it.
+    /// </summary>
+    private void OnPeerDisconnected(object? sender, PeerDisconnectedEventArgs e)
+    {
+        try
+        {
+            CrankedPowerCoilPatches.ReleaseLocksHeldBy(CommonHelper.GetLocations(), e.Peer.PlayerID);
+        }
+        catch (Exception ex)
+        {
+            this.HandleError(ex, "releasing a disconnected player's Cranked Power Coil crank lock", I18n.Message_GenericError_Verb_ReleasingCrankedPowerCoilLock());
+        }
+    }
+
     /// <inheritdoc cref="IMultiplayerEvents.ModMessageReceived" />
     private void OnModMessageReceived(object? sender, ModMessageReceivedEventArgs e)
     {
@@ -2784,7 +2843,8 @@ internal class ModEntry : Mod
             if (this.Config.PowerSystemEnabled
                 && entity is StardewValley.Object powerSourceCandidate
                 && (this.Config.PowerSourceNames.Contains(powerSourceCandidate.QualifiedItemId) || this.Config.PowerSourceNames.Contains(powerSourceCandidate.Name)
-                    || this.Config.LocalPowerSourceNames.Contains(powerSourceCandidate.QualifiedItemId) || this.Config.LocalPowerSourceNames.Contains(powerSourceCandidate.Name)))
+                    || this.Config.LocalPowerSourceNames.Contains(powerSourceCandidate.QualifiedItemId) || this.Config.LocalPowerSourceNames.Contains(powerSourceCandidate.Name)
+                    || this.Config.CrankedPowerSourceNames.Contains(powerSourceCandidate.QualifiedItemId) || this.Config.CrankedPowerSourceNames.Contains(powerSourceCandidate.Name))) // MOD: added
             {
                 shouldReload = true;
                 break;

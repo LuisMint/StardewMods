@@ -299,6 +299,15 @@ internal static class PowerSiloPatches
     /// ever corrected it, since a plain coil removal doesn't itself change total capacity (the only other
     /// trigger for a re-rank). This method already fires with the object list correctly diffed — the
     /// broken coil is truly gone by the time this runs — so re-ranking here is unconditionally accurate.
+    ///
+    /// MOD: fixed — a Power Coil being ADDED or REMOVED now ALSO triggers the solar-connectivity
+    /// recheck (<see cref="RefreshSolarConnectionAndNotify"/>), not just a Solar Panel or local power
+    /// source changing. A Power Coil's own placement/removal changes ITS OWN range, which can just as
+    /// easily bring a Solar Panel into (or take it out of) range as the panel itself moving would —
+    /// previously this was a known, documented gap (only caught by the once-a-day unconditional refresh
+    /// in <c>ModEntry.OnDayStarted</c>), confirmed directly via user report: building a Power Coil next
+    /// to an existing Solar Panel didn't register the panel as connected until some unrelated Solar
+    /// Panel/local-source event happened to trigger a recheck, or the next day started.
     /// </summary>
     /// <param name="location">The location whose object list changed.</param>
     /// <param name="added">The objects added to the location.</param>
@@ -316,6 +325,7 @@ internal static class PowerSiloPatches
             if (PowerSiloPatches.IsPowerCoil(obj))
             {
                 coilChanged = true;
+                otherRelevantChange = true; // MOD: added — see this method's own remarks: a newly-placed coil can bring a Solar Panel into its own range
 
                 // MOD: added — PlacementAction_Postfix normally stamps a newly-placed coil's placement
                 // order the instant it's placed, but that Harmony postfix only fires on whichever client
@@ -335,7 +345,10 @@ internal static class PowerSiloPatches
         foreach (SObject obj in removed)
         {
             if (PowerSiloPatches.IsPowerCoil(obj))
+            {
                 coilChanged = true;
+                otherRelevantChange = true; // MOD: added — see this method's own remarks: a removed coil can just as easily take a Solar Panel back OUT of range
+            }
             else if (PowerSiloPatches.IsSolarPanel(obj) || PowerSiloPatches.IsLocalPowerSource(obj))
                 otherRelevantChange = true;
         }
