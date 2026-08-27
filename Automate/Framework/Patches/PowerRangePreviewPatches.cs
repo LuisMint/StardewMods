@@ -60,7 +60,9 @@ internal static class PowerRangePreviewPatches
     {
         IEnumerable<Vector2>? rangeTiles = __instance.QualifiedItemId switch
         {
-            PowerCoilPatches.TargetQualifiedItemId => PowerRangePreviewPatches.GetSquareRangeTiles(__instance.TileLocation, Math.Max(0, PowerRangePreviewPatches.GetRangeDistance?.Invoke() ?? 0)),
+            // MOD: added — a Cranked Power Coil covers the exact same square range a regular Power Coil
+            // does (see PowerSystem's own remarks), so it gets the same preview shape here too.
+            PowerCoilPatches.TargetQualifiedItemId or CrankedPowerCoilPatches.TargetQualifiedItemId => PowerRangePreviewPatches.GetSquareRangeTiles(__instance.TileLocation, Math.Max(0, PowerRangePreviewPatches.GetRangeDistance?.Invoke() ?? 0)),
             PoweredChestMachine.QualifiedItemId => PowerRangePreviewPatches.GetPlusRangeTiles(__instance.TileLocation),
             _ => null
         };

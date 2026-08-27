@@ -92,6 +92,36 @@
         },
         {
             "Action": "Load",
+            "Target": "Mods/{{ModId}}/BrokenCrank0",
+            "FromFile": "Pipes/brokenCrank0.png"
+        },
+        {
+            "Action": "Load",
+            "Target": "Mods/{{ModId}}/BrokenCrank1",
+            "FromFile": "Pipes/brokenCrank1.png"
+        },
+        {
+            "Action": "Load",
+            "Target": "Mods/{{ModId}}/BrokenCrank2",
+            "FromFile": "Pipes/brokenCrank2.png"
+        },
+        {
+            "Action": "Load",
+            "Target": "Mods/{{ModId}}/BrokenCrank3",
+            "FromFile": "Pipes/brokenCrank3.png"
+        },
+        {
+            "Action": "Load",
+            "Target": "Mods/{{ModId}}/BrokenCrank4",
+            "FromFile": "Pipes/brokenCrank4.png"
+        },
+        {
+            "Action": "Load",
+            "Target": "Mods/{{ModId}}/BrokenCrank5",
+            "FromFile": "Pipes/brokenCrank5.png"
+        },
+        {
+            "Action": "Load",
             "Target": "Mods/{{ModId}}/PowerCoilCraftIcon",
             "FromFile": "Pipes/PowerCoil_CraftIcon.png"
         },

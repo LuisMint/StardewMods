@@ -143,6 +143,20 @@ internal static class CrankedPowerCoilPatches
     /// </summary>
     private static Action<IEnumerable<GameLocation>>? RequeueLocations;
 
+    /// <summary>
+    /// MOD: added. The name of a custom event-script command (see <see cref="CrankPropCommand"/>) that
+    /// plays this same looping crank animation on a Cranked Power Coil placed as an event PROP (via the
+    /// vanilla <c>addBigProp</c> command), for cutscene use — <c>&lt;x&gt; &lt;y&gt; [loops] [frameDurationMs]</c>,
+    /// where <c>x</c>/<c>y</c> matches the tile the prop was added at. Registered once via
+    /// <see cref="Event.RegisterCommand"/> in <see cref="Apply"/>, since a Content Patcher event script
+    /// has no way to call a mod's own C# code directly — this is the standard extension point vanilla
+    /// itself provides for exactly that.
+    /// </summary>
+    private const string CrankPropCommandName = "luisMint.PoweredAutomation_CrankProp";
+
+    /// <summary>MOD: added. The real-world game-clock time (<see cref="Game1.currentGameTime"/>'s own <see cref="GameTime.TotalGameTime"/>, in milliseconds) a given event's own <see cref="CrankPropCommand"/> call started animating at — see that method's own remarks for why this can't just be a local variable.</summary>
+    private static readonly Dictionary<Event, double> CrankPropAnimationStartMs = new();
+
 
     /*********
     ** Public methods
@@ -182,6 +196,13 @@ internal static class CrankedPowerCoilPatches
             prefix: new HarmonyMethod(typeof(CrankedPowerCoilPatches), nameof(Draw_Prefix))
         );
 
+        // MOD: added — see DrawAsProp_Prefix's own remarks for why the normal SObject.draw patch above
+        // doesn't cover a coil placed as an event cutscene prop (via addBigProp) at all.
+        harmony.Patch(
+            original: AccessTools.Method(typeof(SObject), nameof(SObject.drawAsProp)),
+            prefix: new HarmonyMethod(typeof(CrankedPowerCoilPatches), nameof(DrawAsProp_Prefix))
+        );
+
         harmony.Patch(
             original: AccessTools.Method(typeof(SObject), nameof(SObject.checkForAction)),
             prefix: new HarmonyMethod(typeof(CrankedPowerCoilPatches), nameof(CheckForAction_Prefix))
@@ -213,6 +234,11 @@ internal static class CrankedPowerCoilPatches
             original: AccessTools.Method(typeof(BobberBar), nameof(BobberBar.draw), [typeof(SpriteBatch)]),
             prefix: new HarmonyMethod(typeof(CrankedPowerCoilPatches), nameof(BobberBarDraw_Prefix))
         );
+
+        // MOD: added — not a Harmony patch; registers a custom event-script command (see
+        // CrankPropCommandName's own remarks) so a cutscene can play this same crank animation on a
+        // Cranked Power Coil placed as an event prop.
+        Event.RegisterCommand(CrankedPowerCoilPatches.CrankPropCommandName, CrankedPowerCoilPatches.CrankPropCommand);
     }
 
     /// <summary>Get whether a Cranked Power Coil is currently cranked/powered — see <see cref="PoweredModDataKey"/>'s own remarks on its inverted polarity.</summary>
@@ -570,6 +596,89 @@ internal static class CrankedPowerCoilPatches
     }
 
     /// <summary>
+    /// MOD: added. The <see cref="CrankPropCommandName"/> event command's own handler — plays the
+    /// looping crank animation on a Cranked Power Coil placed as an event prop (via vanilla's own
+    /// <c>addBigProp</c>) for a fixed number of loops, then flips it to the powered look, before letting
+    /// the event script continue to its next command. Syntax: <c>&lt;x&gt; &lt;y&gt; [loops] [frameDurationMs]</c>.
+    ///
+    /// Reuses <see cref="IsBeingCranked"/>/<see cref="GetLoopingCrankFrameIndex"/> — the exact same
+    /// state <see cref="Draw_Prefix"/>/<see cref="GetScale_Postfix"/> already read for the real crank
+    /// minigame — by stamping <see cref="CrankingByModDataKey"/> directly onto the prop, rather than
+    /// going through <see cref="TryStartCrankMinigame"/> at all (there's no real player interaction or
+    /// minigame here, just a scripted cutscene beat). Sets <see cref="PoweredModDataKey"/>/<see cref="SObject.IsOn"/>
+    /// directly once done, rather than calling <see cref="OnCrankSucceeded"/> — that method also
+    /// requeues the coil's own LOCATION for a machine reload, which doesn't apply here since an event
+    /// prop was never actually placed in the world (it's not in <see cref="GameLocation.Objects"/> at
+    /// all, just <see cref="Event.props"/>).
+    ///
+    /// Like vanilla's own <c>PrecisePause</c> event command (<see cref="Event.DefaultCommands"/>) and its
+    /// own <c>stopWatch</c> field, this needs
+    /// SOME persistent per-event state across repeated calls (this command re-runs every tick for as
+    /// long as it remains the event's current command) to know when the animation actually started —
+    /// since nothing can be added to the vanilla <see cref="Event"/> class itself, a static dictionary
+    /// keyed by the event instance fills that role instead, cleared once the animation finishes.
+    ///
+    /// Not fully synced to <see cref="Game1.currentGameTime"/>'s only ever-increasing clock actually
+    /// mattering here for LOOP COUNTING (not frame selection): <see cref="GetLoopingCrankFrameIndex"/>
+    /// itself just keeps looping forever off the raw clock regardless of when this command started (a
+    /// continuous loop looks identical no matter its absolute phase), so only the total ELAPSED time
+    /// since this command began needs tracking, to know when the requested number of loops has passed.
+    /// </summary>
+    /// <param name="event">The event running this command.</param>
+    /// <param name="args">The command's own arguments — see this method's own remarks for the syntax.</param>
+    /// <param name="context">The context for the active event.</param>
+    private static void CrankPropCommand(Event @event, string[] args, EventContext context)
+    {
+        if (!ArgUtility.TryGetInt(args, 1, out int x, out string error)
+            || !ArgUtility.TryGetInt(args, 2, out int y, out error)
+            || !ArgUtility.TryGetOptionalInt(args, 3, out int loops, out error, 2)
+            || !ArgUtility.TryGetOptionalInt(args, 4, out int frameDurationMs, out error, (int)CrankedPowerCoilPatches.CrankFrameDurationMs))
+        {
+            context.LogErrorAndSkip(error);
+            return;
+        }
+
+        SObject? prop = null;
+        Vector2 tile = new(x, y);
+        foreach (SObject candidate in @event.props)
+        {
+            if (candidate.QualifiedItemId == CrankedPowerCoilPatches.TargetQualifiedItemId && candidate.TileLocation == tile)
+            {
+                prop = candidate;
+                break;
+            }
+        }
+
+        if (prop == null)
+        {
+            // MOD: added — no matching prop found (e.g. a typo'd tile, or the event data changed since
+            // this command was written) — don't hang the whole cutscene waiting on an animation that can
+            // never start.
+            CrankedPowerCoilPatches.CrankPropAnimationStartMs.Remove(@event);
+            @event.CurrentCommand++;
+            return;
+        }
+
+        double nowMs = Game1.currentGameTime?.TotalGameTime.TotalMilliseconds ?? 0;
+        if (!CrankedPowerCoilPatches.CrankPropAnimationStartMs.TryGetValue(@event, out double startMs))
+        {
+            startMs = nowMs;
+            CrankedPowerCoilPatches.CrankPropAnimationStartMs[@event] = startMs;
+            prop.modData[CrankedPowerCoilPatches.CrankingByModDataKey] = "eventProp";
+        }
+
+        double totalDurationMs = loops * CrankedPowerCoilPatches.CrankFrameCount * frameDurationMs;
+        if (nowMs - startMs < totalDurationMs)
+            return; // still animating — this command re-runs next tick, same as vanilla's own PrecisePause
+
+        prop.modData.Remove(CrankedPowerCoilPatches.CrankingByModDataKey);
+        prop.modData[CrankedPowerCoilPatches.PoweredModDataKey] = "true";
+        prop.IsOn = true;
+        CrankedPowerCoilPatches.CrankPropAnimationStartMs.Remove(@event);
+        @event.CurrentCommand++;
+    }
+
+    /// <summary>
     /// MOD: added. Get how fast the crank shake (see <see cref="GetCrankShakeOffsetX"/>) should cycle
     /// right now, for a coil currently being cranked. Speeds up while the cranking player's own bobber
     /// is landing the target (<see cref="BobberBar.bobberInBar"/>) — but that field is local-only, never
@@ -720,6 +829,67 @@ internal static class CrankedPowerCoilPatches
 
         float layerDepth = Math.Max(0f, (float)((y + 1) * 64 - 24) / 10000f) + x * 1E-05f;
         spriteBatch.Draw(texture, destination, sourceRect, Color.White * alpha, 0f, Vector2.Zero, SpriteEffects.None, layerDepth);
+
+        return false;
+    }
+
+    /// <summary>
+    /// MOD: added. Fully replace <see cref="SObject.drawAsProp"/> for the Cranked Power Coil — an
+    /// entirely separate draw path from the normal in-world <see cref="SObject.draw"/> <see cref="Draw_Prefix"/>
+    /// already patches, used specifically when this object is placed as an event cutscene prop (via the
+    /// vanilla <c>addBigProp</c> command — see <see cref="CrankPropCommand"/>) rather than actually
+    /// placed in the world. Vanilla's own <c>drawAsProp</c> reads the item's raw, DATA-declared texture
+    /// directly (<see cref="PoweredAssetName"/>, since that's the base <c>Texture</c> this item's own
+    /// Data/BigCraftables entry declares) with no awareness of this class's own unpowered/cranking/
+    /// powered swap at all — without this second patch, a coil placed as an event prop always rendered
+    /// as if already powered, and never animated while <see cref="CrankPropCommand"/> was cranking it.
+    /// Mirrors vanilla's own bigCraftable branch of <c>drawAsProp</c> geometry-for-geometry (its
+    /// destination height is already hardcoded to the same 128px baseline our own textures are sized
+    /// for, so no extra-height adjustment is needed here unlike <see cref="Draw_Prefix"/>) — omits the
+    /// <c>showNextIndex</c>/<c>(BC)17</c> tapper-specific branches, neither of which could ever apply to
+    /// this item.
+    /// </summary>
+    /// <param name="__instance">The object being drawn.</param>
+    /// <param name="b">The sprite batch being drawn to.</param>
+    /// <returns>Returns <c>false</c> to skip the original method for this item, or <c>true</c> to let it run normally for every other item.</returns>
+    private static bool DrawAsProp_Prefix(SObject __instance, SpriteBatch b)
+    {
+        if (__instance.QualifiedItemId != CrankedPowerCoilPatches.TargetQualifiedItemId || __instance.isTemporarilyInvisible)
+            return true;
+
+        int x = (int)__instance.TileLocation.X;
+        int y = (int)__instance.TileLocation.Y;
+
+        Texture2D texture;
+        Rectangle sourceRect;
+
+        if (CrankedPowerCoilPatches.IsBeingCranked(__instance))
+        {
+            texture = Game1.content.Load<Texture2D>(CrankedPowerCoilPatches.CrankingAssetName);
+            int frameIndex = CrankedPowerCoilPatches.GetLoopingCrankFrameIndex();
+            sourceRect = new Rectangle(frameIndex * CrankedPowerCoilPatches.FrameWidth, 0, CrankedPowerCoilPatches.FrameWidth, CrankedPowerCoilPatches.FrameHeight);
+        }
+        else if (CrankedPowerCoilPatches.IsPowered(__instance))
+        {
+            texture = Game1.content.Load<Texture2D>(CrankedPowerCoilPatches.PoweredAssetName);
+            sourceRect = new Rectangle(0, 0, texture.Width, texture.Height);
+        }
+        else
+        {
+            texture = Game1.content.Load<Texture2D>(CrankedPowerCoilPatches.UnpoweredAssetName);
+            sourceRect = new Rectangle(0, 0, texture.Width, texture.Height);
+        }
+
+        Vector2 scale = __instance.getScale() * 4f;
+        Vector2 position = Game1.GlobalToLocal(Game1.viewport, new Vector2(x * 64, y * 64 - 64));
+        Rectangle destination = new(
+            (int)(position.X - scale.X / 2f),
+            (int)(position.Y - scale.Y / 2f),
+            (int)(64f + scale.X),
+            (int)(128f + scale.Y / 2f)
+        );
+
+        b.Draw(texture, destination, sourceRect, Color.White, 0f, Vector2.Zero, SpriteEffects.None, Math.Max(0f, (float)((y + 1) * 64 - 1) / 10000f));
 
         return false;
     }

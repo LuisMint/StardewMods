@@ -28,6 +28,8 @@
     "big-craftable.powered-chest.description": "A chest that can automate items via powered conduits. Passively powers itself and adjacent tiles.",
     "big-craftable.auto-crafter.name": "Auto Crafter",
     "big-craftable.auto-crafter.description": "Use an item on this machine to assign and craft any known recipes via automation. The item won't be consumed.",
+    "big-craftable.broken-crank-piece.name": "Broken Crank Piece",
+    "big-craftable.broken-crank-piece.description": "A discarded, broken piece of an old hand-cranked mechanism.",
 
     /*********
     ** Data/Buildings
@@ -70,5 +72,39 @@
     "event.dwarf-friendship-1.split-speak-1": "It's the main component to powered automation. It can move items to and from machines and chests connected by conduit.",
     "event.dwarf-friendship-1.split-speak-2": "Also it in itself is a power source!",
     // used the wrong format for this message in the cutscene, just have the same text on both sides of the '~'
-    "event.dwarf-friendship-1.shop-intro": "I sell all the things that could help you get started. I even got my hands on some research notes that might prove useful.~I sell all the things that could help you get started. I even got my hands on some research notes that might prove useful."
+    "event.dwarf-friendship-1.shop-intro": "I sell all the things that could help you get started. I even got my hands on some research notes that might prove useful.~I sell all the things that could help you get started. I even got my hands on some research notes that might prove useful.",
+
+    /*********
+    ** Data/Events/Mountain — "Kree_CM_YI2YFDQB/"
+    *********/
+    "event.cranked-power-coil-intro.speak-1": "Hmm. This has to be it.",
+    "event.cranked-power-coil-intro.speak-2": "Eighth time's the charm.",
+    "event.cranked-power-coil-intro.speak-3": "oh, that sounds promising.",
+    "event.cranked-power-coil-intro.speak-4": "Phew... The tolerances are a little tight, but it's as perfect as it's gonna get.",
+    "event.cranked-power-coil-intro.speak-5": "Yep, now it's a matter of giving it a good crank.",
+    "event.cranked-power-coil-intro.speak-6": "Dad, did you run back for cover while I tightened that last bolt?",
+    "event.cranked-power-coil-intro.speak-7": "Oh, well... I just thought I could get a better view of it from here!",
+    "event.cranked-power-coil-intro.speak-8": "Hey look, it's the new farmer, maybe they can give us a hand.",
+    "event.cranked-power-coil-intro.speak-9": "...",
+    "event.cranked-power-coil-intro.speak-10": "Well, maybe some farm elbow grease is just exactly what we need.",
+    "event.cranked-power-coil-intro.speak-11": "Hi @, do you think you could lend us a hand here?",
+    "event.cranked-power-coil-intro.speak-12": "After Joja cleared that boulder, my dad found a curious scroll containing blueprints for this power device.",
+    "event.cranked-power-coil-intro.speak-13": "I was studying the ecological aftermath of the boulder's removal when I stumbled upon these loose research notes.",
+    "event.cranked-power-coil-intro.speak-14": "The notes were quite indecipherable, but the drafting is remarkably precise. Maru and I spent the entire day reverse-engineering the designs.",
+    "event.cranked-power-coil-intro.speak-15": "There was even the most interesting cave carrot purée recipe on the back.",
+    "event.cranked-power-coil-intro.text-above-head-1": "Too Earthy...",
+    "event.cranked-power-coil-intro.speak-16": "Id rather not think about that.",
+    "event.cranked-power-coil-intro.speak-17": "If its not too much trouble, @, would you mind giving it a crank? We haven't had much luck ourselves.",
+    "event.cranked-power-coil-intro.message-1": "The cranked power coil turned on.",
+    "event.cranked-power-coil-intro.speak-18": "Wow, that actually worked!",
+    "event.cranked-power-coil-intro.speak-19": "According to the note's drawings, this coil is pulling energy from beneath the ground.",
+    "event.cranked-power-coil-intro.speak-20": "It's like there's some sort of power source hidden deep beneath Stardew Valley. So much research potential!",
+    "event.cranked-power-coil-intro.speak-21": "Also Maru, was it really necessary to use me as a shield?",
+    "event.cranked-power-coil-intro.speak-22": "Haha, I was just thinking I could get a better view of it from here is all!",
+    "event.cranked-power-coil-intro.speak-23": "Ahem... Thanks again @, I think you deserve blueprints of your own for your assistance.",
+    "event.cranked-power-coil-intro.message-2": "Learned how to craft a 'Cranked Power Coil'",
+    "event.cranked-power-coil-intro.speak-24": "I'm sure this cranked power coil will help tons powering some of your farm equipment.",
+    "event.cranked-power-coil-intro.speak-25": "Oh, hey there, champ! Nice to see you out of the house for once.",
+    "event.cranked-power-coil-intro.speak-26": "...",
+    "event.cranked-power-coil-intro.speak-27": "That wasn't because of me, was it?"
 }

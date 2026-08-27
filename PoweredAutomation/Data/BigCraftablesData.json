@@ -34,6 +34,96 @@
                     "CustomFields": null
                 },
 
+                "{{ModId}}_BrokenCrank0": {
+                    "Name": "{{ModId}}_BrokenCrank0",
+                    "DisplayName": "{{i18n:big-craftable.broken-crank-piece.name}}",
+                    "Description": "{{i18n:big-craftable.broken-crank-piece.description}}",
+                    "Price": 0,
+                    "Fragility": 2,
+                    "CanBePlacedOutdoors": false,
+                    "CanBePlacedIndoors": false,
+                    "IsLamp": false,
+                    "Texture": "Mods/{{ModId}}/BrokenCrank0",
+                    "SpriteIndex": 0,
+                    "ContextTags": null,
+                    "CustomFields": null
+                },
+
+                "{{ModId}}_BrokenCrank1": {
+                    "Name": "{{ModId}}_BrokenCrank1",
+                    "DisplayName": "{{i18n:big-craftable.broken-crank-piece.name}}",
+                    "Description": "{{i18n:big-craftable.broken-crank-piece.description}}",
+                    "Price": 0,
+                    "Fragility": 2,
+                    "CanBePlacedOutdoors": false,
+                    "CanBePlacedIndoors": false,
+                    "IsLamp": false,
+                    "Texture": "Mods/{{ModId}}/BrokenCrank1",
+                    "SpriteIndex": 0,
+                    "ContextTags": null,
+                    "CustomFields": null
+                },
+
+                "{{ModId}}_BrokenCrank2": {
+                    "Name": "{{ModId}}_BrokenCrank2",
+                    "DisplayName": "{{i18n:big-craftable.broken-crank-piece.name}}",
+                    "Description": "{{i18n:big-craftable.broken-crank-piece.description}}",
+                    "Price": 0,
+                    "Fragility": 2,
+                    "CanBePlacedOutdoors": false,
+                    "CanBePlacedIndoors": false,
+                    "IsLamp": false,
+                    "Texture": "Mods/{{ModId}}/BrokenCrank2",
+                    "SpriteIndex": 0,
+                    "ContextTags": null,
+                    "CustomFields": null
+                },
+
+                "{{ModId}}_BrokenCrank3": {
+                    "Name": "{{ModId}}_BrokenCrank3",
+                    "DisplayName": "{{i18n:big-craftable.broken-crank-piece.name}}",
+                    "Description": "{{i18n:big-craftable.broken-crank-piece.description}}",
+                    "Price": 0,
+                    "Fragility": 2,
+                    "CanBePlacedOutdoors": false,
+                    "CanBePlacedIndoors": false,
+                    "IsLamp": false,
+                    "Texture": "Mods/{{ModId}}/BrokenCrank3",
+                    "SpriteIndex": 0,
+                    "ContextTags": null,
+                    "CustomFields": null
+                },
+
+                "{{ModId}}_BrokenCrank4": {
+                    "Name": "{{ModId}}_BrokenCrank4",
+                    "DisplayName": "{{i18n:big-craftable.broken-crank-piece.name}}",
+                    "Description": "{{i18n:big-craftable.broken-crank-piece.description}}",
+                    "Price": 0,
+                    "Fragility": 2,
+                    "CanBePlacedOutdoors": false,
+                    "CanBePlacedIndoors": false,
+                    "IsLamp": false,
+                    "Texture": "Mods/{{ModId}}/BrokenCrank4",
+                    "SpriteIndex": 0,
+                    "ContextTags": null,
+                    "CustomFields": null
+                },
+
+                "{{ModId}}_BrokenCrank5": {
+                    "Name": "{{ModId}}_BrokenCrank5",
+                    "DisplayName": "{{i18n:big-craftable.broken-crank-piece.name}}",
+                    "Description": "{{i18n:big-craftable.broken-crank-piece.description}}",
+                    "Price": 0,
+                    "Fragility": 2,
+                    "CanBePlacedOutdoors": false,
+                    "CanBePlacedIndoors": false,
+                    "IsLamp": false,
+                    "Texture": "Mods/{{ModId}}/BrokenCrank5",
+                    "SpriteIndex": 0,
+                    "ContextTags": null,
+                    "CustomFields": null
+                },
+
                 "{{ModId}}_WhitelistSign": {
                     "Name": "{{ModId}}_WhitelistSign",
                     "DisplayName": "{{i18n:big-craftable.whitelist-sign.name}}",
