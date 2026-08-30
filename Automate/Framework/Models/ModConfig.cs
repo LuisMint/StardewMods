@@ -249,11 +249,62 @@ internal class ModConfig
     public HashSet<string> PowerRequiredMachineNames { get; set; } = new(StringComparer.OrdinalIgnoreCase)
     {
         "Crystalarium",
+        "PrismaticCrystalarium",
+        "RadioactiveCrystalarium",
         "AutoGrabber",
         "AutoPetter",
         "HeavyFurnace",
-        "AutoCrafter",
+        "PrismaticHeavyFurnace",
+        "RadioactiveHeavyFurnace",
         "FishSmoker",
+        "GoldFishSmoker",
+        "DiamondFishSmoker",
+        "IridiumFishSmoker",
+        "RadioactiveFishSmoker",
+        "DeluxeWormBin",
+        "PrismaticDeluxeWormBin",
+        "DiamondDeluxeWormBin",
+        "IridiumDeluxeWormBin",
+        "RadioactiveDeluxeWormBin",
+        "RecyclingMachine",
+        "GoldRecyclingMachine",
+        "DiamondRecyclingMachine",
+        "IridiumRecyclingMachine",
+        "PrismaticRecyclingMachine",
+        "RadioactiveRecyclingMachine",
+        "SeedMaker",
+        "GoldSeedMaker",
+        "IronSeedMaker",
+        "IridiumSeedMaker",
+        "PrismaticSeedMaker",
+        "RadioactiveSeedMaker",
+        "GeodeCrusher",
+        "IridiumGeodeCrusher",
+        "PrismaticGeodeCrusher",
+        "RadioactiveGeodeCrusher",
+        "OstrichIncubator",
+        "PrismaticOstrichIncubator",
+        "RadioactiveOstrichIncubator",
+        "WoodChipper",
+        "ElectricFurnace",
+        "AlternatorEFurnace",
+        "ChromiumFurnace",
+        "ChroHFurnace",
+        "Pulverizer",
+        "RockCrusher",
+        "IndustrialDistillery",
+        "PerservativePress",
+        "SuperGardenCloche",
+        "AutoMiner",
+        "MineralWasher",
+        "GemPolisher",
+        "FishingWell",
+        "BatteryCharger",
+        "ChemicalProcessingMachine",
+        "GasSmoker",
+        "BigCheesePress",
+        "BigMayoMachine",
+        "AutoCrafter",
 
         // MOD: added — the "Stardio" mod's 4 conveyor belt types, gated via StardioConveyorBeltPatches
         // even though a belt isn't a real IMachine. Each type gets its own entry (derived from that
@@ -280,7 +331,15 @@ internal class ModConfig
         "Splitter",
         "WarpNexus",
         "InputHub",
-        "OutputHub"
+        "OutputHub",
+
+        // MOD: added — Cornucopia Artisan Machines' own machine types, gated the same way as every entry
+        // above (a plain BigCraftable, so already covered by the fully generic PowerRequiredMachinePatches
+        // — listed here purely for discoverability). No-op if that mod isn't installed.
+        "CornucopiaJuicer",
+        "(BC)Cornucopia_DeluxeSmoker",
+        "CornucopiaExtruder",
+        "CornucopiaCompactMill"
     };
 
     /// <summary>
