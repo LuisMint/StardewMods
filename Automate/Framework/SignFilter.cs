@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using StardewValley;
 using StardewValley.ItemTypeDefinitions;
 using SObject = StardewValley.Object;
@@ -16,6 +17,23 @@ namespace Pathoschild.Stardew.Automate.Framework;
 /// <param name="HasNumericBlacklist">Whether a <em>numeric</em> blacklist sign for this item exists in the group. A non-numeric blacklist is tracked separately (see <see cref="SignFilter"/>), since it's overridden entirely by a group-wide whitelist instead of combining with it.</param>
 /// <param name="BlacklistNumber">The numeric blacklist sign's condition, if any.</param>
 internal readonly record struct SignItemCondition(bool HasWhitelist, int? WhitelistNumber, bool HasNumericBlacklist, int? BlacklistNumber);
+
+/// <summary>
+/// MOD: added. A "category" entry (see <see cref="SignFilter.WhitelistedCategories"/>/
+/// <see cref="SignFilter.BlacklistedCategories"/>) representing an item's QUALITY instead of its
+/// vanilla/custom category — set by placing one of the mod's quality-tag items (No/Silver/Gold/Iridium
+/// Quality Tag) on a Category Whitelist/Blacklist sign instead of a real item. Lives in the exact same
+/// <c>HashSet&lt;object&gt;</c> as vanilla category codes (<see cref="int"/>) and custom category names
+/// (<see cref="string"/>) — the three kinds never collide as values, and <see cref="SignFilter.IsItemTypeAllowed"/>
+/// already combines everything in that set with a plain OR, so a quality condition combines with any
+/// other category condition on the same group exactly the same way two different category conditions
+/// already do. Matches vanilla's own <c>Object.Quality</c> values exactly (0 = no star, 1 = silver, 2 =
+/// gold, 4 = iridium) — this is an EXACT match, not a "this quality or better" threshold, for
+/// consistency with every other whitelist/blacklist sign in the mod (item and category signs are both
+/// exact-match already).
+/// </summary>
+/// <param name="Quality">The exact <c>Object.Quality</c> value this condition matches.</param>
+internal readonly record struct QualityCategory(int Quality);
 
 /// <summary>
 /// MOD: added. Resolves whitelist/blacklist sign conditions for a single machine group into per-item
@@ -87,6 +105,15 @@ internal class SignFilter
     /// <summary>MOD: added. Get the configured custom categories, each mapping a category name to the item names/qualified IDs that belong to it — see <see cref="GetEffectiveCategory"/>.</summary>
     private readonly IReadOnlyDictionary<string, HashSet<string>> CustomCategories;
 
+    /// <summary>MOD: added. Maps each quality-tag item's qualified ID to the <see cref="Object.Quality"/> value it represents on a Category Whitelist/Blacklist sign — see <see cref="QualityCategory"/>.</summary>
+    private static readonly Dictionary<string, int> QualityTagItemIds = new()
+    {
+        ["(O)luisMint.PoweredAutomation_NoQualityTag"] = 0,
+        ["(O)luisMint.PoweredAutomation_SilverQualityTag"] = 1,
+        ["(O)luisMint.PoweredAutomation_GoldQualityTag"] = 2,
+        ["(O)luisMint.PoweredAutomation_IridiumQualityTag"] = 4
+    };
+
 
     /*********
     ** Public methods
@@ -137,6 +164,64 @@ internal class SignFilter
         return data != null ? data.Category : null;
     }
 
+    /// <summary>
+    /// MOD: added. Get whether a specific <see cref="Object.Quality"/> value is currently permitted by a
+    /// quality-tag Category Sign touching this group — narrower than <see cref="IsItemTypeAllowed"/>
+    /// (which returns <c>true</c> for an unrestricted group with no filter at all): this only ever
+    /// returns <c>true</c> when the group deliberately has an active quality-tag condition (whitelist OR
+    /// blacklist) that resolves to "allowed" for this exact quality. Used by
+    /// <see cref="CaskQualityFilterMachine"/> to decide whether a Cask should be collectible before it's
+    /// fully aged — that has to stay opt-in per group, since an unrestricted group returning
+    /// <c>true</c> here for every quality would make every Cask harvest instantly, which is not what an
+    /// absent filter should ever imply.
+    ///
+    /// Resolution mirrors <see cref="IsItemTypeAllowed"/>'s own category priority, but isolated to JUST
+    /// the quality axis — any other item/category condition in the group is deliberately ignored here
+    /// (that's a separate concern already enforced correctly on the destination container's own side
+    /// once a transfer actually happens; this method only answers whether QUALITY specifically should
+    /// trigger early collection):
+    /// <list type="number">
+    /// <item>A quality-tag whitelist entry exists for THIS group -> allowed only if this exact quality is one of them.</item>
+    /// <item>Else a quality-tag blacklist entry exists for this group -> allowed unless this exact quality is one of them.</item>
+    /// <item>Else (no quality-tag condition configured at all) -> not allowed, since there's nothing to be "early" about.</item>
+    /// </list>
+    /// </summary>
+    /// <param name="quality">The quality value to check.</param>
+    public bool IsQualityPermittedForEarlyCollection(int quality)
+    {
+        QualityCategory qualityCategory = new(quality);
+
+        bool hasWhitelistedQuality = this.WhitelistedCategories.Any(category => category is QualityCategory);
+        if (hasWhitelistedQuality)
+            return this.WhitelistedCategories.Contains(qualityCategory);
+
+        bool hasBlacklistedQuality = this.BlacklistedCategories.Any(category => category is QualityCategory);
+        if (hasBlacklistedQuality)
+            return !this.BlacklistedCategories.Contains(qualityCategory);
+
+        return false; // no quality-tag condition configured on this group at all
+    }
+
+    /// <summary>MOD: added. Get the <see cref="Object.Quality"/> value a quality-tag item (No/Silver/Gold/Iridium Quality Tag) represents when placed on a Category Whitelist/Blacklist sign, or <c>null</c> if the given item isn't one of the mod's quality-tag items at all — see <see cref="QualityCategory"/>.</summary>
+    /// <param name="itemId">The qualified item ID to check.</param>
+    public static int? GetQualityTagQuality(string itemId)
+    {
+        return SignFilter.QualityTagItemIds.TryGetValue(itemId, out int quality) ? quality : null;
+    }
+
+    /// <summary>MOD: added. Get the plain-text name for an <see cref="Object.Quality"/> value, for a category sign's confirmation message when it's currently showing a quality tag — see <see cref="GetCategoryDisplayText"/>.</summary>
+    /// <param name="quality">The <see cref="Object.Quality"/> value (0, 1, 2, or 4 — see <see cref="QualityCategory"/>).</param>
+    private static string GetQualityDisplayText(int quality)
+    {
+        return quality switch
+        {
+            1 => I18n.Message_QualityCategorySilver(),
+            2 => I18n.Message_QualityCategoryGold(),
+            4 => I18n.Message_QualityCategoryIridium(),
+            _ => I18n.Message_QualityCategoryNormal()
+        };
+    }
+
     /// <summary>MOD: added. Display name overrides for vanilla category codes whose own name isn't a stable/generic label to show on a category sign. Keyed by the category code so it applies uniformly to any item with that code — vanilla or modded — without needing a custom category list.</summary>
     /// <remarks>
     /// Currently just <see cref="SObject.weaponCategory"/>: every sword, dagger, club, and slingshot
@@ -178,6 +263,12 @@ internal class SignFilter
     /// <param name="customCategories">The configured custom categories, each mapping a category name to the item names/qualified IDs that belong to it.</param>
     public static string? GetCategoryDisplayText(string itemId, IReadOnlyDictionary<string, HashSet<string>> customCategories)
     {
+        // MOD: added — a quality-tag item represents a QualityCategory, not its own (meaningless)
+        // vanilla category (e.g. Crafting) — show which quality it represents instead, same as
+        // GetSignInfo's own resolution for the sign's actual filter condition (MachineGroupFactory).
+        if (SignFilter.GetQualityTagQuality(itemId) is int quality)
+            return SignFilter.GetQualityDisplayText(quality);
+
         ParsedItemData? data = ItemRegistry.GetData(itemId);
         if (data == null)
             return null;
@@ -190,9 +281,10 @@ internal class SignFilter
         };
     }
 
-    /// <summary>Get whether an item type may move through this group's storage at all, ignoring quantity.</summary>
+    /// <summary>Get whether an item type may move through this group's storage at all, ignoring quantity — a quality filter applies uniformly here, regardless of whether the caller is collecting output, storing into a plain container, or a machine consuming an ingredient. There's no exemption for any of those; a quality condition means exactly what it says everywhere.</summary>
     /// <param name="itemId">The qualified item ID to check.</param>
-    public bool IsItemTypeAllowed(string itemId)
+    /// <param name="quality">The specific item instance's <see cref="Object.Quality"/> value, checked against any active <see cref="QualityCategory"/> condition.</param>
+    public bool IsItemTypeAllowed(string itemId, int quality)
     {
         if (this.ConditionsByItemId.ContainsKey(itemId))
             return true; // has a whitelist and/or numeric blacklist entry
@@ -205,20 +297,47 @@ internal class SignFilter
             return false;
 
         object? effectiveCategory = null;
+        QualityCategory qualityCategory = default;
         if (this.WhitelistedCategories.Count > 0 || this.BlacklistedCategories.Count > 0)
+        {
             effectiveCategory = SignFilter.GetEffectiveCategory(itemId, this.CustomCategories);
+            qualityCategory = new QualityCategory(quality);
+        }
 
-        if (effectiveCategory != null && this.WhitelistedCategories.Contains(effectiveCategory))
-            return true; // item's effective category matches one of the group's whitelisted categories
+        if ((effectiveCategory != null && this.WhitelistedCategories.Contains(effectiveCategory)) || this.WhitelistedCategories.Contains(qualityCategory))
+            return true; // item's effective category (or quality) matches one of the group's whitelisted categories
 
         if (this.GroupHasWhitelist || this.WhitelistedCategories.Count > 0)
-            return false; // unlisted item under an active whitelist (item-level or category-level)
+            return false; // unlisted item under an active whitelist (item-level or category-level, including quality-level)
 
-        if (effectiveCategory != null && this.BlacklistedCategories.Contains(effectiveCategory))
-            return false; // item's effective category matches one of the group's blacklisted categories
+        if ((effectiveCategory != null && this.BlacklistedCategories.Contains(effectiveCategory)) || this.BlacklistedCategories.Contains(qualityCategory))
+            return false; // item's effective category (or quality) matches one of the group's blacklisted categories
 
         return true;
     }
+
+    /// <summary>
+    /// MOD: added. Get whether an item type could possibly be allowed through this group's storage at
+    /// SOME quality (0, 1, 2, or 4) — used only by the raw itemId-only <see cref="FilteredInventory"/>
+    /// bypass path (see that class's own remarks), which has no specific item instance to read an
+    /// actual quality from at all, unlike every other caller of <see cref="IsItemTypeAllowed"/> (which
+    /// always has a real item in hand). This is deliberately the more PERMISSIVE of the two: it only
+    /// exists so that path doesn't hide an item type outright just because ONE quality of it wouldn't
+    /// pass — real per-instance enforcement (including which quality actually gets through) still
+    /// happens correctly wherever a real item IS available, via <see cref="IsItemTypeAllowed"/> itself
+    /// (see <see cref="ItemFilteredContainer.AttemptAutoLoad"/>'s own pre-clamp loop, which zeroes out a
+    /// wrong-quality stack's real <c>Stack</c> count before vanilla's own logic ever reads through this
+    /// coarser path) — so being lenient here doesn't let anything wrong-quality actually move, it just
+    /// avoids hiding a stack that WOULD be allowed at its own real quality.
+    /// </summary>
+    /// <param name="itemId">The qualified item ID to check.</param>
+    public bool IsItemTypePossiblyAllowed(string itemId)
+    {
+        return SignFilter.RealQualityValues.Any(quality => this.IsItemTypeAllowed(itemId, quality));
+    }
+
+    /// <summary>MOD: added. Every real <see cref="Object.Quality"/> value the game can actually produce — see <see cref="IsItemTypePossiblyAllowed"/>.</summary>
+    private static readonly int[] RealQualityValues = [0, 1, 2, 4];
 
     /// <summary>
     /// Get the maximum amount of an item that may be taken out of a container right now.
@@ -237,7 +356,8 @@ internal class SignFilter
     /// category condition (see <see cref="IsItemTypeAllowed"/>) has neither — it's a plain type gate,
     /// so it falls through to the unrestricted/blocked fallback at the bottom.
     /// </remarks>
-    public int GetMaxTakeable(string itemId, int currentCount, int requested)
+    /// <param name="quality">MOD: added. The specific item instance's <see cref="Object.Quality"/> value — see <see cref="IsItemTypeAllowed"/>'s own remarks. Irrelevant whenever <paramref name="itemId"/> has its own numeric/whitelist condition, since that's resolved from <see cref="ConditionsByItemId"/> before quality would ever be consulted.</param>
+    public int GetMaxTakeable(string itemId, int quality, int currentCount, int requested)
     {
         if (requested <= 0)
             return 0;
@@ -253,14 +373,15 @@ internal class SignFilter
             return result;
         }
 
-        return this.IsItemTypeAllowed(itemId) ? requested : 0;
+        return this.IsItemTypeAllowed(itemId, quality) ? requested : 0;
     }
 
     /// <summary>Get the maximum amount of an item that may be stored into a container right now.</summary>
     /// <param name="itemId">The qualified item ID being stored.</param>
     /// <param name="currentCount">The container's current total count of this item.</param>
     /// <param name="requested">The amount the caller wants to store.</param>
-    public int GetMaxStorable(string itemId, int currentCount, int requested)
+    /// <param name="quality">MOD: added. The specific item instance's <see cref="Object.Quality"/> value — see <see cref="IsItemTypeAllowed"/>'s own remarks. Irrelevant whenever <paramref name="itemId"/> has its own numeric/whitelist condition, since that's resolved from <see cref="ConditionsByItemId"/> before quality would ever be consulted.</param>
+    public int GetMaxStorable(string itemId, int quality, int currentCount, int requested)
     {
         if (requested <= 0)
             return 0;
@@ -274,6 +395,6 @@ internal class SignFilter
         // MOD: a numeric-blacklist-only item condition, and a category condition, don't restrict
         // storage at all — see IsItemTypeAllowed's remarks for the type gate, and GetMaxTakeable's
         // remarks for why a numeric blacklist's reserve only limits taking, not storing.
-        return this.IsItemTypeAllowed(itemId) ? requested : 0;
+        return this.IsItemTypeAllowed(itemId, quality) ? requested : 0;
     }
 }

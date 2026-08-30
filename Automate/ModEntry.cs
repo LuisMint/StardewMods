@@ -471,6 +471,20 @@ internal class ModEntry : Mod
         );
         CrankedPowerCoilPatches.Apply(harmony);
 
+        // MOD: added — general-purpose custom event command (not tied to the cranked coil specifically)
+        // letting an event queue an after-the-fact dialogue line for more than one NPC. See its own
+        // remarks for why vanilla's own "end dialogue" end-behavior isn't enough for that by itself.
+        EventDialogueQueueCommand.Apply();
+
+        // MOD: added — general-purpose custom event command drawing a purely decorative prop from a
+        // mod's own texture, with no real item backing it at all (unlike addBigProp). See its own
+        // remarks for why vanilla's own addProp/addFloorProp can't be used for a custom texture.
+        EventCustomPropCommand.Apply();
+
+        // MOD: added — queues a one-time Lewis reaction line once the player's accepted the Cave Carrot
+        // Request special order (see CaveCarrotRequestAnnouncementHandler's own remarks).
+        CaveCarrotRequestAnnouncementHandler.Apply(helper);
+
         SignFilterPatches.Initialize(
             getWhitelistSignNames: () => this.Config.WhitelistSignNames,
             getBlacklistSignNames: () => this.Config.BlacklistSignNames
@@ -697,6 +711,11 @@ internal class ModEntry : Mod
         // restocks weekly (see DwarfWeeklyShopPatches's own remarks).
         DwarfWeeklyShopPatches.Initialize(this.Monitor);
         DwarfWeeklyShopPatches.Apply(harmony);
+
+        // MOD: added — shows a generic "Quality Tags" confirmation line instead of just the last of the
+        // four quality tag recipes granted by the Cave Carrot Request's completion letter (see
+        // CaveCarrotLetterPatches's own remarks).
+        CaveCarrotLetterPatches.Apply(harmony);
 
         // hook events
         helper.Events.Content.AssetRequested += this.OnAssetRequested;

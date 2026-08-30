@@ -96,6 +96,14 @@ internal class MachineGroupBuilder
     /// <param name="isPowerStarved">MOD: added. Whether this machine is a "power-required" type whose own tile isn't currently within power range — see <see cref="PowerStarvedTiles"/>.</param>
     public void Add(IMachine machine, bool isPowerStarved = false)
     {
+        // MOD: added — if this group has an item filter AND the machine is backed by a real Cask, wrap
+        // it so a quality-tag Category Whitelist sign can make it collectible before it's fully aged to
+        // iridium. See CaskQualityFilterMachine's own remarks. Every other machine type is left
+        // completely untouched, unlike the analogous container wrap below (in the other Add overload),
+        // which applies to every container in a filtered group regardless of type.
+        if (this.ItemFilter != null && machine is IHasUnderlyingObject { UnderlyingObject: StardewValley.Objects.Cask cask })
+            machine = new CaskQualityFilterMachine(machine, cask, this.ItemFilter);
+
         this.Machines.Add(machine);
         this.Add(machine.TileArea);
 

@@ -8,6 +8,14 @@
     "object.input-pipe.description": "Lets automation pull items from machines and containers, as long as it's within power range.",
     "object.output-pipe.name": "Output Conduit",
     "object.output-pipe.description": "Lets automation push items into machines and containers, as long as it's within power range.",
+    "object.no-quality-tag.name": "No Quality Tag",
+    "object.no-quality-tag.description": "Use on a Category Sign to filter items by normal (no star) quality.",
+    "object.silver-quality-tag.name": "Silver Quality Tag",
+    "object.silver-quality-tag.description": "Use on a Category Sign to filter items by silver quality.",
+    "object.gold-quality-tag.name": "Gold Quality Tag",
+    "object.gold-quality-tag.description": "Use on a Category Sign to filter items by gold quality.",
+    "object.iridium-quality-tag.name": "Iridium Quality Tag",
+    "object.iridium-quality-tag.description": "Use on a Category Sign to filter items by iridium quality.",
 
     /*********
     ** Data/BigCraftables
@@ -28,8 +36,6 @@
     "big-craftable.powered-chest.description": "A chest that can automate items via powered conduits. Passively powers itself and adjacent tiles.",
     "big-craftable.auto-crafter.name": "Auto Crafter",
     "big-craftable.auto-crafter.description": "Use an item on this machine to assign and craft any known recipes via automation. The item won't be consumed.",
-    "big-craftable.broken-crank-piece.name": "Broken Crank Piece",
-    "big-craftable.broken-crank-piece.description": "A discarded, broken piece of an old hand-cranked mechanism.",
 
     /*********
     ** Data/Buildings
@@ -71,6 +77,8 @@
     "event.dwarf-friendship-1.question-option-2": "I'll take it off your hands",
     "event.dwarf-friendship-1.split-speak-1": "It's the main component to powered automation. It can move items to and from machines and chests connected by conduit.",
     "event.dwarf-friendship-1.split-speak-2": "Also it in itself is a power source!",
+    "event.dwarf-friendship-1.after-event-dwarf": "Don't worry, that Powered Chest is on me. I don't think that Goblin was ever going to buy it.",
+    "event.dwarf-friendship-1.after-event-henchman": "'Powered chest?'... I don't know of such a thing.",
     // used the wrong format for this message in the cutscene, just have the same text on both sides of the '~'
     "event.dwarf-friendship-1.shop-intro": "I sell all the things that could help you get started. I even got my hands on some research notes that might prove useful.~I sell all the things that could help you get started. I even got my hands on some research notes that might prove useful.",
 
@@ -88,11 +96,11 @@
     "event.cranked-power-coil-intro.speak-9": "...",
     "event.cranked-power-coil-intro.speak-10": "Well, maybe some farm elbow grease is just exactly what we need.",
     "event.cranked-power-coil-intro.speak-11": "Hi @, do you think you could lend us a hand here?",
-    "event.cranked-power-coil-intro.speak-12": "After Joja cleared that boulder, my dad found a curious scroll containing blueprints for this power device.",
-    "event.cranked-power-coil-intro.speak-13": "I was studying the ecological aftermath of the boulder's removal when I stumbled upon these loose research notes.",
+    "event.cranked-power-coil-intro.speak-12": "After Joja cleared that landslide, my dad found a curious scroll containing blueprints for this power device.",
+    "event.cranked-power-coil-intro.speak-13": "I was studying the ecological aftermath of Joja's drilling fiasco when I stumbled upon these loose research notes.",
     "event.cranked-power-coil-intro.speak-14": "The notes were quite indecipherable, but the drafting is remarkably precise. Maru and I spent the entire day reverse-engineering the designs.",
     "event.cranked-power-coil-intro.speak-15": "There was even the most interesting cave carrot purée recipe on the back.",
-    "event.cranked-power-coil-intro.text-above-head-1": "Too Earthy...",
+    "event.cranked-power-coil-intro.text-above-head-1": "Too earthy...",
     "event.cranked-power-coil-intro.speak-16": "Id rather not think about that.",
     "event.cranked-power-coil-intro.speak-17": "If its not too much trouble, @, would you mind giving it a crank? We haven't had much luck ourselves.",
     "event.cranked-power-coil-intro.message-1": "The cranked power coil turned on.",
@@ -106,5 +114,19 @@
     "event.cranked-power-coil-intro.speak-24": "I'm sure this cranked power coil will help tons powering some of your farm equipment.",
     "event.cranked-power-coil-intro.speak-25": "Oh, hey there, champ! Nice to see you out of the house for once.",
     "event.cranked-power-coil-intro.speak-26": "...",
-    "event.cranked-power-coil-intro.speak-27": "That wasn't because of me, was it?"
+    "event.cranked-power-coil-intro.speak-27": "That wasn't because of me, was it?",
+    "event.cranked-power-coil-intro.after-event-maru": "Thanks again for helping out, @. It was fun tinkering with my dad, anyway.",
+    "event.cranked-power-coil-intro.after-event-demetrius": "Maru is a bright young girl. I just wish Sebastian would share more of his interests with me...",
+    "event.cranked-power-coil-intro.after-event-sebastian": "Sorry if I came off a little rude earlier... I guess I just got embarrassed.",
+    "event.cranked-power-coil-intro.after-event-robin": "Maru gave you a blueprint for that cranked machine? Demetrius and her nearly broke a window messing with that thing. ",
+
+    /*********
+    ** Data/SpecialOrders
+    *********/
+    "special-order.cave-carrot-request.name": "Cave Carrot Request",
+    "special-order.cave-carrot-request.text": "Valley people, all I ask is from 50 freshly foraged cave carrots, submit 20 pickled cave carrots you have deemed most serviceable in quality. Cave carrots tilled freshly from the mines would be preferred.",
+    "special-order.cave-carrot-request.objective-collect": "Collect 50 cave carrots",
+    "special-order.cave-carrot-request.objective-donate": "Place 20 pickled cave carrots in the dwarf's chest inside the mines.",
+    "special-order.cave-carrot-request.completion-letter": "[letterbg 0]Farm human @,^^Thank you for the pickled cave carrots. I spent some time sorting them by quality, and thought you could make some quality tags of your own to sort items by qaulity.^^I placed this note in your mailbox during the night. You have a nice surface farm in the valley.%item craftingrecipe luisMint.PoweredAutomation_NoQualityTag %%%item craftingrecipe luisMint.PoweredAutomation_SilverQualityTag %%%item craftingrecipe luisMint.PoweredAutomation_GoldQualityTag %%%item craftingrecipe luisMint.PoweredAutomation_IridiumQualityTag %%"
 }
+

@@ -77,6 +77,11 @@
     *********/
     "message.craft-unknown-recipe": "Don't know how to craft {{itemName}}.",
     "message.category-sign-unresolved": "...",
+    "message.quality-category-normal": "Normal Quality",
+    "message.quality-category-silver": "Silver Quality",
+    "message.quality-category-gold": "Gold Quality",
+    "message.quality-category-iridium": "Iridium Quality",
+    "message.quality-tags-recipe-name": "Normal, Silver, Gold, and Iridium Quality Tags",
     "message.machine-needs-power": "Machine needs power",
     "message.machines-need-power-in-location.singular": "{{count}} connected machine needs power in {{locationName}}",
     "message.machines-need-power-in-location.plural": "{{count}} connected machines need power in {{locationName}}",
@@ -143,5 +148,10 @@
     "command.reset.description": "automate reset\n   Usage: automate reset\n   Resets all cached data and rescans the world for machines.",
     "command.summary.description": "automate summary\n   Usage: automate summary\n   Prints a summary of automated machines.",
     "command.reset-silo-tiers.description": "automate reset_silo_tiers\n   Usage: automate reset_silo_tiers\n   Discards this save's already-rolled Power Silo tier requirements, so they're rolled fresh\n   from the current config the next time they're read (e.g. next time you interact with a\n   Power Silo). Useful when testing changes to PowerSiloTierPools in the config file.",
-    "command.perf.description": "automate perf\n   Usage: automate perf\n   Toggles the automation performance overlay on or off. While on, it shows on the HUD and\n   dumps a summary to the log when turned back off."
+    "command.perf.description": "automate perf\n   Usage: automate perf\n   Toggles the automation performance overlay on or off. While on, it shows on the HUD and\n   dumps a summary to the log when turned back off.",
+
+    /*********
+    ** Dialogue reactions (queued outside of any event, ex: CaveCarrotRequestAnnouncementHandler)
+    *********/
+    "dialogue.lewis-cave-carrot-request-reaction": "I thought one of the kids had posted some kind of gibberish special order as a practical joke. But Gunther confirmed it's genuine... an order from someone living up in the mountains' mines. And here I thought I've seen it all."
 }

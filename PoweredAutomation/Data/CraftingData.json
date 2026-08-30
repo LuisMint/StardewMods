@@ -7,14 +7,19 @@
                 "{{ModId}}_PullPushPipe": "70 1 334 1 336 1 338 1/Field/{{ModId}}_PullPushPipe 5/false//",
                 "{{ModId}}_InputPipe": "62 1 334 1 336 1 338 1/Field/{{ModId}}_InputPipe 5/false//",
                 "{{ModId}}_OutputPipe": "64 1 334 1 336 1 338 1/Field/{{ModId}}_OutputPipe 5/false//",
-                "{{ModId}}_PowerCoil": "334 5 336 5 337 1 787 3 338 5 (BC)9 1/Field/{{ModId}}_PowerCoil 1/false//",
-                "{{ModId}}_CrankedPowerCoil": "390 25 378 10 382 1 338 3/Field/{{ModId}}_CrankedPowerCoil 1/false//",
-                "{{ModId}}_WhitelistSign": "(BC)38 1 428 1 768 10/Field/{{ModId}}_WhitelistSign 1/false//",
-                "{{ModId}}_BlacklistSign": "(BC)38 1 428 1 769 10/Field/{{ModId}}_BlacklistSign 1/false//",
-                "{{ModId}}_WhitelistCategorySign": "(BC){{ModId}}_WhitelistSign 1 336 5/Field/{{ModId}}_WhitelistCategorySign 1/false//",
-                "{{ModId}}_BlacklistCategorySign": "(BC){{ModId}}_BlacklistSign 1 336 5/Field/{{ModId}}_BlacklistCategorySign 1/false//",
-                "{{ModId}}_PoweredChest": "334 3 336 3 787 1 338 10 (BC)130 1/Field/{{ModId}}_PoweredChest 1/false//",
-                "{{ModId}}_AutoCrafter": "709 15 334 3 335 1 338 5/Field/{{ModId}}_AutoCrafter 1/true//"
+                "{{ModId}}_PowerCoil": "334 5 336 5 337 1 787 3 338 5 (BC)9 1/Field/{{ModId}}_PowerCoil 1/true//",
+                "{{ModId}}_CrankedPowerCoil": "390 25 378 10 382 1 338 3/Field/{{ModId}}_CrankedPowerCoil 1/true//",
+                "{{ModId}}_WhitelistSign": "(BC)38 1 428 1 768 10/Field/{{ModId}}_WhitelistSign 1/true//",
+                "{{ModId}}_BlacklistSign": "(BC)38 1 428 1 769 10/Field/{{ModId}}_BlacklistSign 1/true//",
+                "{{ModId}}_WhitelistCategorySign": "(BC){{ModId}}_WhitelistSign 1 336 5/Field/{{ModId}}_WhitelistCategorySign 1/true//",
+                "{{ModId}}_BlacklistCategorySign": "(BC){{ModId}}_BlacklistSign 1 336 5/Field/{{ModId}}_BlacklistCategorySign 1/true//",
+                "{{ModId}}_PoweredChest": "334 3 336 3 787 1 338 10 (BC)130 1/Field/{{ModId}}_PoweredChest 1/true//",
+                "{{ModId}}_AutoCrafter": "709 15 334 3 335 1 338 5/Field/{{ModId}}_AutoCrafter 1/true//",
+
+                "{{ModId}}_NoQualityTag": "428 20 334 5/Field/{{ModId}}_NoQualityTag 1/false//",
+                "{{ModId}}_SilverQualityTag": "{{ModId}}_NoQualityTag 1 335 5/Field/{{ModId}}_SilverQualityTag 1/false//",
+                "{{ModId}}_GoldQualityTag": "{{ModId}}_SilverQualityTag 1 336 5/Field/{{ModId}}_GoldQualityTag 1/false//",
+                "{{ModId}}_IridiumQualityTag": "{{ModId}}_GoldQualityTag 1 337 5/Field/{{ModId}}_IridiumQualityTag 1/false//"
             }
         }
     ]

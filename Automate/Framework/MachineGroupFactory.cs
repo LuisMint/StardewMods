@@ -902,7 +902,19 @@ internal class MachineGroupFactory
                 heldItem = displayItemRef.Value;
 
             bool isCategoryKind = kind is SignKind.WhitelistCategory or SignKind.BlacklistCategory;
-            object? category = isCategoryKind && heldItem != null ? SignFilter.GetEffectiveCategory(heldItem.QualifiedItemId, this.GetCustomCategories()) : null;
+            // MOD: added — a quality-tag item (No/Silver/Gold/Iridium Quality Tag) placed on a category
+            // sign represents a QualityCategory instead of the tag item's own (meaningless) vanilla
+            // category — checked first since GetEffectiveCategory would otherwise resolve the tag item
+            // to whatever ordinary category it happens to have (e.g. Crafting), which isn't what it's
+            // meant to filter by.
+            object? category = null;
+            if (isCategoryKind && heldItem != null)
+            {
+                int? qualityTagQuality = SignFilter.GetQualityTagQuality(heldItem.QualifiedItemId);
+                category = qualityTagQuality.HasValue
+                    ? new QualityCategory(qualityTagQuality.Value)
+                    : SignFilter.GetEffectiveCategory(heldItem.QualifiedItemId, this.GetCustomCategories());
+            }
             int? number = isCategoryKind ? null : MachineGroupFactory.GetSignNumber(signObj, heldItem);
 
             return (kind.Value, heldItem?.QualifiedItemId, category, number);

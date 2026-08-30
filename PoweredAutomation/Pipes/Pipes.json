@@ -172,6 +172,26 @@
         },
         {
             "Action": "Load",
+            "Target": "Mods/{{ModId}}/NoQualityTag",
+            "FromFile": "Pipes/NoQualityTag.png"
+        },
+        {
+            "Action": "Load",
+            "Target": "Mods/{{ModId}}/SilverTag",
+            "FromFile": "Pipes/SilverTag.png"
+        },
+        {
+            "Action": "Load",
+            "Target": "Mods/{{ModId}}/GoldTag",
+            "FromFile": "Pipes/GoldTag.png"
+        },
+        {
+            "Action": "Load",
+            "Target": "Mods/{{ModId}}/IridiumTag",
+            "FromFile": "Pipes/IridiumTag.png"
+        },
+        {
+            "Action": "Load",
             "Target": "Mods/{{ModId}}/PoweredChest",
             "FromFile": "Pipes/PoweredChest.png"
         },

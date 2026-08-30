@@ -1,0 +1,132 @@
+{
+    /*********
+    ** Data/Objects
+    *********/
+    "object.pull-push-pipe.name": "Condutor Omni",
+    "object.pull-push-pipe.description": "Permite que a automação insira e retire itens das máquinas, desde que esteja dentro do alcance de energia.",
+    "object.input-pipe.name": "Condutor de Entrada",
+    "object.input-pipe.description": "Permite que a automação retire itens de máquinas e recipientes, desde que esteja dentro do alcance de energia.",
+    "object.output-pipe.name": "Condutor de Saída",
+    "object.output-pipe.description": "Permite que a automação insira itens em máquinas e recipientes, desde que esteja dentro do alcance de energia.",
+    "object.no-quality-tag.name": "Etiqueta de Qualidade Normal",
+    "object.no-quality-tag.description": "Use em uma Placa de Categoria para filtrar itens pela qualidade normal (sem estrela).",
+    "object.silver-quality-tag.name": "Etiqueta de Qualidade Prata",
+    "object.silver-quality-tag.description": "Use em uma Placa de Categoria para filtrar itens pela qualidade prata.",
+    "object.gold-quality-tag.name": "Etiqueta de Qualidade Ouro",
+    "object.gold-quality-tag.description": "Use em uma Placa de Categoria para filtrar itens pela qualidade ouro.",
+    "object.iridium-quality-tag.name": "Etiqueta de Qualidade Irídio",
+    "object.iridium-quality-tag.description": "Use em uma Placa de Categoria para filtrar itens pela qualidade irídio.",
+
+    /*********
+    ** Data/BigCraftables
+    *********/
+    "big-craftable.power-coil.name": "Bobina de Energia",
+    "big-craftable.power-coil.description": "Fornece energia para condutores e máquinas próximas. Possui um alcance limitado.",
+    "big-craftable.cranked-power-coil.name": "Bobina de Energia de Manivela",
+    "big-craftable.cranked-power-coil.description": "Uma simples fonte de energia acionada por manivela. Fornece energia em um alcance limitado quando acionada, mas precisa ser acionada novamente pelo menos uma vez por dia.",
+    "big-craftable.whitelist-sign.name": "Placa de Lista de Permissões",
+    "big-craftable.whitelist-sign.description": "Use um item nesta placa para permitir que apenas esse item passe por um grupo de condutores conectado. O item não será consumido.",
+    "big-craftable.blacklist-sign.name": "Placa de Lista de Bloqueios",
+    "big-craftable.blacklist-sign.description": "Use um item nessa placa para impedir que esse item passe por um grupo de condutores conectado. O item não será consumido.",
+    "big-craftable.whitelist-category-sign.name": "Placa de Lista de Permissões por Categoria",
+    "big-craftable.whitelist-category-sign.description": "Use um item nessa placa para permitir que apenas a CATEGORIA desse item passe por um grupo de condutores conectado. O item não será consumido.",
+    "big-craftable.blacklist-category-sign.name": "Placa de Lista de Bloqueios por Categoria",
+    "big-craftable.blacklist-category-sign.description": "Use um item nessa placa para impedir que a CATEGORIA desse item passe por um grupo de condutores conectado. O item não será consumido.",
+    "big-craftable.powered-chest.name": "Baú Energizado",
+    "big-craftable.powered-chest.description": "Um baú que pode automatizar itens por meio de condutores energizados. Fornece energia para si mesmo e para os espaços adjacentes.",
+    "big-craftable.auto-crafter.name": "Fabricador Automático",
+    "big-craftable.auto-crafter.description": "Use um item nessa máquina para atribuir e fabricar automaticamente qualquer receita conhecida. O item não será consumido.",
+
+    /*********
+    ** Data/Buildings
+    *********/
+    "building.cave-hole.name": "Entrada da Caverna",
+    "building.cave-hole.description": "Uma abertura que leva a uma pequena caverna escavada pelos Anões. Ela foi escavada profundamente em um veio rico em minério.",
+    "building.big-cave-hole.name": "Entrada da Grande Caverna",
+    "building.big-cave-hole.description": "Uma caverna ampliada escavada pelos Anões. Ela foi escavada profundamente em um veio rico em minério.",
+    "building.power-silo.name": "Silo de Energia",
+    "building.power-silo.description": "Aumenta a quantidade de Bobinas de Energia que podem estar ativas ao mesmo tempo.",
+    "building.power-relay.name": "Relé de Automação",
+    "building.power-relay.description": "Aumenta a eficiência da automação.",
+
+    /*********
+    ** Dwarf Research Notes (Data/Objects entry + Secret Note Framework titles)
+    *********/
+    "dwarf-note.research-note.name": "Anotação de Pesquisa dos Anões",
+    "dwarf-note.research-note.description": "Uma página avulsa de pesquisa sobre a tecnologia dos Anões. A escrita é ilegível, mas pelo menos os desenhos são caprichados.",
+    "dwarf-note.title.input-conduit": "Anotação de Pesquisa dos Anões nº 1: Condutor de Entrada",
+    "dwarf-note.title.output-conduit": "Anotação de Pesquisa dos Anões nº 2: Condutor de Saída",
+    "dwarf-note.title.omni-conduit": "Anotação de Pesquisa dos Anões nº 3: Condutor Omni",
+    "dwarf-note.title.powered-systems": "Anotação de Pesquisa dos Anões nº 4: Baú Energizado - Bobina de Energia",
+    "dwarf-note.title.filter-signs-output": "Anotação de Pesquisa dos Anões nº 5: Placa de Lista de Permissões/Bloqueios no Condutor de Saída",
+    "dwarf-note.title.filter-signs-input": "Anotação de Pesquisa dos Anões nº 6: Placa de Lista de Permissões/Bloqueios no Condutor de Entrada",
+    "dwarf-note.title.category-sign": "Anotação de Pesquisa dos Anões nº 7: Placa de Lista de Permissões/Bloqueios por Categoria",
+
+    /*********
+    ** Data/Events/Mine — "Kree_CM_UOHGR4IM/Friendship Dwarf 1"
+    *********/
+    "event.dwarf-friendship-1.text-above-head": "Ah, é você...",
+    "event.dwarf-friendship-1.speak-1": "Humano da fazenda...",
+    "event.dwarf-friendship-1.speak-2": "Tem havido muita movimentação no subsolo ultimamente. Outros da minha espécie fizeram novos avanços ao recuperar tecnologias antigas dos Anões.",
+    "event.dwarf-friendship-1.speak-3": "Sinceramente, isso não me interessa nem um pouco.",
+    "event.dwarf-friendship-1.speak-4": "...Estava pensando que alguém como você poderia fazer um uso melhor disso do que eu jamais faria.",
+    "event.dwarf-friendship-1.speak-5": "Vamos, dê uma olhada mais de perto.",
+    "event.dwarf-friendship-1.speak-6": "É um Baú Energizado...",
+    "event.dwarf-friendship-1.message-warm-to-touch": "Está quente ao toque.",
+    "event.dwarf-friendship-1.question-option-1": "Como isso funciona?",
+    "event.dwarf-friendship-1.question-option-2": "Eu fico com ele.",
+    "event.dwarf-friendship-1.split-speak-1": "É o principal componente da automação energizada. Ele pode mover itens de e para máquinas e baús conectados por condutores.",
+    "event.dwarf-friendship-1.split-speak-2": "Além disso, ele próprio é uma fonte de energia!",
+    "event.dwarf-friendship-1.after-event-dwarf": "Não se preocupe, aquele Baú Energizado é por minha conta. Não acho que aquele Goblin fosse comprá-lo mesmo.",
+    "event.dwarf-friendship-1.after-event-henchman": "'Baú Energizado?'... Não conheço nada disso.",
+    // used the wrong format for this message in the cutscene, just have the same text on both sides of the '~'
+    "event.dwarf-friendship-1.shop-intro": "Vendo tudo o que pode ajudar você a começar. Até consegui algumas anotações de pesquisa que podem ser úteis.~Vendo tudo o que pode ajudar você a começar. Até consegui algumas anotações de pesquisa que podem ser úteis.",
+
+    /*********
+    ** Data/Events/Mountain — "Kree_CM_YI2YFDQB/"
+    *********/
+    "event.cranked-power-coil-intro.speak-1": "Hmm. Tem que ser isso.",
+    "event.cranked-power-coil-intro.speak-2": "Na oitava tentativa vai.",
+    "event.cranked-power-coil-intro.speak-3": "Ah, isso parece promissor.",
+    "event.cranked-power-coil-intro.speak-4": "Ufa... As tolerâncias estão um pouco apertadas, mas está o mais perfeito que poderia ficar.",
+    "event.cranked-power-coil-intro.speak-5": "Isso, agora é só dar uma boa girada na manivela.",
+    "event.cranked-power-coil-intro.speak-6": "Pai, você correu de volta para se proteger enquanto eu apertava aquele último parafuso?",
+    "event.cranked-power-coil-intro.speak-7": "Ah, bem... Só achei que daqui eu conseguiria enxergar melhor!",
+    "event.cranked-power-coil-intro.speak-8": "Ei, olha só, é ${o novo fazendeiro^a nova fazendeira}$. Talvez possa nos dar uma mão.",
+    "event.cranked-power-coil-intro.speak-9": "...",
+    "event.cranked-power-coil-intro.speak-10": "Bem, talvez um pouco de esforço braçal seja exatamente o que precisamos.",
+    "event.cranked-power-coil-intro.speak-11": "Oi, @. Você poderia nos dar uma mão aqui?",
+    "event.cranked-power-coil-intro.speak-12": "Depois que a Joja removeu aquele deslizamento de terra, meu pai encontrou um pergaminho curioso contendo os projetos desse dispositivo de energia.",
+    "event.cranked-power-coil-intro.speak-13": "Eu estava estudando as consequências ecológicas da trapalhada da Joja com as perfurações quando encontrei essas anotações de pesquisa soltas.",
+    "event.cranked-power-coil-intro.speak-14": "As anotações eram bastante indecifráveis, mas os desenhos são incrivelmente precisos. Maru e eu passamos o dia inteiro fazendo engenharia reversa dos projetos.",
+    "event.cranked-power-coil-intro.speak-15": "Havia até uma receita interessantíssima de purê de cenoura subterrânea no verso.",
+    "event.cranked-power-coil-intro.text-above-head-1": "Terroso demais...",
+    "event.cranked-power-coil-intro.speak-16": "Prefiro nem pensar nisso.",
+    "event.cranked-power-coil-intro.speak-17": "Se não for muito incômodo, @, você poderia dar uma girada na manivela? Nós mesmos não tivemos muita sorte.",
+    "event.cranked-power-coil-intro.message-1": "A bobina de energia de manivela foi ligada.",
+    "event.cranked-power-coil-intro.speak-18": "Uau, isso realmente funcionou!",
+    "event.cranked-power-coil-intro.speak-19": "De acordo com os desenhos da anotação, essa bobina está puxando energia debaixo da terra.",
+    "event.cranked-power-coil-intro.speak-20": "É como se houvesse algum tipo de fonte de energia escondida bem abaixo do Vale do Orvalho. Há tanto potencial para pesquisa!",
+    "event.cranked-power-coil-intro.speak-21": "Além disso, Maru, era mesmo necessário me usar como escudo?",
+    "event.cranked-power-coil-intro.speak-22": "Haha, só estava pensando que daqui eu conseguiria enxergar melhor, só isso!",
+    "event.cranked-power-coil-intro.speak-23": "Ahem... Obrigado novamente, @. Acho que você merece seus próprios projetos como recompensa pela ajuda.",
+    "event.cranked-power-coil-intro.message-2": "Aprendeu a fabricar uma 'Bobina de Energia de Manivela'",
+    "event.cranked-power-coil-intro.speak-24": "Tenho certeza de que esta bobina de energia de manivela vai ajudar bastante a fornecer energia para alguns dos equipamentos da sua fazenda.",
+    "event.cranked-power-coil-intro.speak-25": "Ah, olá, campeão! Que bom ver você saindo de casa pela primeira vez em um bom tempo.",
+    "event.cranked-power-coil-intro.speak-26": "...",
+    "event.cranked-power-coil-intro.speak-27": "Isso não foi por minha causa, foi?",
+    "event.cranked-power-coil-intro.after-event-maru": "Obrigada novamente pela ajuda, @. De qualquer forma, foi divertido mexer nessa engenhoca com meu pai.",
+    "event.cranked-power-coil-intro.after-event-demetrius": "Maru é uma garota muito inteligente. Só queria que Sebastian compartilhasse mais dos interesses dele comigo...",
+    "event.cranked-power-coil-intro.after-event-sebastian": "Desculpa se fui um pouco grosseiro antes... Acho que fiquei com vergonha.",
+    "event.cranked-power-coil-intro.after-event-robin": "A Maru te deu o projeto daquela máquina de manivela? Ela e o Demetrius quase quebraram uma janela mexendo naquela coisa.",
+
+    /*********
+    ** Data/SpecialOrders
+    *********/
+    "special-order.cave-carrot-request.name": "Pedido de Cenouras Subterrânea",
+    "special-order.cave-carrot-request.text": "Povo do Vale, tudo o que peço é que, das 50 Cenouras Subterrânea recém-coletadas, entregue 20 Cenouras Subterrânea em conserva que você considere da melhor qualidade. De preferência, Cenouras Subterrânea recém-extraídas das minas.",
+    "special-order.cave-carrot-request.objective-collect": "Colete 50 Cenouras Subterrânea",
+    "special-order.cave-carrot-request.objective-donate": "Coloque 20 Cenouras Subterrânea em conserva no baú do Anão dentro das minas.",
+    "special-order.cave-carrot-request.completion-letter": "[letterbg 0]Humano da fazenda @,^^Obrigado pelas Cenouras Subterrânea em conserva. Passei um tempo separando-as por qualidade e pensei que você poderia fazer suas próprias etiquetas de qualidade para separar itens por qualidade.^^Deixei esta anotação na sua caixa de correio durante a noite. Você tem uma bela fazenda na superfície, no vale.%item craftingrecipe luisMint.PoweredAutomation_NoQualityTag %%%item craftingrecipe luisMint.PoweredAutomation_SilverQualityTag %%%item craftingrecipe luisMint.PoweredAutomation_GoldQualityTag %%%item craftingrecipe luisMint.PoweredAutomation_IridiumQualityTag %%"
+}
+

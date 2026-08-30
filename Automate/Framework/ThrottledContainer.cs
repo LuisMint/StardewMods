@@ -199,7 +199,7 @@ internal class ThrottledContainer : IContainer, IConnectionRoleRestriction, IHas
         // class where that's worth checking up front — everywhere else, the per-call cost of checking
         // is already cheaper than what it'd be skipping.
         bool trackConsumption = this.GetVisualEffectsEnabled() && this.Location.farmers.Any();
-        Dictionary<string, int>? before = trackConsumption ? this.SnapshotItemCounts() : null;
+        Dictionary<string, (int Count, Item Sample)>? before = trackConsumption ? this.SnapshotItemCounts() : null;
 
         bool loaded = this.Inner is IHasAttemptAutoLoad inner
             ? inner.AttemptAutoLoad(machine, who)
@@ -207,11 +207,11 @@ internal class ThrottledContainer : IContainer, IConnectionRoleRestriction, IHas
 
         if (loaded && before != null)
         {
-            foreach ((string itemId, int beforeCount) in before)
+            foreach ((string itemId, (int beforeCount, Item sample)) in before)
             {
                 int consumed = beforeCount - this.Inner.Inventory.CountId(itemId);
                 if (consumed > 0)
-                    this.OnRemoved(ItemRegistry.Create(itemId, 1), consumed);
+                    this.OnRemoved(sample, consumed); // MOD: fixed — uses the real pre-consumption sample (see SnapshotItemCounts' own remarks), not a generic ItemRegistry.Create reconstruction that could never know a ColoredObject's own flavor/color in the first place
             }
         }
 
@@ -350,20 +350,32 @@ internal class ThrottledContainer : IContainer, IConnectionRoleRestriction, IHas
         this.Budget.AnimatedItemTypesThisWindow.Clear();
     }
 
-    /// <summary>Get the current count of every distinct item ID in the wrapped container's own inventory — see <see cref="AttemptAutoLoad"/>'s own remarks for why this is needed.</summary>
-    private Dictionary<string, int> SnapshotItemCounts()
+    /// <summary>
+    /// Get the current count of every distinct item ID in the wrapped container's own inventory, along
+    /// with a representative sample of each — see <see cref="AttemptAutoLoad"/>'s own remarks for why
+    /// the count is needed.
+    /// </summary>
+    /// <remarks>
+    /// MOD: fixed — the sample is captured HERE, via <see cref="Item.getOne"/> (which correctly
+    /// preserves a <see cref="StardewValley.Objects.ColoredObject"/>'s own flavor/color — see
+    /// <see cref="ContainerVisualEffects"/>'s own remarks), rather than reconstructed from just the item
+    /// ID after consumption via <c>ItemRegistry.Create</c>. That always produced the generic/default-
+    /// colored version, since flavor/color was never part of the ID at all — confirmed via user report
+    /// (wine's flying exit-effect sprite showing the wrong tint leaving a Powered Chest into a Cask).
+    /// </remarks>
+    private Dictionary<string, (int Count, Item Sample)> SnapshotItemCounts()
     {
-        Dictionary<string, int> counts = new();
+        Dictionary<string, (int Count, Item Sample)> snapshot = new();
 
         foreach (Item? item in this.Inner.Inventory)
         {
-            if (item == null || counts.ContainsKey(item.QualifiedItemId))
+            if (item == null || snapshot.ContainsKey(item.QualifiedItemId))
                 continue;
 
-            counts[item.QualifiedItemId] = this.Inner.Inventory.CountId(item.QualifiedItemId);
+            snapshot[item.QualifiedItemId] = (this.Inner.Inventory.CountId(item.QualifiedItemId), item.getOne());
         }
 
-        return counts;
+        return snapshot;
     }
 
     /// <summary>Called when an actual reduction is observed on a stack yielded by <see cref="GetEnumerator"/> — rolls the pacing window if needed, then fires the (deduped) exit effect.</summary>

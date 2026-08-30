@@ -1,0 +1,102 @@
+{
+    "Changes": [
+        {
+            // Adds a drop-box tile just inside the mine's entrance, next to the Dwarf, for turning in the
+            // pickled cave carrots requested by the Cave Carrot Request special order below.
+            "Action": "EditMap",
+            "Target": "Maps/Mine",
+            "Priority": "Late",
+            "MapTiles": [
+                {
+                    "Position": { "X": 44, "Y": 6 },
+                    "Layer": "Buildings",
+                    "SetProperties": {
+                        "Action": "DropBox {{ModId}}_DwarfCaveCarrotBox"
+                    }
+                }
+            ]
+        },
+        {
+            "Action": "EditData",
+            "Target": "Data/SpecialOrders",
+            "Entries": {
+                "{{ModId}}_CaveCarrotRequest": {
+                    "Name": "{{i18n:special-order.cave-carrot-request.name}}",
+                    "Requester": "Dwarf",
+                    "Duration": "TwoWeeks",
+                    "Repeatable": false,
+                    // "knows_Dwarf" requires having met/talked to the Dwarf at least once (checked via
+                    // Farmer.friendshipData), on top of the Condition below requiring the ability to
+                    // actually understand him.
+                    "RequiredTags": "knows_Dwarf",
+                    "Condition": "PLAYER_HAS_MAIL Current HasDwarvishTranslationGuide",
+                    "OrderType": "",
+                    "SpecialRule": "",
+                    "Text": "{{i18n:special-order.cave-carrot-request.text}}",
+                    "ItemToRemoveOnEnd": null,
+                    "MailToRemoveOnEnd": null,
+                    "RandomizedElements": null,
+                    "Objectives": [
+                        {
+                            // Cave Carrot is vanilla object (O)78.
+                            "Type": "Collect",
+                            "Text": "{{i18n:special-order.cave-carrot-request.objective-collect}}",
+                            "RequiredCount": "50",
+                            "Data": {
+                                "AcceptedContextTags": "id_o_78"
+                            }
+                        },
+                        {
+                            // Any Preserves Jar pickle made from Cave Carrot carries both the "pickle_item" tag
+                            // and a "preserve_sheet_index_78" tag identifying its source ingredient.
+                            "Type": "Donate",
+                            "Text": "{{i18n:special-order.cave-carrot-request.objective-donate}}",
+                            "RequiredCount": "20",
+                            "Data": {
+                                "DropBox": "{{ModId}}_DwarfCaveCarrotBox",
+                                "DropBoxGameLocation": "Mine",
+                                "DropBoxIndicatorLocation": "44 6",
+                                "MinimumCapacity": "24",
+                                "AcceptedContextTags": "pickle_item,preserve_sheet_index_78"
+                            }
+                        }
+                    ],
+                    "Rewards": [
+                        {
+                            "Type": "Money",
+                            "Data": {
+                                "Amount": "5000"
+                            }
+                        },
+                        {
+                            "Type": "Friendship",
+                            "Data": {
+                                "TargetName": "Dwarf",
+                                "Amount": "250"
+                            }
+                        },
+                        {
+                            // Shows the Dwarf's letter below and sets the flag the completion cutscene gates
+                            // on ("PLAYER_HAS_MAIL Current {{ModId}}_CaveCarrotRequestComplete").
+                            "Type": "Mail",
+                            "Data": {
+                                "MailReceived": "{{ModId}}_CaveCarrotRequestComplete",
+                                "NoLetter": "false"
+                            }
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            // [letterbg 0] reuses the same background LooseSprites/letterBG region as Ginger Island's Secret
+            // Notes (secretNoteIndex > 1000 -> whichBG 0, see LetterViewerMenu) - plain paper, no NPC portrait,
+            // rather than the "aged scroll" look mainland Secret Notes/Sandy's letter use (whichBG 1).
+            "Action": "EditData",
+            "Target": "Data/mail",
+            "Entries": {
+                "{{ModId}}_CaveCarrotRequestComplete": "{{i18n:special-order.cave-carrot-request.completion-letter}}"
+            }
+        }
+    ]
+}

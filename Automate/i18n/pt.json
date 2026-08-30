@@ -3,74 +3,155 @@
     ** Generic Mod Config Menu UI
     *********/
     // main options
-    "config.title.main-options": "Opções principais",
-    "config.enabled.name": "Habilitado",
-    "config.enabled.desc": "Define se habilita as funcionalidades de Automatização. Se isso estiver desativado, nenhuma máquina será automatizada e a sobreposição não aparecerá.",
-    "config.automation-interval.name": "Intervalo de Automação",
-    "config.automation-interval.desc": "O número de ticks entre processos (60 para uma vez por segundo, 120 para cada dois segundos, etc).",
-    "config.min-minutes-for-fairy-dust.name": "Minutos mínimos para pó de fada",
-    "config.min-minutes-for-fairy-dust.desc": "O tempo mínimo de processamento da máquina, em minutos, para aplicar o pó de fada. Por exemplo, definir isso para 30 minutos significa que o pó de fada não será aplicado se a máquina terminar em 20 minutos sem ele.",
-    "config.toggle-overlay-key.name": "Tecla de Interface",
-    "config.toggle-overlay-key.desc": "A tecla que abrirá a interface de automação.",
-    "config.warn-for-missing-bridge-mod.name": "Aviso para falta de mod de ponte",
-    "config.warn-for-missing-bridge-mod.desc": "Define se deve ou não informar erro no início caso você tenha instalado um mod de máquina customizada que requer um pacote de estabilidade que não está instalado.",
-
-    // connectors
-    "config.title.connectors": "Habilitar Conectores",
-    "config.connector.desc": "Define se {{itemName}} conecta máquinas e baús .",
-    "config.custom-connectors.name": "Conectores Customizados",
-
-    // TODO
-    "config.custom-connectors.desc": "The items which connect adjacent machines together. You can specify either the internal English name (like \"Wood Path\") or qualified item ID (like \"(O)405\"), and list multiple items with commas.", // note: connector names must be English even when playing in other languages
-
-    // Junimo hut options
-    "config.title.junimo-huts": "Comportamento das cabanas de Junimo",
-    "config.junimo-hut-gems.name": "Gemas",
-    "config.junimo-hut-gems.desc": "O que as cabanas de Junimo devem fazer com itens de pedras preciosas. 'Auto-detecção' irá ignorá-los.",
-    "config.junimo-hut-fertilizer.name": "Fertilizante",
-    "config.junimo-hut-fertilizer.desc": "O que as cabanas de Junimo devem fazer com itens de fertilizantes. 'Auto-detecção' irá ignorá-los se o mod Better Junimos estiver instalado, caso contrário, irá movê-los da cabana para os baús conectados.",
-    "config.junimo-hut-seeds.name": "Sementes",
-    "config.junimo-hut-seeds.desc": "O que as cabanas de Junimo devem fazer com itens de sementes. 'Auto-detecção' irá ignorá-los se o mod Better Junimos estiver instalado, caso contrário, irá movê-los da cabana para os baús conectados.",
-
-    // TODO
-    "config.junimo-hut-move-items-into-hut.name": "Move item IDs into hut",
-    "config.junimo-hut-move-items-into-hut.desc": "The items which should be moved into Junimo huts (regardless of other fields like {{gemFieldName}}). This is a comma-delimited list of qualified item IDs (as shown by the Lookup Anything mod in its 'internal ID' field).",
-    "config.junimo-hut-ignore-items.name": "Ignore item IDs",
-    "config.junimo-hut-ignore-items.desc": "The items which should be ignored (not moved regardless of other fields like {{gemFieldName}}). This is a comma-delimited list of qualified item IDs (as shown by the Lookup Anything mod in its 'internal ID' field).",
-
-    // Junimo hut dropdown values
-    "config.junimo-huts.auto-detect": "Auto-detecção",
-    "config.junimo-huts.ignore": "Ignorá-los",
-    "config.junimo-huts.move-into-chests": "Mover das cabanas de Junimo para os baús",
-    "config.junimo-huts.move-into-huts": "Mover dos baús para as cabanas de Junimo",
+    "config.title.main-options": "Opções Principais",
+    "config.enabled.name": "Ativado",
+    "config.enabled.desc": "Define se os recursos do Automate devem ser ativados. Se desativado, nenhuma máquina será automatizada e a sobreposição não aparecerá.",
+    "config.use-event-based-automation.name": "Automação baseada em eventos",
+    "config.use-event-based-automation.desc": "Se ativado (recomendado), a automação é executada em resposta aos eventos do jogo (solicitações de máquinas, alterações no conteúdo dos baús) em vez de seguir um intervalo fixo; geralmente é mais rápida e exige muito menos processamento em fazendas com muitos objetos. Desative para voltar ao intervalo fixo abaixo caso sua configuração não funcione bem com esse sistema.",
+    "config.overwrite-automation-delay.name": "Substituir atraso da automação",
+    "config.overwrite-automation-delay.desc": "Define se o Atraso da ação (segundos) abaixo realmente terá efeito. Se desativado (padrão), ele ficará fixo em 7 segundos, independentemente do valor definido, fazendo com que aprimorar um Relé de Automação continue sendo a principal forma de acelerar a automação. Ative para definir seu próprio valor.",
+    "config.action-delay-seconds.name": "Atraso da ação (segundos)",
+    "config.action-delay-seconds.desc": "Só terá efeito se a opção Substituir atraso da automação acima estiver ativada. Define quantos segundos em tempo real um grupo aguarda entre cada ação de inserção ou retirada de uma máquina ou recipiente, depois de já ter realizado a quantidade de ações permitida por janela de atraso. Aplica-se tanto ao modo por intervalo quanto ao modo baseado em eventos. Defina como 0 para desativar (as ações serão realizadas instantaneamente).",
+    "config.overwrite-automation-actions.name": "Substituir ações da automação",
+    "config.overwrite-automation-actions.desc": "Define se a opção Ações por janela de atraso abaixo realmente terá efeito. Se desativada (padrão), ficará fixada em 1, independentemente do valor definido, fazendo com que aprimorar um Relé de Automação continue sendo a principal forma de aumentar essa quantidade. Ative para definir seu próprio valor.",
+    "config.actions-per-delay-window.name": "Ações por janela de atraso",
+    "config.actions-per-delay-window.desc": "Só terá efeito se a opção Substituir ações da automação acima estiver ativada. Define quantas ações de máquinas/recipientes um grupo pode realizar dentro de uma única janela de Atraso da ação antes que as demais tenham que aguardar a próxima janela. Defina como 0 para ilimitado. Não tem efeito quando o Atraso da ação está definido como 0.",
+    "config.animated-item-transfers.name": "Transferências de itens animadas",
+    "config.animated-item-transfers.desc": "Define se a tampa de um recipiente se abrirá e exibirá um item voando, acompanhado de som, sempre que um item entrar ou sair por meio da automação. O efeito só será reproduzido no local onde um jogador estiver de fato presente (é apenas um efeito visual/sonoro).",
+    "config.automation-interval.name": "Intervalo da automação",
+    "config.automation-interval.desc": "Usado apenas quando a automação baseada em eventos acima estiver desativada. Define o número de ticks entre cada processo de automação (60 para uma vez por segundo, 120 para a cada dois segundos etc.).",
+    "config.min-minutes-for-fairy-dust.name": "Tempo mínimo para Pó de Fada",
+    "config.min-minutes-for-fairy-dust.desc": "Define o tempo mínimo de processamento da máquina, em minutos, necessário para aplicar Pó de Fada. Por exemplo, definir como 30 minutos significa que o Pó de Fada não será aplicado se a máquina terminasse em 20 minutos sem ele.",
+    "config.automation-experience-percent.name": "% de experiência da automação",
+    "config.automation-experience-percent.desc": "Define qual porcentagem da experiência normal da habilidade é concedida quando o Automate coleta a produção automaticamente, em vez de você coletá-la manualmente. Defina como 0 para não receber experiência pela automação (padrão) ou 100 para receber a mesma experiência de quando você coleta a produção pessoalmente.",
+    "config.toggle-overlay-key.name": "Tecla da sobreposição",
+    "config.toggle-overlay-key.desc": "As teclas usadas para ativar ou desativar a sobreposição de automação.",
+    "config.warn-for-missing-bridge-mod.name": "Avisar sobre mod de integração ausente",
+    "config.warn-for-missing-bridge-mod.desc": "Define se um aviso deve ser registrado ao iniciar o jogo caso você tenha instalado um mod de máquinas personalizadas que exige um patch de compatibilidade separado que não está instalado.",
+    "config.power-required-machines-enabled.name": "Máquinas que exigem energia",
+    "config.power-required-machines-enabled.desc": "Define se determinadas máquinas de alto valor (Cristalário, Coletor Automático, Afagador Automático, Fornalha Pesada e outras listadas no arquivo de configuração do mod) só devem ser automatizadas enquanto o próprio espaço onde estão posicionadas estiver dentro do alcance de energia, em vez de serem automatizadas em qualquer lugar como as outras máquinas. Ativado por padrão como uma escolha deliberada de balanceamento.",
+    "config.connected-machine-location-power-callouts.name": "Aviso de localização de máquina sem energia",
+    "config.connected-machine-location-power-callouts.desc": "Ativa um aviso para máquinas que exigem energia, conectadas a um grupo ativo, mas que NÃO possuem energia, informando a localização aproximada da máquina.",
+    "config.connected-machine-location-power-callout-interval-seconds.name": "Intervalo entre avisos (segundos)",
+    "config.connected-machine-location-power-callout-interval-seconds.desc": "Usado apenas quando a opção Aviso de localização de máquina sem energia acima estiver ativada. Define com que frequência, em segundos reais, o aviso de localização será repetido enquanto uma máquina que exige energia permanecer sem energia.",
+    "config.overwrite-power-grid-capacity.name": "Substituir capacidade da rede elétrica",
+    "config.overwrite-power-grid-capacity.desc": "Força a capacidade total da Rede Elétrica para o valor fixo abaixo, em vez de usar a Rede Elétrica inicial normal (4) mais a capacidade obtida até o momento pelos Silos de Energia.",
+    "config.power-grid-capacity-override.name": "Substituição da capacidade da rede elétrica",
+    "config.power-grid-capacity-override.desc": "Só terá efeito se a opção Substituir capacidade da rede elétrica acima estiver ativada. Define a capacidade total fixa de Bobinas de Energia a ser usada no lugar da normal (101 significa capacidade infinita).",
 
     // per-chest settings
-    "config.title.chest-settings": "Opções de baú",
-    "config.default-chest-override.name": "Comportamento padrão",
-    "config.default-chest-override.desc": "Define se os baús devem estar habilitados ou desabilitados por padrão (exceto os escolhidos abaixo). Baús habilitados automaticamente serão conectados à máquinas, e os desabilitados serão ignorados.",
+    "config.title.chest-settings": "Configurações dos Baús",
+    "config.default-chest-override.name": "Comportamento Padrão",
+    "config.default-chest-override.desc": "Define se os baús devem ser ativados ou desativados por padrão (exceto aqueles definidos abaixo). Os baús ativados automatizarão as máquinas conectadas, enquanto os desativados serão completamente ignorados.",
     "config.chest-override.name": "{{chestName}}",
-    "config.chest-override.name.take-only": "{{chestName}} (take items only)", // TODO
-    "config.chest-override.desc": "Define se os items de {{chestName}} ser habilitados como baús. Veja a dica em '{{defaultBehaviorField}}'.",
-    "config.chest-override.desc.take-only": "{{description}} (When enabled, this chest type only allows taking items out of the chest.)", // TODO // {{description}} contains the previous translation line
+    "config.chest-override.name.take-only": "{{chestName}} (somente retirar itens)",
+    "config.chest-override.desc": "Define se os itens {{chestName}} colocados devem ser ativados como baús. Consulte a dica de ferramenta em '{{defaultBehaviorField}}'.",
+    "config.chest-override.desc.take-only": "{{description}} (Quando ativado, este tipo de baú permite apenas retirar itens dele.)",
     "config.chest-override.values.default": "Padrão",
-    "config.chest-override.values.enabled": "Habilitado",
-    "config.chest-override.values.disabled": "Desabilitado",
+    "config.chest-override.values.enabled": "Ativado",
+    "config.chest-override.values.disabled": "Desativado",
 
     // per-machine settings
     "config.title.machine-settings": "Configurações de {{machineName}}",
-    "config.machine-settings-enabled.name": "Habilitado",
-    "config.machine-settings-enabled.desc": "Define se a automação de {{machineName}} deve ser habilitada.",
+    "config.machine-settings-enabled.name": "Ativado",
+    "config.machine-settings-enabled.desc": "Define se a automação de {{machineName}} deve ser ativada.",
     "config.machine-settings-priority.name": "Prioridade",
-    "config.machine-settings-priority.desc": "A ordem de prioridade na qual as máquinas {{machineName}} devem ser processadas em relação a outras máquinas. As máquinas têm uma prioridade padrão de 0, sendo os valores mais altos processados primeiro.",
+    "config.machine-settings-priority.desc": "A ordem de prioridade em que as máquinas {{machineName}} devem ser processadas em relação às outras máquinas. As máquinas têm uma prioridade padrão de 0, e valores maiores são processados primeiro.",
 
     // machine names
-    "config.machines.bush": "Arbustos",
+    "config.machines.bush": "Arbusto",
     "config.machines.fruit-tree": "Árvore (Árvore Frutífera)",
-    "config.machines.trash-can": "Lata de Lixo",
+    "config.machines.trash-can": "Lixeira",
     "config.machines.wild-tree": "Árvore (Árvore Silvestre)",
-    "config.machines.feed-hopper": "Funil de Alimentação e Silo",
+    "config.machines.feed-hopper": "Cocho de Feno e Silo",
 
     // special settings for individual machines
     "config.machines.wild-tree.collect-moss.name": "Coletar Musgo",
-    "config.machines.wild-tree.collect-moss.desc": "Define se deve coletar musgo das árvores. Por exemplo, manter musgo nas árvores aumentará a qualidade dos cogumelos gerados em troncos de cogumelos próximos."
+    "config.machines.wild-tree.collect-moss.desc": "Define se o musgo das árvores deve ser coletado. Por exemplo, manter o musgo nas árvores aumentará a qualidade dos cogumelos produzidos por troncos de cogumelo próximos.",
+
+    // GMCM page title
+    "config.display-name": "Automação Energizada",
+
+    /*********
+    ** In-game messages (HUD/red/global messages, not GMCM)
+    *********/
+    "message.craft-unknown-recipe": "Você não sabe fabricar {{itemName}}.",
+    "message.category-sign-unresolved": "...",
+    "message.quality-category-normal": "Qualidade Normal",
+    "message.quality-category-silver": "Qualidade Prata",
+    "message.quality-category-gold": "Qualidade Ouro",
+    "message.quality-category-iridium": "Qualidade Irídio",
+    "message.quality-tags-recipe-name": "Etiquetas de Qualidade Normal, Prata, Ouro e Irídio",
+    "message.machine-needs-power": "A máquina precisa de energia",
+    "message.machines-need-power-in-location.singular": "{{count}} máquina conectada precisa de energia em {{locationName}}",
+    "message.machines-need-power-in-location.plural": "{{count}} máquinas conectadas precisam de energia em {{locationName}}",
+    "message.auto-grabber-failed-no-power": "A Auto-Recolhedora não conseguiu coletar os produtos dos animais por falta de energia",
+    "message.auto-petter-failed-no-power": "O Auto-Acariciador Automático não conseguiu acariciar os animais por falta de energia",
+    "message.relay-level-up": "O Relé de Automação aumentou a {{effectName}} da automação da Rede Elétrica!",
+    "message.delivered-progress": "Entregue {{count}}x {{itemName}} ({{progress}}/{{total}})",
+    "message.silo-capacity-increased": "A capacidade do Silo de Energia aumentou!",
+    "message.power-grid-expanded": "Rede Elétrica expandida: {{delta}} : {{totalCoils}}/{{capacity}}",
+    "message.power-grid-status": "Rede Elétrica: {{totalCoils}}/{{capacity}}",
+
+    // generic error shown for an unexpected exception — {{verb}} is one of the verb phrases below, describing where the error occurred
+    "message.generic-error": "Algo deu errado ao {{verb}}.",
+    "message.generic-error.verb.updating-locations": "atualizar as localizações",
+    "message.generic-error.verb.updating-solar-connectivity": "atualizar a conexão dos painéis solares dos Silos de Energia",
+    "message.generic-error.verb.processing-machines": "processar as máquinas",
+    "message.generic-error.verb.refreshing-machine-visuals": "atualizar os visuais das máquinas",
+    "message.generic-error.verb.animating-power-coil-ambient-effect": "animar o efeito ambiente da Bobina de Energia",
+    "message.generic-error.verb.animating-power-relay-ambient-effect": "animar o efeito ambiente do Relé de Automação",
+    "message.generic-error.verb.animating-power-silo-cap": "animar a tampa do Silo de Energia",
+    "message.generic-error.verb.animating-power-relay-light-shake-effects": "animar os efeitos de luz e tremor do Relé de Automação",
+    "message.generic-error.verb.processing-delayed-automation-pass": "processar uma etapa de automação atrasada",
+    "message.generic-error.verb.drawing-power-coil-compass-arrows": "desenhar as setas de direção das Bobinas de Energia",
+    "message.generic-error.verb.drawing-automation-performance-overlay": "desenhar a sobreposição de desempenho da automação",
+    "message.generic-error.verb.drawing-automation-overlay-info-panel": "desenhar o painel de informações da sobreposição de automação",
+    "message.generic-error.verb.handling-key-input": "processar a entrada do teclado",
+    "message.generic-error.verb.checking-cranked-power-coil-minigame": "verificar o minijogo da Bobina de Energia de Manivela",
+    "message.generic-error.verb.releasing-cranked-power-coil-lock": "liberar o bloqueio da manivela da Bobina de Energia de Manivela de um jogador desconectado",
+
+    /*********
+    ** Power Relay / Power Silo status menus
+    *********/
+    "menu.bring-label": "Trazer:",
+    "menu.unlimited": "Ilimitado",
+
+    "menu.power-relay.title": "Relé de Automação",
+    "menu.power-relay.this-relay-contribution": "Relé de Automação: (-{{delayReduction}}s de atraso/+{{actionsBonus}} ações)",
+    "menu.power-relay.grid-delay": "Atraso da automação da Rede Elétrica: {{delay}}s",
+    "menu.power-relay.grid-actions": "Ações da automação da Rede Elétrica: {{actions}}",
+    "menu.power-relay.flavor-text-default": "Há espaços convenientes alinhados ao longo do relé.\nParece precisar de materiais preciosos para\nmelhorar a eficiência da automação.",
+    "menu.power-relay.flavor-text-fully-powered": "As pedras brilham e tremem com energia,\no relé vibra em sua eficiência máxima.",
+    "menu.power-relay.global-speed-capped": "[Velocidade máxima global da Rede Elétrica atingida]",
+    "menu.power-relay.shard-row-bonus": "(-0,4s de atraso da automação)",
+    "menu.power-relay.shards-maxed": "[Velocidade máxima do Relé de Automação atingida]",
+    "menu.power-relay.bar-row-bonus": "(+2 ações de automação)",
+    "menu.power-relay.bars-maxed": "[Número máximo de ações do Relé de Automação atingido]",
+
+    "menu.power-silo.title": "Silo de Energia",
+    "menu.power-silo.flavor-text-default": "Um Anão deixou\ninstruções enigmáticas\npara expandir a Rede Elétrica",
+    "menu.power-silo.flavor-text-solar": "Um Anão deixou um\nesboço rudimentar do que\nparece ser o sol",
+    "menu.power-silo.hide-coil-markers": "Ocultar marcadores das Bobinas de Energia",
+    "menu.power-silo.show-coil-markers": "Mostrar marcadores das Bobinas de Energia",
+    "menu.power-silo.hide-coils-on-map": "Ocultar Bobinas de Energia no mapa",
+    "menu.power-silo.show-coils-on-map": "Mostrar Bobinas de Energia no mapa",
+    "menu.power-silo.silo-capacity": "Capacidade do Silo: {{capacity}}",
+    "menu.power-silo.grid-status": "Rede Elétrica: {{totalCoils}}/{{capacity}}",
+    "menu.power-silo.completed-sets-count": "x{{count}}",
+    "menu.power-silo.connect-solar-panels": "Conecte Painéis Solares para expandir a Rede Elétrica",
+    "menu.power-silo.fully-upgraded": "Totalmente aprimorado!",
+
+    /*********
+    ** Console command help text (shown via 'help <command>')
+    *********/
+    "command.reset.description": "automate reset\n   Uso: automate reset\n   Redefine todos os dados armazenados em cache e verifica novamente o mundo em busca de máquinas.",
+    "command.summary.description": "automate summary\n   Uso: automate summary\n   Exibe um resumo das máquinas automatizadas.",
+    "command.reset-silo-tiers.description": "automate reset_silo_tiers\n   Uso: automate reset_silo_tiers\n   Descarta os requisitos de nível do Silo de Energia já definidos nesse salvamento, fazendo com que sejam definidos novamente com base na configuração atual na próxima vez que forem consultados (por exemplo, na próxima vez que você interagir com um Silo de Energia). Útil para testar alterações em PowerSiloTierPools no arquivo de configuração.",
+    "command.perf.description": "automate perf\n   Uso: automate perf\n   Ativa ou desativa a sobreposição de desempenho da automação. Quando ativada, ela é exibida na interface e registra um resumo no log quando for desativada.",
+
+    /*********
+    ** Dialogue reactions (queued outside of any event, ex: CaveCarrotRequestAnnouncementHandler)
+    *********/
+    "dialogue.lewis-cave-carrot-request-reaction": "Achei que alguma das crianças tivesse feito um pedido especial cheio de bobagens como pegadinha. Mas o Gunther confirmou que é verdadeiro... um pedido de alguém que vive nas minas das montanhas. E eu achava que já tinha visto de tudo.",
 }

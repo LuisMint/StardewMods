@@ -101,7 +101,13 @@ internal class ItemFilteredContainer : IContainer, IConnectionRoleRestriction, I
     {
         this.Inner = inner;
         this.Filter = filter;
-        this.Inventory = new FilteredInventory(inner.Inventory, filter.IsItemTypeAllowed);
+
+        // MOD: uses IsItemTypePossiblyAllowed, not IsItemTypeAllowed directly — this itemId-only raw
+        // path has no specific item instance to read a real quality from, unlike everywhere else a
+        // quality condition is enforced (see that method's own remarks for why "possibly allowed" is
+        // the right level of strictness here, and where the real per-instance enforcement happens
+        // instead).
+        this.Inventory = new FilteredInventory(inner.Inventory, filter.IsItemTypePossiblyAllowed);
     }
 
     /// <inheritdoc />
@@ -137,7 +143,7 @@ internal class ItemFilteredContainer : IContainer, IConnectionRoleRestriction, I
 
         string itemId = stack.Sample.QualifiedItemId;
         int currentCount = this.Inner.Inventory.CountId(itemId);
-        int allowed = this.Filter.GetMaxStorable(itemId, currentCount, stack.Count);
+        int allowed = this.Filter.GetMaxStorable(itemId, stack.Sample.Quality, currentCount, stack.Count);
 
         if (allowed <= 0)
             return; // fully blocked — leave the stack untouched so the caller can try elsewhere
@@ -176,7 +182,7 @@ internal class ItemFilteredContainer : IContainer, IConnectionRoleRestriction, I
 
             string itemId = item.QualifiedItemId;
             int currentCount = this.Inventory.CountId(itemId); // real count for allowed items (FilteredInventory's own type filter already applied)
-            int allowed = this.Filter.GetMaxTakeable(itemId, currentCount, currentCount);
+            int allowed = this.Filter.GetMaxTakeable(itemId, item.Quality, currentCount, currentCount); // MOD: quality-aware, uniformly — a real item instance IS available here, so this is where quality actually gets enforced for ingredient consumption (see IsItemTypePossiblyAllowed's own remarks on why the outer FilteredInventory view alone isn't strict enough on its own)
 
             if (allowed < item.Stack)
             {
@@ -223,23 +229,38 @@ internal class ItemFilteredContainer : IContainer, IConnectionRoleRestriction, I
         // running per-item-ID budget across the enumeration (computed once per item ID, since the
         // numeric condition is evaluated against the container's current TOTAL count of that item, not
         // per individual inventory slot — a chest can have the same item split across several slots).
+        //
+        // MOD: added — a quality/category type gate is checked FRESH per stack, BEFORE this budget is
+        // ever touched for that item ID, rather than folded into the cached/shared value itself. This
+        // matters now that a quality-tag condition can make two stacks of the SAME item ID (different
+        // qualities) resolve differently: the shared numeric budget below is deliberately quality-BLIND
+        // (a numeric reserve/cap on an item ID applies across every quality of it combined, matching how
+        // this container's own CountId already sums every quality together) — caching it per item ID
+        // alone, using whichever quality happened to be seen first, would either leak a rejected
+        // quality's stacks past the gate or wrongly zero out an allowed quality's share, depending on
+        // scan order. Filtering per-stack first (a cheap HashSet lookup) avoids that without touching
+        // the numeric logic at all. This never excludes anything for an item ID with its own item-level
+        // sign condition — that already bypasses quality/category checks entirely, see
+        // SignFilter.IsItemTypeAllowed's own remarks.
         Dictionary<string, int> remainingTakeableByItem = [];
 
         foreach (ITrackedStack real in this.Inner)
         {
             string itemId = real.Sample.QualifiedItemId;
+            int quality = real.Sample.Quality;
+
+            if (!this.Filter.IsItemTypeAllowed(itemId, quality))
+                continue;
 
             if (!remainingTakeableByItem.TryGetValue(itemId, out int remaining))
             {
                 int currentCount = this.Inner.Inventory.CountId(itemId);
-                remaining = this.Filter.GetMaxTakeable(itemId, currentCount, currentCount);
+                remaining = this.Filter.GetMaxTakeable(itemId, quality, currentCount, currentCount);
+                remainingTakeableByItem[itemId] = remaining;
             }
 
             if (remaining <= 0)
-            {
-                remainingTakeableByItem[itemId] = 0;
                 continue;
-            }
 
             int give = Math.Min(real.Count, remaining);
             remainingTakeableByItem[itemId] = remaining - give;
