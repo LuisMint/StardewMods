@@ -78,12 +78,12 @@ internal static class DwarfBuildMenuPatches
 
         Response[] responses =
         [
-            new Response("Shop", "Shop"),
-            new Response("Build", "Construct Dwarf Structures"),
-            new Response("Leave", "Leave")
+            new Response("Shop", I18n.Menu_DwarfShop_ResponseShop()),
+            new Response("Build", I18n.Menu_DwarfShop_ResponseBuild()),
+            new Response("Leave", I18n.Menu_DwarfShop_ResponseLeave())
         ];
 
-        location.createQuestionDialogue("What would you like to do?", responses, (who, whichAnswer) =>
+        location.createQuestionDialogue(I18n.Menu_DwarfShop_Prompt(), responses, (who, whichAnswer) =>
         {
             switch (whichAnswer)
             {
@@ -104,8 +104,8 @@ internal static class DwarfBuildMenuPatches
                     // MOD: added — only one Dwarf-built structure may be under construction at a time;
                     // refuse (with an in-character message) rather than opening
                     // the menu at all if one's already in progress somewhere.
-                    if (DwarfBuildMenuPatches.IsDwarfStructureUnderConstruction())
-                        DwarfBuildMenuPatches.ShowDwarfMessage("Sorry, my hands are tied. One task at a time.");
+                    if (DwarfBuildMenuPatches.FindDwarfStructureUnderConstruction() != null)
+                        DwarfBuildMenuPatches.ShowDwarfMessage(I18n.Menu_DwarfShop_ConstructionInProgress());
                     else
                         location.ShowConstructOptions(DwarfBuildMenuPatches.BuilderName);
                     break;
@@ -128,7 +128,7 @@ internal static class DwarfBuildMenuPatches
         Game1.player.forceCanMove();
 
         if (!__instance.Blueprint.MagicalConstruction)
-            DwarfBuildMenuPatches.ShowDwarfMessage("Others of my kind will begin work while you sleep. Do not bother them.");
+            DwarfBuildMenuPatches.ShowDwarfMessage(I18n.Menu_DwarfShop_ConstructionStarted());
 
         return false;
     }
@@ -141,8 +141,13 @@ internal static class DwarfBuildMenuPatches
             Game1.DrawDialogue(new Dialogue(dwarf, "luisMint.PoweredAutomation_DwarfConstruction", text));
     }
 
-    /// <summary>Get whether a Dwarf-built structure is currently under construction (or upgrading) anywhere in the save.</summary>
-    private static bool IsDwarfStructureUnderConstruction()
+    /// <summary>
+    /// Get the Dwarf-built structure currently under construction (or upgrading) anywhere in the save, if
+    /// any — since only one may ever be in progress at a time (see this class's own remarks), there's
+    /// never more than one to find. Internal (not private) so <see cref="DwarfConstructionStatusTokens"/>
+    /// can reuse this same scan for its own Content Patcher token, rather than duplicating it.
+    /// </summary>
+    internal static Building? FindDwarfStructureUnderConstruction()
     {
         foreach (GameLocation location in CommonHelper.GetLocations())
         {
@@ -152,10 +157,10 @@ internal static class DwarfBuildMenuPatches
                     continue;
 
                 if (building.GetData()?.Builder == DwarfBuildMenuPatches.BuilderName)
-                    return true;
+                    return building;
             }
         }
 
-        return false;
+        return null;
     }
 }

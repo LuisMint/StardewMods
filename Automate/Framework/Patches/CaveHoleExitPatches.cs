@@ -58,8 +58,8 @@ internal static class CaveHoleExitPatches
 
         Response[] options =
         [
-            new Response("Leave", "Leave Cave Hole").SetHotKey(Keys.Y),
-            new Response("Do", "Do Nothing").SetHotKey(Keys.Escape)
+            new Response("Leave", I18n.Menu_CaveHole_ExitResponseLeave()).SetHotKey(Keys.Y),
+            new Response("Do", I18n.Menu_CaveHole_ExitResponseDoNothing()).SetHotKey(Keys.Escape)
         ];
         __instance.createQuestionDialogue(" ", options, CaveHoleExitPatches.OnAnsweredExitPrompt);
 

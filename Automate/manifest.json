@@ -3,7 +3,7 @@
     "Author": "Pathoschild",
     "Version": "%ProjectVersion%",
     "MinimumApiVersion": "4.1.10",
-    "Description": "A reworked Automate mod with better balancing and in game progression.",
+    "Description": "Reworked by LuisMint, part of Powered Automation.",
     "UniqueID": "Pathoschild.Automate",
     "EntryDll": "Automate.dll",
     "UpdateKeys": ["Nexus:50165"],

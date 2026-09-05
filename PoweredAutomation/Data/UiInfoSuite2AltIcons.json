@@ -1,0 +1,35 @@
+{
+    "Changes": [
+        {
+            "Action": "Load",
+            "Target": "Mods/{{ModId}}/DwarfConstructionIcon",
+            "FromFile": "Pipes/DwarfConstructionIcon.png"
+        },
+        {
+            // MOD: added — shows a "days remaining" icon via UI Info Suite 2 Alternative's own documented
+            // custom-icon feature (https://github.com/dazuki/UIInfoSuite2Alt/blob/main/docs/custom-icons.md)
+            // — a real, supported integration point, unlike the original UI Info Suite 2 (confirmed to
+            // have no API for other mods at all). The HoverText token is registered by Automate's own
+            // DwarfConstructionStatusTokens. Silently ignored entirely if UI Info Suite 2 Alternative
+            // isn't installed (see its own docs).
+            "Action": "EditData",
+            "Target": "Mods/DazUki.UIInfoSuite2Alt/CustomIcons",
+            "Entries": {
+                "{{ModId}}_DwarfConstruction": {
+                    "Texture": "Mods/{{ModId}}/DwarfConstructionIcon",
+                    "SourceRect": { "X": 0, "Y": 0, "Width": 15, "Height": 13 },
+                    "HoverText": "{{Pathoschild.Automate/DwarfConstructionHoverText}}"
+                }
+            },
+            "When": {
+                // MOD: fixed — Content Patcher's own docs: "HasMod: ... you can list multiple mod IDs
+                // (comma-separated); if you do, the condition is only true if ALL of them are installed."
+                // Needed here specifically to satisfy CP's "immutable HasMod condition" requirement for
+                // trusting Pathoschild.Automate's own custom token below (a plain manifest.json
+                // dependency alone wasn't enough — confirmed by testing in-game, see this class's own history).
+                "HasMod": "DazUki.UIInfoSuite2Alt, Pathoschild.Automate",
+                "Pathoschild.Automate/HasActiveDwarfConstruction": "true"
+            }
+        }
+    ]
+}

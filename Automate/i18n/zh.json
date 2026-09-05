@@ -26,6 +26,8 @@
   "config.warn-for-missing-bridge-mod.desc": "如果你安装了某个自定义机器 Mod，但未安装其所需的独立兼容补丁，是否在启动时于日志中发出警告。",
   "config.power-required-machines-enabled.name": "需要用电的机器限制",
   "config.power-required-machines-enabled.desc": "部分高价值机器（宝石复制戏法机、自动采集器、自动抚摸机、重型熔炉，以及 Mod 配置文件中列出的其他机器）是否仅在自身所在图块处于电力范围内时才执行自动化，而非像其他机器一样可在任意位置自动化。默认启用以维持游戏平衡。",
+  "config.skip-cranking-minigame.name": "跳过手摇小游戏",
+  "config.skip-cranking-minigame.desc": "启用后将为所有手摇电力线圈移除手动手摇小游戏。",
   "config.connected-machine-location-power-callouts.name": "未供电机器位置提示",
   "config.connected-machine-location-power-callouts.desc": "当需要用电的机器已连接至活跃的管道组但未获得电力时，触发提示框以告知该机器的大致位置。",
   "config.connected-machine-location-power-callout-interval-seconds.name": "提示重复间隔（秒）",
@@ -125,11 +127,19 @@
   "menu.power-silo.completed-sets-count": "x{{count}}",
   "menu.power-silo.connect-solar-panels": "连接太阳能板以扩建电网",
   "menu.power-silo.fully-upgraded": "已完全升级！",
-
+  "menu.dwarf-shop.prompt": "有什么我能为你效劳的吗？",
+  "menu.dwarf-shop.response-shop": "商店",
+  "menu.dwarf-shop.response-build": "建造矮人建筑",
+  "menu.dwarf-shop.response-leave": "离开",
+  "menu.dwarf-shop.construction-in-progress": "抱歉，我手头上还有活儿要忙。一次只能做一件事。",
+  "menu.dwarf-shop.construction-started": "我的同族会在你入睡后开始施工。不要打扰他们。",
+  "menu.cave-hole.exit-response-leave": "离开洞穴窟窿",
+  "menu.cave-hole.exit-response-do-nothing": "无所事事",
   "command.reset.description": "automate reset\n   用法：automate reset\n   重置所有缓存数据，并重新扫描世界中的机器。",
   "command.summary.description": "automate summary\n   用法：automate summary\n   输出自动化机器的摘要信息。",
   "command.reset-silo-tiers.description": "automate reset_silo_tiers\n   用法：automate reset_silo_tiers\n   丢弃当前存档已随机生成的电力筒仓阶梯需求，以便下次读取时（例如下次与电力筒仓互动时）根据当前配置重新生成。在测试配置文件中的 PowerSiloTierPools 修改时非常有用。",
   "command.perf.description": "automate perf\n   用法：automate perf\n   切换自动化性能叠加视图的开/关状态。开启时会在 HUD 上显示，关闭时会在日志中输出一份摘要。",
 
-  "dialogue.lewis-cave-carrot-request-reaction": "我还以为是哪个小鬼搞恶作剧，贴了一张莫名其妙的特别任务。但冈瑟确认那是真的……是住在山区矿井里的某个人发出的订单。我还以为我什么世面都见过了呢。"
+  "dialogue.lewis-cave-carrot-request-reaction": "我还以为是哪个小鬼搞恶作剧，贴了一张莫名其妙的特别任务。但冈瑟确认那是真的……是住在山区矿井里的某个人发出的订单。我还以为我什么世面都见过了呢。",
+  "message.dwarf-construction-hover-text": "??? 将在 {{days}} 天内为你建好新的{{structureName}}"
 }

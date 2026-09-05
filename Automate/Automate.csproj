@@ -1,6 +1,6 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <Version>2.6.1</Version>
+    <Version>1.29.5</Version>
     <RootNamespace>Pathoschild.Stardew.Automate</RootNamespace>
     <EnableHarmony>true</EnableHarmony>
   </PropertyGroup>

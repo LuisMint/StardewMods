@@ -1,8 +1,8 @@
 {
   "Name": "Powered Automation",
-  "Author": "luisMint",
-  "Version": "1.0.0",
-  "Description": "Adds custom power/automation buildings, items, and connectors for Automate",
+  "Author": "LuisMint",
+  "Version": "1.29.5",
+  "Description": "Adds better balancing and in game progression to Automate",
   "UniqueID": "luisMint.PoweredAutomation",
   "MinimumApiVersion": "4.0.0",
   "UpdateKeys": ["Nexus:50165"],
@@ -13,6 +13,14 @@
   "Dependencies": [
     {
       "UniqueID": "ichortower.SecretNoteFramework",
+      "IsRequired": false
+    },
+    {
+      "UniqueID": "DazUki.UIInfoSuite2Alt",
+      "IsRequired": false
+    },
+    {
+      "UniqueID": "Pathoschild.Automate",
       "IsRequired": false
     }
   ]

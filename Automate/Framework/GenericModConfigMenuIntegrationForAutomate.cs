@@ -160,6 +160,12 @@ internal class GenericModConfigMenuIntegrationForAutomate : IGenericModConfigMen
                 set: (config, value) => config.PowerRequiredMachinesEnabled = value
             )
             .AddCheckbox(
+                name: I18n.Config_SkipCrankingMinigame_Name,
+                tooltip: I18n.Config_SkipCrankingMinigame_Desc,
+                get: config => config.SkipCrankingMinigame,
+                set: (config, value) => config.SkipCrankingMinigame = value
+            )
+            .AddCheckbox(
                 name: I18n.Config_ConnectedMachineLocationPowerCallouts_Name,
                 tooltip: I18n.Config_ConnectedMachineLocationPowerCallouts_Desc,
                 get: config => config.ConnectedMachineLocationPowerCallouts,

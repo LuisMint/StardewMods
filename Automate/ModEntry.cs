@@ -467,7 +467,8 @@ internal class ModEntry : Mod
         // need a Power Silo system reference (unlike PowerSiloPatches.Initialize below) since this
         // object deliberately never touches Power Grid capacity or solar-connectivity at all.
         CrankedPowerCoilPatches.Initialize(
-            requeueLocations: this.BroadcastReloadLocations
+            requeueLocations: this.BroadcastReloadLocations,
+            getSkipCrankingMinigame: () => this.Config.SkipCrankingMinigame
         );
         CrankedPowerCoilPatches.Apply(harmony);
 
@@ -783,6 +784,12 @@ internal class ModEntry : Mod
         StardioConveyorBeltPatches.TryApply(harmony, this.Helper.ModRegistry, this.Monitor);
 
         // MOD: added — same reflect-into-another-mod's-already-loaded-assembly timing requirement as
+        // StardioConveyorBeltPatches above; bridges the "power-required machines" gate into Junimatic
+        // specifically, so its Junimos stop dropping items on the ground trying to fill a starved machine
+        // (see JunimaticCompatPatches' own remarks for the full story).
+        JunimaticCompatPatches.TryApply(harmony, this.Helper.ModRegistry, this.Monitor);
+
+        // MOD: added — same reflect-into-another-mod's-already-loaded-assembly timing requirement as
         // StardioConveyorBeltPatches above; see UtilityGridReduxSystem's own remarks.
         UtilityGridReduxSystem.TryInitialize(
             this.Helper.ModRegistry,
@@ -796,6 +803,11 @@ internal class ModEntry : Mod
             harmony: harmony,
             queueReload: location => this.MachineManager.QueueReload(location)
         );
+
+        // MOD: added — registers this mod's own Content Patcher custom tokens (see
+        // DwarfConstructionStatusTokens's own remarks), consumed by PoweredAutomation's content pack to
+        // show a live "days remaining" icon via UI Info Suite 2 Alternative's own custom-icon feature.
+        DwarfConstructionStatusTokens.Apply(this.Helper.ModRegistry, this.ModManifest);
     }
 
     /// <summary>

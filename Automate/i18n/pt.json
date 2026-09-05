@@ -30,6 +30,8 @@
     "config.warn-for-missing-bridge-mod.desc": "Define se um aviso deve ser registrado ao iniciar o jogo caso você tenha instalado um mod de máquinas personalizadas que exige um patch de compatibilidade separado que não está instalado.",
     "config.power-required-machines-enabled.name": "Máquinas que exigem energia",
     "config.power-required-machines-enabled.desc": "Define se determinadas máquinas de alto valor (Cristalário, Coletor Automático, Afagador Automático, Fornalha Pesada e outras listadas no arquivo de configuração do mod) só devem ser automatizadas enquanto o próprio espaço onde estão posicionadas estiver dentro do alcance de energia, em vez de serem automatizadas em qualquer lugar como as outras máquinas. Ativado por padrão como uma escolha deliberada de balanceamento.",
+    "config.skip-cranking-minigame.name": "Pular o minijogo de girar a manivela",
+    "config.skip-cranking-minigame.desc": "Ative para remover o minijogo de girar a manivela de todas as Bobinas de Energia de Manivela.",    
     "config.connected-machine-location-power-callouts.name": "Aviso de localização de máquina sem energia",
     "config.connected-machine-location-power-callouts.desc": "Ativa um aviso para máquinas que exigem energia, conectadas a um grupo ativo, mas que NÃO possuem energia, informando a localização aproximada da máquina.",
     "config.connected-machine-location-power-callout-interval-seconds.name": "Intervalo entre avisos (segundos)",
@@ -154,4 +156,9 @@
     ** Dialogue reactions (queued outside of any event, ex: CaveCarrotRequestAnnouncementHandler)
     *********/
     "dialogue.lewis-cave-carrot-request-reaction": "Achei que alguma das crianças tivesse feito um pedido especial cheio de bobagens como pegadinha. Mas o Gunther confirmou que é verdadeiro... um pedido de alguém que vive nas minas das montanhas. E eu achava que já tinha visto de tudo.",
+    
+    /*********
+    ** UI Info Suite 2 Alternative custom-icon hover text (see DwarfConstructionStatusTokens)
+    *********/
+    "message.dwarf-construction-hover-text": "??? terminará {{structureName}} em {{days}} dia(s)"
 }

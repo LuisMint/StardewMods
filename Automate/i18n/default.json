@@ -30,6 +30,8 @@
     "config.warn-for-missing-bridge-mod.desc": "Whether to log a warning on startup if you installed a custom-machine mod that requires a separate compatibility patch which isn't installed.",
     "config.power-required-machines-enabled.name": "Power-required machines",
     "config.power-required-machines-enabled.desc": "Whether certain high-value machines (Crystalarium, Auto-Grabber, Auto-Petter, Heavy Furnace, and others listed in the mod's config file) only automate while their own tile is within power range, instead of automating anywhere like other machines. Enabled by default as a deliberate balance choice.",
+    "config.skip-cranking-minigame.name": "Skip cranking minigame",
+    "config.skip-cranking-minigame.desc": "Enable to remove manual cranking minigame for all Cranked Power Coils.",
     "config.connected-machine-location-power-callouts.name": "Unpowered machine location callout",
     "config.connected-machine-location-power-callouts.desc": "Trigger callout for power-required machines that are connected to an active group but have NO power, gives general location of said machine",
     "config.connected-machine-location-power-callout-interval-seconds.name": "Callout repeat interval (seconds)",
@@ -143,6 +145,22 @@
     "menu.power-silo.fully-upgraded": "Fully upgraded!",
 
     /*********
+    ** Dwarf shop menu (see DwarfBuildMenuPatches)
+    *********/
+    "menu.dwarf-shop.prompt": "What can I do for you?",
+    "menu.dwarf-shop.response-shop": "Shop",
+    "menu.dwarf-shop.response-build": "Construct Dwarf Structures",
+    "menu.dwarf-shop.response-leave": "Leave",
+    "menu.dwarf-shop.construction-in-progress": "Sorry, my hands are tied. One task at a time.",
+    "menu.dwarf-shop.construction-started": "Others of my kind will begin work while you sleep. Do not bother them.",
+
+    /*********
+    ** Cave Hole exit prompt (see CaveHoleExitPatches)
+    *********/
+    "menu.cave-hole.exit-response-leave": "Leave Cave Hole",
+    "menu.cave-hole.exit-response-do-nothing": "Do Nothing",
+
+    /*********
     ** Console command help text (shown via 'help <command>')
     *********/
     "command.reset.description": "automate reset\n   Usage: automate reset\n   Resets all cached data and rescans the world for machines.",
@@ -153,5 +171,10 @@
     /*********
     ** Dialogue reactions (queued outside of any event, ex: CaveCarrotRequestAnnouncementHandler)
     *********/
-    "dialogue.lewis-cave-carrot-request-reaction": "I thought one of the kids had posted some kind of gibberish special order as a practical joke. But Gunther confirmed it's genuine... an order from someone living up in the mountains' mines. And here I thought I've seen it all."
+    "dialogue.lewis-cave-carrot-request-reaction": "I thought one of the kids had posted some kind of gibberish special order as a practical joke. But Gunther confirmed it's genuine... an order from someone living up in the mountains' mines. And here I thought I've seen it all.",
+
+    /*********
+    ** UI Info Suite 2 Alternative custom-icon hover text (see DwarfConstructionStatusTokens)
+    *********/
+    "message.dwarf-construction-hover-text": "??? will finish your new {{structureName}} in {{days}} day(s)"
 }

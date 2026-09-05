@@ -178,6 +178,16 @@ internal class ModConfig
     public int PoweredChestUtilityGridReduxPower { get; set; } = 2;
 
     /// <summary>
+    /// MOD: added. Whether right-clicking an unpowered Cranked Power Coil skips its own manual crank
+    /// minigame (see <see cref="Patches.CrankMinigame"/>) entirely and instead powers it instantly, as
+    /// if the crank had just been won on the spot — the same end state
+    /// <see cref="Patches.CrankedPowerCoilPatches.OnCrankSucceeded"/> already produces for a normal win,
+    /// called directly rather than duplicated. Disabled by default: the minigame is the coil's own core
+    /// gameplay hook, so skipping it is an accessibility/preference opt-in, not the default experience.
+    /// </summary>
+    public bool SkipCrankingMinigame { get; set; } = false;
+
+    /// <summary>
     /// MOD: added. How much power a Cranked Power Coil produces for the separately-installed "Utility
     /// Grid Redux" mod's own independent power grid, while that specific coil is currently cranked —
     /// same <c>MustBeOn</c>-mirrored mechanism as <see cref="PowerCoilUtilityGridReduxPower"/>, not the
@@ -193,9 +203,18 @@ internal class ModConfig
     /// a local power source always powers only its own tile plus the 4 orthogonal neighbors,
     /// regardless of <see cref="PowerRangeDistance"/>. This can be the internal name or qualified
     /// item ID, same format as <see cref="Connectors"/>.
+    ///
+    /// MOD: fixed — this used to default to an empty set, silently contradicting every doc comment in
+    /// this file claiming a Powered Chest is "always a local power source... regardless of anything
+    /// else" (see e.g. <see cref="PoweredChestUtilityGridReduxPower"/>'s own remarks): with nothing in
+    /// here by default, <see cref="PowerSystem.GetPoweredTiles"/> never actually powered a Powered
+    /// Chest's own tile or its 4 neighbors on a fresh config at all — confirmed via user report after an
+    /// unrelated deploy mistake force-regenerated a bare-defaults config.json, which is what surfaced
+    /// this gap (a config that had this manually added, however long ago, masked it). The qualified item
+    /// ID here must match <see cref="Machines.Objects.PoweredChestMachine.QualifiedItemId"/> exactly.
     /// </summary>
     [JsonProperty("LocalPowerSourceNames")]
-    public HashSet<string> LocalPowerSourceNames { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public HashSet<string> LocalPowerSourceNames { get; set; } = new(StringComparer.OrdinalIgnoreCase) { "(BC)luisMint.PoweredAutomation_PoweredChest" };
 
     /// <summary>
     /// MOD: added. The in-game objects that act as a "cranked" power source — e.g. the Cranked Power
